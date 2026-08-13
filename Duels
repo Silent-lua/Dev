@@ -4,7 +4,9 @@ local player = Players.LocalPlayer
 local BLACKLIST_URL = "https://pastefy.app/0MXeD0Es/raw?part=BlackList"
 
 local function normalizeName(name)
-    return string.lower(string.gsub(tostring(name), "^%s*(.-)%s*$", "%1"))
+    return string.lower(
+        string.gsub(tostring(name), "^%s*(.-)%s*$", "%1")
+    )
 end
 
 local function isBlacklisted()
@@ -23,7 +25,6 @@ local function isBlacklisted()
         local blockedName = normalizeName(line)
 
         if blockedName ~= "" then
-
             if blockedName == username then
                 return true
             end
@@ -31,7 +32,6 @@ local function isBlacklisted()
             if blockedName == displayName then
                 return true
             end
-
         end
     end
 
@@ -39,6 +39,9 @@ local function isBlacklisted()
 end
 
 if isBlacklisted() then
+    pcall(function()
+        player:Kick("｜BlackList｜")
+    end)
     return
 end
 
