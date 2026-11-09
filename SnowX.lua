@@ -1596,12 +1596,15 @@ local espData2 = {}
 local function CreatePlayerESP2(player)
     if player == LocalPlayer or not useDrawing then return end
     if espData2[player] then return end
-
-    local data = {
+    espData2[player] = {
         player = player,
         lines = {},
         arrowLines = {},
     }
+end
+
+local function EnsureBoxDrawings(data)
+    if data.box and data.outerBox then return end
 
     data.box = Drawing.new("Square")
     data.box.Visible = false
@@ -1616,7 +1619,10 @@ local function CreatePlayerESP2(player)
     data.outerBox.Thickness = 2
     data.outerBox.Filled = false
     data.outerBox.Transparency = 0.85
+end
 
+local function EnsureSkeletonDrawings(data)
+    if #data.lines > 0 then return end
     for i = 1, 13 do
         local line = Drawing.new("Line")
         line.Visible = false
@@ -1625,7 +1631,10 @@ local function CreatePlayerESP2(player)
         line.Transparency = 1
         table.insert(data.lines, line)
     end
+end
 
+local function EnsureArrowDrawings(data)
+    if #data.arrowLines > 0 then return end
     for i = 1, 3 do
         local line = Drawing.new("Line")
         line.Visible = false
@@ -1634,8 +1643,6 @@ local function CreatePlayerESP2(player)
         line.Transparency = 1
         table.insert(data.arrowLines, line)
     end
-
-    espData2[player] = data
 end
 
 local function RemovePlayerESP2(player)
@@ -1786,46 +1793,28 @@ end
 
 local function HideOffscreenArrow(data)
     for _, line in ipairs(data.arrowLines) do
-        line.Visible = false
+        if line.Visible then line.Visible = false end
     end
 end
 
-local function UpdateOffscreenArrow(data, targetPosition, cam)
-    local screenPoint, onScreen = cam:WorldToViewportPoint(targetPosition)
-    if onScreen and screenPoint.Z > 0 then
+local function UpdateOffscreenArrow(data, screenPoint, viewport)
+    local center = viewport / 2
+    local direction = Vector2.new(screenPoint.X, screenPoint.Y) - center
+
+    if screenPoint.Z < 0 then
+        direction = -direction
+    end
+    if direction.Magnitude < 1 then
         HideOffscreenArrow(data)
         return
     end
 
-    local localPosition = cam.CFrame:PointToObjectSpace(targetPosition)
-    local direction = Vector2.new(localPosition.X, -localPosition.Y)
-    if localPosition.Z > 0 then
-        direction = direction * -1
-    end
-    if direction.Magnitude < 0.001 then
-        direction = Vector2.new(0, 1)
-    end
     direction = direction.Unit
-
-    local viewport = cam.ViewportSize
-    local center = Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
-    local halfWidth = math.max(center.X - 30, 1)
-    local halfHeight = math.max(center.Y - 30, 1)
-    local scaleX = math.huge
-    local scaleY = math.huge
-
-    if math.abs(direction.X) > 0.0001 then
-        scaleX = halfWidth / math.abs(direction.X)
-    end
-    if math.abs(direction.Y) > 0.0001 then
-        scaleY = halfHeight / math.abs(direction.Y)
-    end
-
-    local edgeDistance = math.min(scaleX, scaleY)
-    local tip = center + direction * edgeDistance
-    local baseCenter = tip - direction * 16
-    local perpendicular = Vector2.new(-direction.Y, direction.X) * 7
-
+    local radius = math.min(viewport.X, viewport.Y) / 2 - 40
+    local position = center + direction * radius
+    local tip = position + direction * 9
+    local baseCenter = position - direction * 7
+    local perpendicular = Vector2.new(-direction.Y, direction.X) * 6
     local pointLeft = baseCenter + perpendicular
     local pointRight = baseCenter - perpendicular
     local lines = data.arrowLines
@@ -1900,6 +1889,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
             end
 
             if CONFIG_ESP2.Box then
+                EnsureBoxDrawings(data)
                 local bx, by, bw, bh = GetBoxFromCharacter(data.boxParts, data.boxAnchor, camera)
                 if bx then
                     data.box.Position = Vector2.new(bx, by)
@@ -1919,6 +1909,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
             end
 
             if CONFIG_ESP2.Skeleton and hum then
+                EnsureSkeletonDrawings(data)
                 for i, line in ipairs(data.lines) do
                     local bonePair = data.skeletonPairs[i]
                     if bonePair and bonePair[1].Parent and bonePair[2].Parent then
@@ -1943,7 +1934,16 @@ RunService.Heartbeat:Connect(function(deltaTime)
             end
 
             if CONFIG_ESP2.OffscreenArrows then
-                UpdateOffscreenArrow(data, root.Position, camera)
+                local viewport = camera.ViewportSize
+                local topPoint, topOnScreen = camera:WorldToViewportPoint(root.Position + Vector3.new(0, 3, 0))
+                local bottomPoint, bottomOnScreen = camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3.5, 0))
+                if not (topOnScreen and bottomOnScreen and topPoint.Z > 0 and bottomPoint.Z > 0) then
+                    EnsureArrowDrawings(data)
+                    local rootScreen = camera:WorldToViewportPoint(root.Position)
+                    UpdateOffscreenArrow(data, rootScreen, viewport)
+                else
+                    HideOffscreenArrow(data)
+                end
             else
                 HideOffscreenArrow(data)
             end
