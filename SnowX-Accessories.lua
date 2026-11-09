@@ -2537,28 +2537,6 @@ local function buildUI()
     }, header)
     round(closeButton, 8)
 
-    local headerDragHandle = create("TextButton", {
-        Name = "DragHeader",
-        Position = UDim2.fromOffset(0, 0),
-        Size = UDim2.new(1, -82, 1, 0),
-        BackgroundTransparency = 1,
-        AutoButtonColor = false,
-        Active = true,
-        Selectable = false,
-        Text = "",
-        ZIndex = 10,
-    }, header)
-    for index = 0, 2 do
-        create("Frame", {
-            Position = UDim2.fromOffset(258, 7 + index * 4),
-            Size = UDim2.fromOffset(14, 2),
-            BackgroundColor3 = COLORS.Muted,
-            BackgroundTransparency = 0.25,
-            BorderSizePixel = 0,
-            ZIndex = 11,
-        }, header)
-    end
-
     create("Frame", {
         Position = UDim2.fromOffset(0, 52),
         Size = UDim2.new(1, 0, 0, 1),
@@ -2850,79 +2828,55 @@ local function buildUI()
     local minimizedButton = create("Frame", {
         Name = "FloatingReopen",
         AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromOffset(84, 24),
-        Size = UDim2.fromOffset(168, 48),
-        BackgroundColor3 = COLORS.Surface,
-        BackgroundTransparency = 0.03,
+        Position = UDim2.fromOffset(75, 23),
+        Size = UDim2.fromOffset(150, 46),
+        BackgroundColor3 = COLORS.BackgroundAlt,
+        BackgroundTransparency = 0.05,
         BorderSizePixel = 0,
         ClipsDescendants = true,
         Visible = false,
         ZIndex = 50,
     }, screen)
-    round(minimizedButton, 14)
-    stroke(minimizedButton, COLORS.Border, 0.12)
-
-    local reopenAccent = create("Frame", {
-        Position = UDim2.fromOffset(0, 8),
-        Size = UDim2.fromOffset(3, 32),
-        BackgroundColor3 = COLORS.AccentFill,
+    round(minimizedButton, 12)
+    stroke(minimizedButton, COLORS.Text, 0.45)
+    local reopenBackground = create("ImageLabel", {
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        Image = bgAsset or "",
+        ImageTransparency = bgAsset and 0.5 or 1,
+        ScaleType = Enum.ScaleType.Crop,
+        ZIndex = 50,
+    }, minimizedButton)
+    round(reopenBackground, 12)
+    local reopenOverlay = create("Frame", {
+        Size = UDim2.fromScale(1, 1),
+        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+        BackgroundTransparency = bgAsset and 0.55 or 0.82,
         BorderSizePixel = 0,
         ZIndex = 51,
     }, minimizedButton)
-    round(reopenAccent, 2)
-
-    for row = 0, 2 do
-        for column = 0, 1 do
-            local gripDot = create("Frame", {
-                Position = UDim2.fromOffset(13 + column * 5, 17 + row * 5),
-                Size = UDim2.fromOffset(3, 3),
-                BackgroundColor3 = COLORS.Muted,
-                BorderSizePixel = 0,
-                ZIndex = 52,
-            }, minimizedButton)
-            round(gripDot, 2)
-        end
-    end
-
+    round(reopenOverlay, 12)
+    local reopenDot = create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(1, -12, 0, 10),
+        Size = UDim2.fromOffset(8, 8),
+        BackgroundColor3 = COLORS.Text,
+        BorderSizePixel = 0,
+        ZIndex = 53,
+    }, minimizedButton)
+    round(reopenDot, 4)
     create("TextLabel", {
         BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(31, 7),
-        Size = UDim2.new(1, -54, 0, 16),
+        Position = UDim2.fromOffset(14, 0),
+        Size = UDim2.new(1, -24, 1, 0),
         Font = Enum.Font.GothamBold,
-        Text = "ACCESSORIES",
-        TextSize = 10,
+        Text = "Open Accessories",
+        TextSize = 13,
         TextColor3 = COLORS.Text,
         TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 52,
+        ZIndex = 53,
     }, minimizedButton)
-
-    create("TextLabel", {
-        BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(31, 23),
-        Size = UDim2.new(1, -54, 0, 13),
-        Font = Enum.Font.Gotham,
-        Text = "DRAG TO MOVE  /  TAP TO OPEN",
-        TextSize = 7,
-        TextColor3 = COLORS.Muted,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 52,
-    }, minimizedButton)
-
-    create("TextLabel", {
-        BackgroundTransparency = 1,
-        AnchorPoint = Vector2.new(1, 0.5),
-        Position = UDim2.new(1, -10, 0.5, 0),
-        Size = UDim2.fromOffset(14, 24),
-        Font = Enum.Font.GothamBold,
-        Text = "›",
-        TextSize = 22,
-        TextColor3 = COLORS.AccentFill,
-        TextXAlignment = Enum.TextXAlignment.Center,
-        ZIndex = 52,
-    }, minimizedButton)
-
     local minimizedClick = create("TextButton", {
-        Name = "DragAndOpen",
         Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1,
         AutoButtonColor = false,
@@ -2931,7 +2885,16 @@ local function buildUI()
         Text = "",
         ZIndex = 54,
     }, minimizedButton)
-
+    task.spawn(function()
+        while reopenDot.Parent do
+            reopenDot.BackgroundTransparency = 0.65
+            task.wait(0.8)
+            if not reopenDot.Parent then break end
+            reopenDot.BackgroundTransparency = 0
+            task.wait(0.8)
+        end
+    end)
+    state.reopen = minimizedButton
 
     local closeOverlay = create("Frame", {
         Name = "CloseConfirmationOverlay",
@@ -3414,6 +3377,13 @@ local function buildUI()
 
     local refreshSidebar
     local setCurrentSelectionActive
+    local removeSelectedEquippedButton = nil
+
+    local function isItemCurrentlyEquipped(item)
+        if not item or item.kind ~= "accessory" then return false end
+        return isAccessoryDesired(item.id, getActiveAppearanceBaseDescription())
+    end
+
     local function cleanSidebarRows()
         disconnectBucket(state.favoriteConnections)
         disconnectBucket(state.equippedConnections)
@@ -3621,7 +3591,37 @@ local function buildUI()
             table.insert(state.favoriteRows, noRecommendations)
         end
 
+        removeSelectedEquippedButton = nil
         if sideCategory == "accessory" then
+            local selectedIsEquipped = isItemCurrentlyEquipped(selectedItem)
+            local removeButton = create("TextButton", {
+                Name = "RemoveSelectedEquipped",
+                Size = UDim2.new(1, -6, 0, 34),
+                BackgroundColor3 = selectedIsEquipped and COLORS.DangerFill or COLORS.Surface,
+                BorderSizePixel = 0,
+                AutoButtonColor = selectedIsEquipped and not state.busy,
+                Font = Enum.Font.GothamBold,
+                Text = "RETIRAR SELECCIONADO",
+                TextSize = 9,
+                TextColor3 = selectedIsEquipped and Color3.new(1, 1, 1) or COLORS.Muted,
+                TextTransparency = selectedIsEquipped and 0 or 0.25,
+                Active = selectedIsEquipped and not state.busy,
+                Selectable = selectedIsEquipped and not state.busy,
+                LayoutOrder = #currentSideRows + 1,
+            }, sideList)
+            round(removeButton, 7)
+            removeButton:SetAttribute("SnowXSidebarAnchor", "ACTION:REMOVE_SELECTED")
+            addConnection(state.equippedConnections, removeButton.Activated:Connect(function()
+                local item = selectedItem
+                if state.busy or not isItemCurrentlyEquipped(item) then return end
+                runAction(function()
+                    return setCurrentSelectionActive(item, false)
+                end, "Retirado")
+            end))
+            removeSelectedEquippedButton = removeButton
+            table.insert(currentSideRows, removeButton)
+            table.insert(state.equippedRows, removeButton)
+
             addSidebarSection("Equipados")
             local equippedItems = {}
             for _, item in ipairs(collectCurrentItems(false)) do
@@ -3702,6 +3702,15 @@ local function buildUI()
             end
             local maxY = math.max(0, sideList.AbsoluteCanvasSize.Y - sideList.AbsoluteSize.Y)
             sideList.CanvasPosition = Vector2.new(0, math.clamp(targetCanvasY, 0, maxY))
+            if removeSelectedEquippedButton and removeSelectedEquippedButton.Parent then
+                local active = isItemCurrentlyEquipped(selectedItem)
+                removeSelectedEquippedButton.Active = active and not state.busy
+                removeSelectedEquippedButton.Selectable = active and not state.busy
+                removeSelectedEquippedButton.AutoButtonColor = active and not state.busy
+                removeSelectedEquippedButton.BackgroundColor3 = active and COLORS.DangerFill or COLORS.Surface
+                removeSelectedEquippedButton.TextColor3 = active and Color3.new(1, 1, 1) or COLORS.Muted
+                removeSelectedEquippedButton.TextTransparency = active and 0 or 0.25
+            end
         end)
     end
 
@@ -3966,55 +3975,40 @@ local function buildUI()
     minimize.Activated:Connect(hideWindow)
 
     local reopenDrag = nil
+    minimizedClick.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            reopenDrag = {
+                input = input,
+                start = Vector2.new(input.Position.X, input.Position.Y),
+                origin = getReopenCenter(),
+                moved = false,
+            }
+        end
+    end)
 
-    local function beginReopenDrag(input)
-        if input.UserInputType ~= Enum.UserInputType.MouseButton1
-            and input.UserInputType ~= Enum.UserInputType.Touch then return end
-        reopenDrag = {
-            input = input,
-            inputType = input.UserInputType,
-            start = Vector2.new(input.Position.X, input.Position.Y),
-            origin = getReopenCenter(),
-            moved = false,
-        }
-    end
-
-    local function moveReopenDrag(input, isTouch)
+    addConnection(state.uiConnections, UserInputService.InputChanged:Connect(function(input)
         local drag = reopenDrag
         if not drag then return end
-        if isTouch then
-            if drag.inputType ~= Enum.UserInputType.Touch or input ~= drag.input then return end
-        elseif drag.inputType ~= Enum.UserInputType.MouseButton1
-            or input.UserInputType ~= Enum.UserInputType.MouseMovement then
-            return
-        end
+        local isMouseMove = drag.input.UserInputType == Enum.UserInputType.MouseButton1
+            and input.UserInputType == Enum.UserInputType.MouseMovement
+        if not isMouseMove and input ~= drag.input then return end
         local pointer = Vector2.new(input.Position.X, input.Position.Y)
         local delta = pointer - drag.start
-        if delta.Magnitude > 8 then drag.moved = true end
+        if delta.Magnitude > 6 then drag.moved = true end
         if drag.moved then setReopenCenter(drag.origin + delta) end
-    end
+    end))
 
-    local function finishReopenDrag(input)
+    addConnection(state.uiConnections, UserInputService.InputEnded:Connect(function(input)
         local drag = reopenDrag
         if not drag then return end
-        local ended = drag.inputType == Enum.UserInputType.Touch
-            and input == drag.input
-            or drag.inputType == Enum.UserInputType.MouseButton1
-                and input.UserInputType == Enum.UserInputType.MouseButton1
+        local ended = input == drag.input
+            or (drag.input.UserInputType == Enum.UserInputType.MouseButton1
+                and input.UserInputType == Enum.UserInputType.MouseButton1)
         if not ended then return end
         reopenDrag = nil
         if not drag.moved then showWindow() end
-    end
-
-    minimizedClick.InputBegan:Connect(beginReopenDrag)
-    addConnection(state.uiConnections, UserInputService.InputChanged:Connect(function(input)
-        moveReopenDrag(input, false)
     end))
-    addConnection(state.uiConnections, UserInputService.TouchMoved:Connect(function(input)
-        moveReopenDrag(input, true)
-    end))
-    addConnection(state.uiConnections, UserInputService.InputEnded:Connect(finishReopenDrag))
-    addConnection(state.uiConnections, UserInputService.TouchEnded:Connect(finishReopenDrag))
 
     closeButton.Activated:Connect(function() closeOverlay.Visible = true end)
     cancelClose.Activated:Connect(function() closeOverlay.Visible = false end)
@@ -4028,55 +4022,38 @@ local function buildUI()
     end)
 
     local mainDrag = nil
-
-    local function beginMainDrag(input)
-        if input.UserInputType ~= Enum.UserInputType.MouseButton1
-            and input.UserInputType ~= Enum.UserInputType.Touch then return end
-        local absolute = main.AbsolutePosition
-        mainDrag = {
-            input = input,
-            inputType = input.UserInputType,
-            start = Vector2.new(input.Position.X, input.Position.Y),
-            origin = Vector2.new(
-                absolute.X + main.AbsoluteSize.X * 0.5,
-                absolute.Y + main.AbsoluteSize.Y * 0.5
-            ),
-        }
-    end
-
-    local function moveMainDrag(input, isTouch)
+    addConnection(state.uiConnections, header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            local absolute = main.AbsolutePosition
+            mainDrag = {
+                input = input,
+                start = Vector2.new(input.Position.X, input.Position.Y),
+                origin = Vector2.new(
+                    absolute.X + main.AbsoluteSize.X * 0.5,
+                    absolute.Y + main.AbsoluteSize.Y * 0.5
+                ),
+            }
+        end
+    end))
+    addConnection(state.uiConnections, UserInputService.InputChanged:Connect(function(input)
         local drag = mainDrag
         if not drag then return end
-        if isTouch then
-            if drag.inputType ~= Enum.UserInputType.Touch or input ~= drag.input then return end
-        elseif drag.inputType ~= Enum.UserInputType.MouseButton1
-            or input.UserInputType ~= Enum.UserInputType.MouseMovement then
-            return
-        end
+        local isMouseMove = drag.input.UserInputType == Enum.UserInputType.MouseButton1
+            and input.UserInputType == Enum.UserInputType.MouseMovement
+        if not isMouseMove and input ~= drag.input then return end
         local pointer = Vector2.new(input.Position.X, input.Position.Y)
         local target = clampMainCenter(drag.origin + pointer - drag.start)
         main.Position = UDim2.fromOffset(target.X, target.Y)
-    end
-
-    local function finishMainDrag(input)
+    end))
+    addConnection(state.uiConnections, UserInputService.InputEnded:Connect(function(input)
         local drag = mainDrag
         if not drag then return end
-        local ended = drag.inputType == Enum.UserInputType.Touch
-            and input == drag.input
-            or drag.inputType == Enum.UserInputType.MouseButton1
-                and input.UserInputType == Enum.UserInputType.MouseButton1
+        local ended = input == drag.input
+            or (drag.input.UserInputType == Enum.UserInputType.MouseButton1
+                and input.UserInputType == Enum.UserInputType.MouseButton1)
         if ended then mainDrag = nil end
-    end
-
-    addConnection(state.uiConnections, headerDragHandle.InputBegan:Connect(beginMainDrag))
-    addConnection(state.uiConnections, UserInputService.InputChanged:Connect(function(input)
-        moveMainDrag(input, false)
     end))
-    addConnection(state.uiConnections, UserInputService.TouchMoved:Connect(function(input)
-        moveMainDrag(input, true)
-    end))
-    addConnection(state.uiConnections, UserInputService.InputEnded:Connect(finishMainDrag))
-    addConnection(state.uiConnections, UserInputService.TouchEnded:Connect(finishMainDrag))
 
     local viewportConnection = nil
     local function connectCurrentCamera()
