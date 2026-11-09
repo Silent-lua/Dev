@@ -1487,13 +1487,9 @@ Tabs.Combat:CreateSlider({
     Callback = function(v) hitboxSize = v end
 })
 
-local espEnabled = false
 local espColor = Color3.fromRGB(255, 255, 255)
-local PlayerObjects = {}
-local Running = true
 local espPlayers = {}
 local espPlayerIndex = {}
-local espPlayerConnections = {}
 
 local MatchState
 pcall(function()
@@ -1563,109 +1559,19 @@ local function GetPlayerModel(target)
     return nil
 end
 
-local function destroyPlayerESP(target)
-    local data = PlayerObjects[target]
-    if not data then return end
-    if data.Highlight then
-        pcall(function() data.Highlight:Destroy() end)
-    end
-    PlayerObjects[target] = nil
-end
-
-local function ensurePlayerESP(target, inLobby)
-    if not espEnabled then
-        destroyPlayerESP(target)
-        return
-    end
-
-    if inLobby then
-        local data = PlayerObjects[target]
-        if data and data.Highlight and data.Highlight.Enabled then
-            data.Highlight.Enabled = false
-        end
-        return
-    end
-
-    local model = GetPlayerModel(target)
-    if not model then
-        destroyPlayerESP(target)
-        return
-    end
-
-    local humanoid = model:FindFirstChildOfClass("Humanoid")
-    local root = model:FindFirstChild("HumanoidRootPart")
-        or model:FindFirstChild("Torso")
-        or model:FindFirstChild("UpperTorso")
-
-    local data = PlayerObjects[target]
-    if not root or (humanoid and humanoid.Health <= 0) then
-        if data and data.Highlight then
-            data.Highlight.Enabled = false
-        end
-        return
-    end
-
-    if not data or not data.Highlight or data.Highlight.Parent ~= model then
-        destroyPlayerESP(target)
-        local ok, highlight = pcall(function()
-            local h = Instance.new("Highlight")
-            h.Name = "AlexxHub_TeamESP"
-            h.Adornee = model
-            h.FillColor = espColor
-            h.OutlineColor = espColor
-            h.FillTransparency = 1
-            h.OutlineTransparency = 0
-            h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-            h.Enabled = false
-            h.Parent = model
-            return h
-        end)
-        if ok and highlight then
-            data = { Highlight = highlight }
-            PlayerObjects[target] = data
-        end
-    end
-
-    if not data or not data.Highlight then return end
-    local highlight = data.Highlight
-    local visible = isEnemy(target)
-    if highlight.Adornee ~= model then highlight.Adornee = model end
-    if highlight.Enabled ~= visible then highlight.Enabled = visible end
-    if highlight.FillColor ~= espColor then highlight.FillColor = espColor end
-    if highlight.OutlineColor ~= espColor then highlight.OutlineColor = espColor end
-end
-
 local function addESPPlayer(target)
     if target == LocalPlayer or espPlayerIndex[target] then return end
     table.insert(espPlayers, target)
     espPlayerIndex[target] = #espPlayers
-
-    local connections = {}
-    connections.CharacterAdded = target.CharacterAdded:Connect(function()
-        destroyPlayerESP(target)
-    end)
-    connections.CharacterRemoving = target.CharacterRemoving:Connect(function()
-        destroyPlayerESP(target)
-    end)
-    espPlayerConnections[target] = connections
 end
 
 local function removeESPPlayer(target)
-    destroyPlayerESP(target)
-    local connections = espPlayerConnections[target]
-    if connections then
-        for _, connection in pairs(connections) do
-            pcall(function() connection:Disconnect() end)
-        end
-        espPlayerConnections[target] = nil
-    end
     local index = espPlayerIndex[target]
-    if index then
-        table.remove(espPlayers, index)
-        espPlayerIndex[target] = nil
-        for i = index, #espPlayers do
-            espPlayerIndex[espPlayers[i]] = i
-        end
+    if not index then return end
+    table.remove(espPlayers, index)
+    espPlayerIndex[target] = nil
+    for i = index, #espPlayers do
+        espPlayerIndex[espPlayers[i]] = i
     end
 end
 
@@ -1674,34 +1580,6 @@ for _, player in ipairs(Players:GetPlayers()) do
 end
 Players.PlayerAdded:Connect(addESPPlayer)
 Players.PlayerRemoving:Connect(removeESPPlayer)
-
-local espUpdateAccumulator = 0
-RunService.Heartbeat:Connect(function(deltaTime)
-    if not Running then return end
-    espUpdateAccumulator += deltaTime
-    if espUpdateAccumulator < 0.05 then return end
-    espUpdateAccumulator %= 0.05
-
-    local inLobby = estaEnLobby()
-    for _, target in ipairs(espPlayers) do
-        pcall(ensurePlayerESP, target, inLobby)
-    end
-end)
-
-Tabs.Visual:CreateSection("ESP")
-
-Tabs.Visual:CreateToggle({
-    Name = "Higlight",
-    CurrentValue = false,
-    Callback = function(Value)
-        espEnabled = Value
-        if not Value then
-            for _, target in ipairs(espPlayers) do
-                destroyPlayerESP(target)
-            end
-        end
-    end
-})
 
 local CONFIG_ESP2 = {
     Skeleton = false,
