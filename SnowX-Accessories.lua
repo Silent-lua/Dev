@@ -17,9 +17,6 @@ if type(avatarBridge) ~= "table" then avatarBridge = {} end
 avatarBridge.version = 2
 avatarBridge.skin = type(avatarBridge.skin) == "table" and avatarBridge.skin or {}
 avatarBridge.accessory = type(avatarBridge.accessory) == "table" and avatarBridge.accessory or {}
-avatarBridge.uiPanels = type(avatarBridge.uiPanels) == "table" and avatarBridge.uiPanels or {}
-local uiPanels = avatarBridge.uiPanels
-uiPanels.activePanel = uiPanels.activePanel or "none"
 avatarBridge.skin.revision = tonumber(avatarBridge.skin.revision) or 0
 avatarBridge.accessory.revision = tonumber(avatarBridge.accessory.revision) or 0
 local accessoryBridgeToken = {}
@@ -2321,6 +2318,7 @@ local function buildUI()
     state.resultRows = {}
     state.favoriteRows = {}
     state.equippedRows = {}
+    state.showEquippedCompact = false
 
     local guiRoot = nil
     if type(gethui) == "function" then
@@ -2430,23 +2428,24 @@ local function buildUI()
         )
     end
 
-    local function setGuiCenter(guiObject, position)
+    local function clampGuiCenter(guiObject, position)
         local viewport = getViewportSize()
         local halfSize = Vector2.new(
             guiObject.AbsoluteSize.X * 0.5 + 2,
             guiObject.AbsoluteSize.Y * 0.5 + 2
         )
         local maxX, maxY = viewport.X - halfSize.X, viewport.Y - halfSize.Y
-        local target
         if maxX < halfSize.X or maxY < halfSize.Y then
-            target = Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
-        else
-            target = Vector2.new(
-                math.clamp(position.X, halfSize.X, maxX),
-                math.clamp(position.Y, halfSize.Y, maxY)
-            )
+            return Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
         end
+        return Vector2.new(
+            math.clamp(position.X, halfSize.X, maxX),
+            math.clamp(position.Y, halfSize.Y, maxY)
+        )
+    end
 
+    local function setGuiCenter(guiObject, position)
+        local target = clampGuiCenter(guiObject, position)
         local anchorPoint = guiObject.AnchorPoint
         local size = guiObject.AbsoluteSize
         local anchorPosition = target - Vector2.new(
@@ -2456,31 +2455,13 @@ local function buildUI()
         guiObject.Position = UDim2.fromOffset(anchorPosition.X, anchorPosition.Y)
     end
 
+    local function clampMainCenter(position)
+        return clampGuiCenter(main, position)
+    end
+
     local function keepMainInsideViewport()
         if not main.Parent then return end
         setGuiCenter(main, getGuiCenter(main))
-    end
-
-    local function getStackedLauncherCenter(guiObject, order)
-        local viewport = getViewportSize()
-        local absoluteSize = guiObject.AbsoluteSize
-        local width = absoluteSize.X > 0 and absoluteSize.X or 150
-        local height = absoluteSize.Y > 0 and absoluteSize.Y or 46
-        local halfWidth, halfHeight = width * 0.5, height * 0.5
-        local gap = 10
-        local stackHeight = height * 2 + gap
-        local stackTop = math.max(0, (viewport.Y - stackHeight) * 0.5)
-        local centerY = stackTop + halfHeight
-        if order > 1 then
-            centerY += height + gap
-        end
-
-        return Vector2.new(halfWidth + 12, centerY)
-    end
-
-    local function centerGuiObject(guiObject)
-        local viewport = getViewportSize()
-        setGuiCenter(guiObject, Vector2.new(viewport.X * 0.5, viewport.Y * 0.5))
     end
 
     local function updateScale()
@@ -3647,7 +3628,6 @@ local function buildUI()
                     end
                 end
             end
-
             if #equippedItems > 0 then
                 for _, item in ipairs(equippedItems) do
                     makeSidebarRow(item, "EQUIPADO")
@@ -3934,41 +3914,44 @@ local function buildUI()
 
     local floatingPositionInitialized = false
 
+    local function clampReopenPosition(position)
+        local camera = Workspace.CurrentCamera
+        local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+        local halfSize = Vector2.new(
+            minimizedButton.AbsoluteSize.X * 0.5 + 1,
+            minimizedButton.AbsoluteSize.Y * 0.5 + 1
+        )
+        local maxX, maxY = viewport.X - halfSize.X, viewport.Y - halfSize.Y
+        if maxX < halfSize.X or maxY < halfSize.Y then
+            return Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
+        end
+        return Vector2.new(math.clamp(position.X, halfSize.X, maxX), math.clamp(position.Y, halfSize.Y, maxY))
+    end
+
     local function getReopenCenter()
         return getGuiCenter(minimizedButton)
     end
 
     local function setReopenCenter(position)
-        setGuiCenter(minimizedButton, position)
+        setGuiCenter(minimizedButton, clampReopenPosition(position))
     end
 
     local function initializeReopenPosition()
         if floatingPositionInitialized then return end
-        setReopenCenter(getStackedLauncherCenter(minimizedButton, 1))
+        setReopenCenter(getGuiCenter(main) + Vector2.new(26, 26))
         floatingPositionInitialized = true
     end
-
-    state.initializeReopenPosition = initializeReopenPosition
 
     local function hideWindow()
         initializeReopenPosition()
         main.Visible = false
         minimizedButton.Visible = true
-        if uiPanels.activePanel == "accessories" then
-            uiPanels.activePanel = "none"
-        end
     end
-
     local function showWindow()
         main.Visible = true
         minimizedButton.Visible = false
         updateScale()
-        centerGuiObject(main)
-        uiPanels.activePanel = "accessories"
     end
-
-    state.openPanel = showWindow
-
     minimize.Activated:Connect(hideWindow)
 
     local reopenDrag = nil
@@ -3976,10 +3959,7 @@ local function buildUI()
     local function beginReopenDrag(input)
         local inputType = input.UserInputType
         if inputType ~= Enum.UserInputType.MouseButton1
-            and inputType ~= Enum.UserInputType.Touch then
-            return
-        end
-
+            and inputType ~= Enum.UserInputType.Touch then return end
         reopenDrag = {
             input = input,
             inputType = inputType,
@@ -3992,14 +3972,12 @@ local function buildUI()
     local function moveReopenDrag(input, isTouch)
         local drag = reopenDrag
         if not drag then return end
-
         if isTouch then
             if drag.inputType ~= Enum.UserInputType.Touch or input ~= drag.input then return end
         elseif drag.inputType ~= Enum.UserInputType.MouseButton1
             or input.UserInputType ~= Enum.UserInputType.MouseMovement then
             return
         end
-
         local pointer = Vector2.new(input.Position.X, input.Position.Y)
         local delta = pointer - drag.start
         if delta.Magnitude > 6 then drag.moved = true end
@@ -4009,7 +3987,6 @@ local function buildUI()
     local function finishReopenDrag(input, isTouch)
         local drag = reopenDrag
         if not drag then return end
-
         local ended
         if isTouch then
             ended = drag.inputType == Enum.UserInputType.Touch and input == drag.input
@@ -4018,7 +3995,6 @@ local function buildUI()
                 and input.UserInputType == Enum.UserInputType.MouseButton1
         end
         if not ended then return end
-
         reopenDrag = nil
         if not drag.moved then showWindow() end
     end
@@ -4050,32 +4026,27 @@ local function buildUI()
 
     local mainDrag = nil
 
-    addConnection(state.uiConnections, header.InputBegan:Connect(function(input)
+    local function beginMainDrag(input)
         local inputType = input.UserInputType
         if inputType ~= Enum.UserInputType.MouseButton1
-            and inputType ~= Enum.UserInputType.Touch then
-            return
-        end
-
+            and inputType ~= Enum.UserInputType.Touch then return end
         mainDrag = {
             input = input,
             inputType = inputType,
             start = Vector2.new(input.Position.X, input.Position.Y),
             origin = getGuiCenter(main),
         }
-    end))
+    end
 
     local function moveMainDrag(input, isTouch)
         local drag = mainDrag
         if not drag then return end
-
         if isTouch then
             if drag.inputType ~= Enum.UserInputType.Touch or input ~= drag.input then return end
         elseif drag.inputType ~= Enum.UserInputType.MouseButton1
             or input.UserInputType ~= Enum.UserInputType.MouseMovement then
             return
         end
-
         local pointer = Vector2.new(input.Position.X, input.Position.Y)
         setGuiCenter(main, drag.origin + pointer - drag.start)
     end
@@ -4083,7 +4054,6 @@ local function buildUI()
     local function finishMainDrag(input, isTouch)
         local drag = mainDrag
         if not drag then return end
-
         local ended
         if isTouch then
             ended = drag.inputType == Enum.UserInputType.Touch and input == drag.input
@@ -4094,6 +4064,7 @@ local function buildUI()
         if ended then mainDrag = nil end
     end
 
+    addConnection(state.uiConnections, header.InputBegan:Connect(beginMainDrag))
     addConnection(state.uiConnections, UserInputService.InputChanged:Connect(function(input)
         moveMainDrag(input, false)
     end))
@@ -4292,14 +4263,9 @@ cleanup = function()
     disconnectBucket(state.connections)
     disconnectBucket(state.characterConnections)
     disconnectBucket(state.uiConnections)
-    disconnectBucket(state.equippedConnections)
-    state.initializeReopenPosition = nil
-    state.openPanel = nil
     disconnectBucket(state.resultConnections)
-    if uiPanels.activePanel == "accessories" then
-        uiPanels.activePanel = "none"
-    end
     disconnectBucket(state.favoriteConnections)
+    disconnectBucket(state.equippedConnections)
     local skinActive = isSkinRendererActive()
     disposeVisualOverlay(true)
     clearVisualTemplate()
@@ -4370,33 +4336,18 @@ accessoryApi = {
         if not state.gui then return false end
         if enabled == true then
             state.gui.Enabled = true
-            if state.initializeReopenPosition then
-                state.initializeReopenPosition()
-            end
             if state.main then state.main.Visible = false end
             if state.reopen then state.reopen.Visible = true end
         else
             state.gui.Enabled = false
         end
-        if uiPanels.activePanel == "accessories" then
-            uiPanels.activePanel = "none"
-        end
         return true
     end,
     Open = function()
-        if uiPanels.activePanel == "skins" then
-            uiPanels.activePanel = "none"
-        end
-        if not state.gui then return false end
-        state.gui.Enabled = true
-        if state.openPanel then
-            state.openPanel()
-        elseif state.main then
-            state.main.Visible = true
-            if state.reopen then state.reopen.Visible = false end
-            uiPanels.activePanel = "accessories"
-        end
-        return true
+        if state.gui then state.gui.Enabled = true end
+        if state.main then state.main.Visible = true end
+        if state.reopen then state.reopen.Visible = false end
+        return state.gui ~= nil
     end,
     ApplyAsset = function(assetId, desired)
         local meta, metaError = getItemMeta(assetId)
