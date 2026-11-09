@@ -1367,26 +1367,85 @@ local function fn29()
 end
 
 local function fn30(arg, arg2)
-	local lowestY = 0
+    if not (arg and arg2 and arg2:IsA("BasePart")) then
+        return 0
+    end
 
-	for _, descendant in ipairs(arg:GetDescendants()) do
-		if descendant:IsA("BasePart") and descendant ~= arg2
-			and not descendant:FindFirstAncestorOfClass("Accessory")
-			and not descendant:FindFirstAncestorOfClass("Tool") then
-			local relative = arg2.CFrame:ToObjectSpace(descendant.CFrame)
-			local half = descendant.Size * 0.5
-			local verticalExtent =
-				math.abs(relative.RightVector.Y) * half.X
-				+ math.abs(relative.UpVector.Y) * half.Y
-				+ math.abs(relative.LookVector.Y) * half.Z
-			local bottom = relative.Position.Y - verticalExtent
-			if bottom < lowestY then
-				lowestY = bottom
-			end
-		end
-	end
+    local relativeFrames = {[arg2] = CFrame.identity}
+    local joints = {}
 
-	return -lowestY
+    for _, descendant in ipairs(arg:GetDescendants()) do
+        if descendant:IsA("Motor6D")
+            and not descendant:FindFirstAncestorOfClass("Accessory")
+            and not descendant:FindFirstAncestorOfClass("Tool") then
+            table.insert(joints, descendant)
+        end
+    end
+
+    local changed = true
+    local passes = 0
+    while changed and passes < #joints do
+        changed = false
+        passes += 1
+
+        for _, joint in ipairs(joints) do
+            local part0 = joint.Part0
+            local part1 = joint.Part1
+            if part0 and part1 then
+                if relativeFrames[part0] and not relativeFrames[part1] then
+                    relativeFrames[part1] = relativeFrames[part0] * joint.C0 * joint.C1:Inverse()
+                    changed = true
+                elseif relativeFrames[part1] and not relativeFrames[part0] then
+                    relativeFrames[part0] = relativeFrames[part1] * joint.C1 * joint.C0:Inverse()
+                    changed = true
+                end
+            end
+        end
+    end
+
+    local lowestY = 0
+    local resolvedParts = 0
+    for _, descendant in ipairs(arg:GetDescendants()) do
+        local relative = relativeFrames[descendant]
+        if descendant:IsA("BasePart") and descendant ~= arg2 and relative
+            and not descendant:FindFirstAncestorOfClass("Accessory")
+            and not descendant:FindFirstAncestorOfClass("Tool") then
+            resolvedParts += 1
+            local half = descendant.Size * 0.5
+            local verticalExtent =
+                math.abs(relative.RightVector.Y) * half.X
+                + math.abs(relative.UpVector.Y) * half.Y
+                + math.abs(relative.LookVector.Y) * half.Z
+            local bottom = relative.Position.Y - verticalExtent
+            if bottom < lowestY then
+                lowestY = bottom
+            end
+        end
+    end
+
+    if resolvedParts >= 3 then
+        return -lowestY
+    end
+
+    lowestY = 0
+    for _, descendant in ipairs(arg:GetDescendants()) do
+        if descendant:IsA("BasePart") and descendant ~= arg2
+            and not descendant:FindFirstAncestorOfClass("Accessory")
+            and not descendant:FindFirstAncestorOfClass("Tool") then
+            local relative = arg2.CFrame:ToObjectSpace(descendant.CFrame)
+            local half = descendant.Size * 0.5
+            local verticalExtent =
+                math.abs(relative.RightVector.Y) * half.X
+                + math.abs(relative.UpVector.Y) * half.Y
+                + math.abs(relative.LookVector.Y) * half.Z
+            local bottom = relative.Position.Y - verticalExtent
+            if bottom < lowestY then
+                lowestY = bottom
+            end
+        end
+    end
+
+    return -lowestY
 end
 
 local function fn31(arg, arg2, arg3, arg4)
