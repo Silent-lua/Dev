@@ -17,6 +17,8 @@ if type(avatarBridge) ~= "table" then avatarBridge = {} end
 avatarBridge.version = 2
 avatarBridge.skin = type(avatarBridge.skin) == "table" and avatarBridge.skin or {}
 avatarBridge.accessory = type(avatarBridge.accessory) == "table" and avatarBridge.accessory or {}
+avatarBridge.uiPanels = type(avatarBridge.uiPanels) == "table" and avatarBridge.uiPanels or {}
+local uiPanels = avatarBridge.uiPanels
 avatarBridge.skin.revision = tonumber(avatarBridge.skin.revision) or 0
 avatarBridge.accessory.revision = tonumber(avatarBridge.accessory.revision) or 0
 local accessoryBridgeToken = {}
@@ -201,6 +203,8 @@ local state = {
     favoriteButtons = {},
     favoriteRows = {},
     favoriteConnections = {},
+    equippedRows = {},
+    equippedConnections = {},
     inventoryCache = { key = nil, items = {}, byId = {}, revision = 0 },
     actionButtons = {},
     refreshFavoriteButtons = nil,
@@ -2305,6 +2309,7 @@ local function buildUI()
     disconnectBucket(state.uiConnections)
     disconnectBucket(state.resultConnections)
     disconnectBucket(state.favoriteConnections)
+    disconnectBucket(state.equippedConnections)
     state.tabButtons = {}
     state.pages = {}
     state.actionButtons = {}
@@ -2314,6 +2319,7 @@ local function buildUI()
     state.searchButtons = {}
     state.resultRows = {}
     state.favoriteRows = {}
+    state.equippedRows = {}
 
     local guiRoot = nil
     if type(gethui) == "function" then
@@ -2452,6 +2458,28 @@ local function buildUI()
     local function keepMainInsideViewport()
         if not main.Parent then return end
         setGuiCenter(main, getGuiCenter(main))
+    end
+
+    local function getStackedLauncherCenter(guiObject, order)
+        local viewport = getViewportSize()
+        local absoluteSize = guiObject.AbsoluteSize
+        local width = absoluteSize.X > 0 and absoluteSize.X or 150
+        local height = absoluteSize.Y > 0 and absoluteSize.Y or 46
+        local halfWidth, halfHeight = width * 0.5, height * 0.5
+        local gap = 10
+        local stackHeight = height * 2 + gap
+        local stackTop = math.max(0, (viewport.Y - stackHeight) * 0.5)
+        local centerY = stackTop + halfHeight
+        if order > 1 then
+            centerY += height + gap
+        end
+
+        return Vector2.new(halfWidth + 12, centerY)
+    end
+
+    local function centerGuiObject(guiObject)
+        local viewport = getViewportSize()
+        setGuiCenter(guiObject, Vector2.new(viewport.X * 0.5, viewport.Y * 0.5))
     end
 
     local function updateScale()
@@ -3402,9 +3430,11 @@ local function buildUI()
     local setCurrentSelectionActive
     local function cleanSidebarRows()
         disconnectBucket(state.favoriteConnections)
+        disconnectBucket(state.equippedConnections)
         for _, row in ipairs(currentSideRows) do pcall(function() row:Destroy() end) end
         table.clear(currentSideRows)
         table.clear(state.favoriteRows)
+        table.clear(state.equippedRows)
     end
 
     local function addSidebarSection(text)
@@ -3420,7 +3450,11 @@ local function buildUI()
         }, sideList)
         label:SetAttribute("SnowXSidebarAnchor", "SECTION:" .. string.lower(text))
         table.insert(currentSideRows, label)
-        table.insert(state.favoriteRows, label)
+        if text == "Equipados" then
+            table.insert(state.equippedRows, label)
+        else
+            table.insert(state.favoriteRows, label)
+        end
     end
 
     local function sidebarItemKey(item)
@@ -3436,6 +3470,8 @@ local function buildUI()
             subtitle = "★ GUARDADO  ·  ID " .. tostring(item.id)
         elseif sourceLabel == "RESULTADO" then
             subtitle = (item.kind == "body" and "PARTE CORPORAL" or "ACCESORIO") .. "  ·  ID " .. tostring(item.id)
+        elseif sourceLabel == "EQUIPADO" then
+            subtitle = tostring(item.source or "EQUIPADO") .. "  ·  ID " .. tostring(item.id)
         elseif item.kind == "body" then
             subtitle = "RECOMENDADO  ·  PARTE CORPORAL"
         else
@@ -3475,14 +3511,19 @@ local function buildUI()
         }, row)
         local anchorKey = "ROW:" .. tostring(sourceLabel) .. ":" .. tostring(sidebarItemKey(item))
         row:SetAttribute("SnowXSidebarAnchor", anchorKey)
-        addConnection(state.favoriteConnections, row.Activated:Connect(function()
+        local connectionBucket = sourceLabel == "EQUIPADO" and state.equippedConnections or state.favoriteConnections
+        addConnection(connectionBucket, row.Activated:Connect(function()
             sideCategory = item.kind == "body" and "body" or "accessory"
             if item.source == "RESULTADO" then sideMode = "results" end
             selectItem(item)
             refreshSidebar()
         end))
         table.insert(currentSideRows, row)
-        table.insert(state.favoriteRows, row)
+        if sourceLabel == "EQUIPADO" then
+            table.insert(state.equippedRows, row)
+        else
+            table.insert(state.favoriteRows, row)
+        end
         return row
     end
 
@@ -3594,6 +3635,40 @@ local function buildUI()
             table.insert(state.favoriteRows, noRecommendations)
         end
 
+        if sideCategory == "accessory" then
+            addSidebarSection("Equipados")
+            local equippedItems = {}
+            for _, item in ipairs(collectCurrentItems(false)) do
+                if item.kind == "accessory" then
+                    local key = sidebarItemKey(item)
+                    if key then
+                        table.insert(equippedItems, item)
+                    end
+                end
+            end
+
+            if #equippedItems > 0 then
+                for _, item in ipairs(equippedItems) do
+                    makeSidebarRow(item, "EQUIPADO")
+                end
+            else
+                local emptyEquipped = create("TextLabel", {
+                    Size = UDim2.new(1, -8, 0, 28),
+                    BackgroundTransparency = 1,
+                    Font = Enum.Font.Gotham,
+                    Text = "No hay accesorios equipados",
+                    TextColor3 = COLORS.Muted,
+                    TextSize = 9,
+                    TextWrapped = true,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    LayoutOrder = #currentSideRows + 1,
+                }, sideList)
+                emptyEquipped:SetAttribute("SnowXSidebarAnchor", "EMPTY:EQUIPPED")
+                table.insert(currentSideRows, emptyEquipped)
+                table.insert(state.equippedRows, emptyEquipped)
+            end
+        end
+
         if sideMode == "results" then
             addSidebarSection("Resultados")
             local resultCount = 0
@@ -3685,6 +3760,7 @@ local function buildUI()
         end
     end
     state.refreshFavoritesPage = function() refreshSidebar() end
+    state.refreshEquipped = function() refreshSidebar() end
 
     local function setSelectedItemAndRefresh(item)
         selectItem(item)
@@ -3868,7 +3944,7 @@ local function buildUI()
 
     local function initializeReopenPosition()
         if floatingPositionInitialized then return end
-        setReopenCenter(getGuiCenter(main) + Vector2.new(26, 26))
+        setReopenCenter(getStackedLauncherCenter(minimizedButton, 1))
         floatingPositionInitialized = true
     end
 
@@ -3880,11 +3956,29 @@ local function buildUI()
         minimizedButton.Visible = true
     end
 
+    local function closePanelForOtherModule()
+        if not main.Visible then return end
+        initializeReopenPosition()
+        main.Visible = false
+        minimizedButton.Visible = true
+    end
+
+    state.closePanelCallback = closePanelForOtherModule
+    uiPanels.closeAccessoriesPanel = closePanelForOtherModule
+
     local function showWindow()
+        local closeSkinsPanel = uiPanels.closeSkinsPanel
+        if type(closeSkinsPanel) == "function" then
+            pcall(closeSkinsPanel)
+        end
+
         main.Visible = true
         minimizedButton.Visible = false
         updateScale()
+        centerGuiObject(main)
     end
+
+    state.openPanel = showWindow
 
     minimize.Activated:Connect(hideWindow)
 
@@ -4210,6 +4304,11 @@ cleanup = function()
     disconnectBucket(state.characterConnections)
     disconnectBucket(state.uiConnections)
     state.initializeReopenPosition = nil
+    state.openPanel = nil
+    if uiPanels.closeAccessoriesPanel == state.closePanelCallback then
+        uiPanels.closeAccessoriesPanel = nil
+    end
+    state.closePanelCallback = nil
     disconnectBucket(state.resultConnections)
     disconnectBucket(state.favoriteConnections)
     local skinActive = isSkinRendererActive()
@@ -4293,10 +4392,15 @@ accessoryApi = {
         return true
     end,
     Open = function()
-        if state.gui then state.gui.Enabled = true end
-        if state.main then state.main.Visible = true end
-        if state.reopen then state.reopen.Visible = false end
-        return state.gui ~= nil
+        if not state.gui then return false end
+        state.gui.Enabled = true
+        if state.openPanel then
+            state.openPanel()
+        elseif state.main then
+            state.main.Visible = true
+            if state.reopen then state.reopen.Visible = false end
+        end
+        return true
     end,
     ApplyAsset = function(assetId, desired)
         local meta, metaError = getItemMeta(assetId)
