@@ -19,6 +19,7 @@ avatarBridge.skin = type(avatarBridge.skin) == "table" and avatarBridge.skin or 
 avatarBridge.accessory = type(avatarBridge.accessory) == "table" and avatarBridge.accessory or {}
 avatarBridge.uiPanels = type(avatarBridge.uiPanels) == "table" and avatarBridge.uiPanels or {}
 local uiPanels = avatarBridge.uiPanels
+uiPanels.activePanel = uiPanels.activePanel or "none"
 avatarBridge.skin.revision = tonumber(avatarBridge.skin.revision) or 0
 avatarBridge.accessory.revision = tonumber(avatarBridge.accessory.revision) or 0
 local accessoryBridgeToken = {}
@@ -3953,6 +3954,9 @@ local function buildUI()
         initializeReopenPosition()
         main.Visible = false
         minimizedButton.Visible = true
+        if uiPanels.activePanel == "accessories" then
+            uiPanels.activePanel = "none"
+        end
     end
 
     local function closePanelForOtherModule()
@@ -3960,6 +3964,9 @@ local function buildUI()
         initializeReopenPosition()
         main.Visible = false
         minimizedButton.Visible = true
+        if uiPanels.activePanel == "accessories" then
+            uiPanels.activePanel = "none"
+        end
     end
 
     state.closePanelCallback = closePanelForOtherModule
@@ -3975,6 +3982,7 @@ local function buildUI()
         minimizedButton.Visible = false
         updateScale()
         centerGuiObject(main)
+        uiPanels.activePanel = "accessories"
     end
 
     state.openPanel = showWindow
@@ -4310,6 +4318,9 @@ cleanup = function()
     end
     state.closePanelCallback = nil
     disconnectBucket(state.resultConnections)
+    if uiPanels.activePanel == "accessories" then
+        uiPanels.activePanel = "none"
+    end
     disconnectBucket(state.favoriteConnections)
     local skinActive = isSkinRendererActive()
     disposeVisualOverlay(true)
@@ -4392,6 +4403,9 @@ accessoryApi = {
         return true
     end,
     Open = function()
+        if enabled ~= true and uiPanels.activePanel == "accessories" then
+            uiPanels.activePanel = "none"
+        end
         if not state.gui then return false end
         state.gui.Enabled = true
         if state.openPanel then
