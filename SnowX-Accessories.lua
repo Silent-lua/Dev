@@ -1209,6 +1209,18 @@ local function createNativeCameraTransparencyUpdater(model, beforeTrack)
             for index = #entries, 1, -1 do
                 local instance = entries[index].instance
                 if not instance.Parent then
+                    pcall(function()
+                        if entries[index].kind == "part" then
+                            instance.LocalTransparencyModifier = entries[index].originalModifier or 0
+                        elseif entries[index].kind == "texture" then
+                            instance.Transparency = entries[index].originalTransparency or 0
+                        elseif entries[index].kind == "sequence" then
+                            instance.Transparency = entries[index].originalTransparency
+                            instance.Enabled = entries[index].originalEnabled
+                        elseif entries[index].kind == "enabled" then
+                            instance.Enabled = entries[index].originalEnabled
+                        end
+                    end)
                     tracked[instance] = nil
                     table.remove(entries, index)
                 end
