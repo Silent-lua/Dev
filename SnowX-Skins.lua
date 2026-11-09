@@ -2479,10 +2479,6 @@ local function fn47(visible)
 	end
 
 	if not visible then
-		local closeAccessoriesPanel = uiPanels.closeAccessoriesPanel
-		if type(closeAccessoriesPanel) == "function" then
-			pcall(closeAccessoriesPanel)
-		end
 		centerGuiObject(Frame)
 	end
 
@@ -2494,14 +2490,6 @@ local function fn47(visible)
 		uiPanels.activePanel = "skins"
 	end
 end
-
-local function closeSkinsPanelForOtherModule()
-	if Frame.Visible then
-		fn47(true)
-	end
-end
-
-uiPanels.closeSkinsPanel = closeSkinsPanelForOtherModule
 
 TextButton.Activated:Connect(function()
 	fn47(true)
@@ -3575,11 +3563,7 @@ TextButton2.Activated:Connect(function()
 end)
 
 TextButton6.Activated:Connect(function()
-	Frame5.Visible = false
-	if uiPanels.closeSkinsPanel == closeSkinsPanelForOtherModule then
-		uiPanels.closeSkinsPanel = nil
-	end
-	if uiPanels.activePanel == "skins" then
+	Frame5.Visible = false	if uiPanels.activePanel == "skins" then
 		uiPanels.activePanel = "none"
 	end
 	tbl20 = nil
@@ -3638,11 +3622,7 @@ local skinApi = {
 	pararEmote = fn41,
 	destroy = function()
 		tbl20 = nil
-		panelDrag = nil
-		if uiPanels.closeSkinsPanel == closeSkinsPanelForOtherModule then
-			uiPanels.closeSkinsPanel = nil
-		end
-		if uiPanels.activePanel == "skins" then
+		panelDrag = nil		if uiPanels.activePanel == "skins" then
 			uiPanels.activePanel = "none"
 		end
 		disconnectCharacterLifecycleConnections()
