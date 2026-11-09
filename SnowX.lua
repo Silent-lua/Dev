@@ -100,7 +100,7 @@ local function iniciarVuelo()
     local humanoid = character:WaitForChild("Humanoid")
     local posAnclada = root.Position
     humanoid.PlatformStand = true
-    flyConnection = RunService.RenderStepped:Connect(function()
+    flyConnection = RunService.RenderStepped:Connect(function(deltaTime)
         if not getgenv().FlyActive or not character.Parent or not root.Parent then
             humanoid.PlatformStand = false
             if flyConnection then
@@ -124,7 +124,7 @@ local function iniciarVuelo()
             end
         end
         local vectorVelocidad = (moverDir * velocidadVuelo) + Vector3.new(0, vertical * velocidadVuelo, 0)
-        posAnclada = posAnclada + (vectorVelocidad * task.wait())
+        posAnclada = posAnclada + (vectorVelocidad * deltaTime)
         root.CFrame = CFrame.new(posAnclada, posAnclada + lookVector)
         root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
     end)
@@ -831,42 +831,79 @@ Tabs.Combat:CreateToggle({
 local weaponRainbowEnabled = false
 local rainbowSpeed = 0.5
 local originalTextures = {}
+local rainbowTool = nil
+local rainbowParts = {}
+local rainbowDescendantConnection = nil
+local rainbowAccumulator = 0
 
-local function restaurarTexturas(weapon)
-    if not weapon then return end
-    for _, part in ipairs(weapon:GetDescendants()) do
-        if originalTextures[part] then
-            if part:IsA("MeshPart") then
-                part.TextureID = originalTextures[part].TextureID
-                part.Color = originalTextures[part].Color
-            elseif part:IsA("SpecialMesh") then
-                part.TextureId = originalTextures[part].TextureId
-                part.VertexColor = originalTextures[part].VertexColor
-            elseif part:IsA("BasePart") then
-                part.Color = originalTextures[part].Color
-            end
-        end
+local function saveRainbowPart(part)
+    if originalTextures[part] then return end
+    if part:IsA("MeshPart") then
+        originalTextures[part] = {TextureID = part.TextureID, Color = part.Color}
+    elseif part:IsA("SpecialMesh") then
+        originalTextures[part] = {TextureId = part.TextureId, VertexColor = part.VertexColor}
+    elseif part:IsA("BasePart") then
+        originalTextures[part] = {Color = part.Color}
+    else
+        return
     end
+    table.insert(rainbowParts, part)
 end
 
-RunService.RenderStepped:Connect(function()
-    if not weaponRainbowEnabled then return end
-    local character = LocalPlayer.Character
-    if not character then return end
-    local weapon = character:FindFirstChildOfClass("Tool")
-    if weapon then
-        local hue = (tick() * rainbowSpeed) % 1
-        local rainbowColor = Color3.fromHSV(hue, 1, 1)
-        for _, part in ipairs(weapon:GetDescendants()) do
-            if (part:IsA("MeshPart") or part:IsA("SpecialMesh") or part:IsA("BasePart")) and not originalTextures[part] then
-                if part:IsA("MeshPart") then
-                    originalTextures[part] = {TextureID = part.TextureID, Color = part.Color}
-                elseif part:IsA("SpecialMesh") then
-                    originalTextures[part] = {TextureId = part.TextureId, VertexColor = part.VertexColor}
-                elseif part:IsA("BasePart") then
-                    originalTextures[part] = {Color = part.Color}
-                end
+local function restoreRainbowTool()
+    for _, part in ipairs(rainbowParts) do
+        local original = originalTextures[part]
+        if original and part.Parent then
+            if part:IsA("MeshPart") then
+                part.TextureID = original.TextureID
+                part.Color = original.Color
+            elseif part:IsA("SpecialMesh") then
+                part.TextureId = original.TextureId
+                part.VertexColor = original.VertexColor
+            elseif part:IsA("BasePart") then
+                part.Color = original.Color
             end
+        end
+        originalTextures[part] = nil
+    end
+    table.clear(rainbowParts)
+end
+
+local function setRainbowTool(weapon)
+    if rainbowTool == weapon then return end
+    if rainbowDescendantConnection then
+        rainbowDescendantConnection:Disconnect()
+        rainbowDescendantConnection = nil
+    end
+    restoreRainbowTool()
+    rainbowTool = weapon
+    if not weapon then return end
+    for _, part in ipairs(weapon:GetDescendants()) do
+        saveRainbowPart(part)
+    end
+    rainbowDescendantConnection = weapon.DescendantAdded:Connect(saveRainbowPart)
+end
+
+RunService.Heartbeat:Connect(function(deltaTime)
+    if not weaponRainbowEnabled then
+        if rainbowTool then
+            setRainbowTool(nil)
+        end
+        return
+    end
+
+    rainbowAccumulator += deltaTime
+    if rainbowAccumulator < (1 / 30) then return end
+    rainbowAccumulator %= (1 / 30)
+
+    local character = LocalPlayer.Character
+    local weapon = character and character:FindFirstChildOfClass("Tool")
+    setRainbowTool(weapon)
+    if not weapon then return end
+
+    local rainbowColor = Color3.fromHSV((tick() * rainbowSpeed) % 1, 1, 1)
+    for _, part in ipairs(rainbowParts) do
+        if part.Parent then
             if part:IsA("MeshPart") then
                 part.TextureID = ""
                 part.Color = rainbowColor
@@ -886,9 +923,7 @@ Tabs.Combat:CreateToggle({
     Callback = function(state)
         weaponRainbowEnabled = state
         if not state then
-            local character = LocalPlayer.Character
-            local weapon = character and character:FindFirstChildOfClass("Tool")
-            if weapon then restaurarTexturas(weapon) end
+            setRainbowTool(nil)
         end
     end
 })
@@ -1456,18 +1491,14 @@ local espEnabled = false
 local espColor = Color3.fromRGB(255, 255, 255)
 local PlayerObjects = {}
 local Running = true
+local espPlayers = {}
+local espPlayerIndex = {}
+local espPlayerConnections = {}
 
 local MatchState
 pcall(function()
     MatchState = require(ReplicatedStorage.Client.Modules.MatchState)
 end)
-
-local espFolder = Instance.new("Folder")
-espFolder.Name = "AlexxHubESP"
-pcall(function() espFolder.Parent = CoreGui end)
-if not espFolder.Parent then
-    espFolder.Parent = LocalPlayer:WaitForChild("PlayerGui")
-end
 
 local function estaEnLobby()
     if MatchState then
@@ -1475,8 +1506,7 @@ local function estaEnLobby()
             return MatchState.getGame(LocalPlayer)
         end)
         if ok and gameData ~= nil then
-            if gameData.Phase == "Voting" then return true end
-            return false
+            return gameData.Phase == "Voting"
         end
     end
     local mapa = LocalPlayer:GetAttribute("Map")
@@ -1511,8 +1541,7 @@ local function sameGame(a, b)
 end
 
 local function isEnemy(target)
-    if not target or target == LocalPlayer then return false end
-    if isDead(target) then return false end
+    if not target or target == LocalPlayer or isDead(target) then return false end
     if MatchState then
         if not sameGame(LocalPlayer, target) then return false end
         local myTeam = getTeamId(LocalPlayer)
@@ -1543,97 +1572,119 @@ local function destroyPlayerESP(target)
     PlayerObjects[target] = nil
 end
 
-local function createPlayerESP(target)
-    destroyPlayerESP(target)
-    if not target or target == LocalPlayer then return end
-    local model = GetPlayerModel(target)
-    if not model then return end
-    local humanoid = model:FindFirstChildOfClass("Humanoid")
-    local root = model:FindFirstChild("HumanoidRootPart")
-        or model:FindFirstChild("Torso")
-        or model:FindFirstChild("UpperTorso")
-    if not root then return end
-    if humanoid and humanoid.Health <= 0 then return end
-    local ok, highlight = pcall(function()
-        local h = Instance.new("Highlight")
-        h.Name = "AlexxHub_TeamESP"
-        h.Adornee = model
-        h.FillColor = espColor
-        h.OutlineColor = espColor
-        h.FillTransparency = 1
-        h.OutlineTransparency = 0
-        h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-        h.Enabled = false
-        h.Parent = espFolder
-        return h
-    end)
-    if ok and highlight then
-        PlayerObjects[target] = { Highlight = highlight }
+local function ensurePlayerESP(target, inLobby)
+    if not espEnabled then
+        destroyPlayerESP(target)
+        return
     end
-end
 
-local function ensurePlayerESP(target)
-    if target == LocalPlayer then return end
+    if inLobby then
+        local data = PlayerObjects[target]
+        if data and data.Highlight and data.Highlight.Enabled then
+            data.Highlight.Enabled = false
+        end
+        return
+    end
+
     local model = GetPlayerModel(target)
     if not model then
         destroyPlayerESP(target)
         return
     end
-    local data = PlayerObjects[target]
-    if not data or not data.Highlight or not data.Highlight.Parent then
-        createPlayerESP(target)
-        data = PlayerObjects[target]
-    end
-    if not data or not data.Highlight then return end
+
     local humanoid = model:FindFirstChildOfClass("Humanoid")
     local root = model:FindFirstChild("HumanoidRootPart")
         or model:FindFirstChild("Torso")
         or model:FindFirstChild("UpperTorso")
-    if not root or isDead(target) then
-        data.Highlight.Enabled = false
+
+    local data = PlayerObjects[target]
+    if not root or (humanoid and humanoid.Health <= 0) then
+        if data and data.Highlight then
+            data.Highlight.Enabled = false
+        end
         return
     end
-    if humanoid and humanoid.Health <= 0 then
-        data.Highlight.Enabled = false
-        return
+
+    if not data or not data.Highlight or data.Highlight.Parent ~= model then
+        destroyPlayerESP(target)
+        local ok, highlight = pcall(function()
+            local h = Instance.new("Highlight")
+            h.Name = "AlexxHub_TeamESP"
+            h.Adornee = model
+            h.FillColor = espColor
+            h.OutlineColor = espColor
+            h.FillTransparency = 1
+            h.OutlineTransparency = 0
+            h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            h.Enabled = false
+            h.Parent = model
+            return h
+        end)
+        if ok and highlight then
+            data = { Highlight = highlight }
+            PlayerObjects[target] = data
+        end
     end
-    local visible = espEnabled and not estaEnLobby() and isEnemy(target)
-    data.Highlight.Enabled = visible
-    if visible then
-        data.Highlight.Adornee = model
-        data.Highlight.FillColor = espColor
-        data.Highlight.OutlineColor = espColor
-        data.Highlight.FillTransparency = 1
-        data.Highlight.OutlineTransparency = 0
-    end
+
+    if not data or not data.Highlight then return end
+    local highlight = data.Highlight
+    local visible = isEnemy(target)
+    if highlight.Adornee ~= model then highlight.Adornee = model end
+    if highlight.Enabled ~= visible then highlight.Enabled = visible end
+    if highlight.FillColor ~= espColor then highlight.FillColor = espColor end
+    if highlight.OutlineColor ~= espColor then highlight.OutlineColor = espColor end
 end
 
-local function bindPlayer(target)
-    if target == LocalPlayer then return end
-    target.CharacterAdded:Connect(function()
-        task.wait(0.25)
-        if espEnabled then createPlayerESP(target) end
-    end)
-    target.CharacterRemoving:Connect(function()
+local function addESPPlayer(target)
+    if target == LocalPlayer or espPlayerIndex[target] then return end
+    table.insert(espPlayers, target)
+    espPlayerIndex[target] = #espPlayers
+
+    local connections = {}
+    connections.CharacterAdded = target.CharacterAdded:Connect(function()
         destroyPlayerESP(target)
     end)
-    if target.Character then createPlayerESP(target) end
+    connections.CharacterRemoving = target.CharacterRemoving:Connect(function()
+        destroyPlayerESP(target)
+    end)
+    espPlayerConnections[target] = connections
 end
 
-for _, p in ipairs(Players:GetPlayers()) do
-    bindPlayer(p)
-end
-Players.PlayerAdded:Connect(bindPlayer)
-Players.PlayerRemoving:Connect(function(p)
-    destroyPlayerESP(p)
-end)
-
-RunService.RenderStepped:Connect(function()
-    if not Running then return end
-    for _, target in ipairs(Players:GetPlayers()) do
-        if target ~= LocalPlayer then
-            pcall(ensurePlayerESP, target)
+local function removeESPPlayer(target)
+    destroyPlayerESP(target)
+    local connections = espPlayerConnections[target]
+    if connections then
+        for _, connection in pairs(connections) do
+            pcall(function() connection:Disconnect() end)
         end
+        espPlayerConnections[target] = nil
+    end
+    local index = espPlayerIndex[target]
+    if index then
+        table.remove(espPlayers, index)
+        espPlayerIndex[target] = nil
+        for i = index, #espPlayers do
+            espPlayerIndex[espPlayers[i]] = i
+        end
+    end
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+    addESPPlayer(player)
+end
+Players.PlayerAdded:Connect(addESPPlayer)
+Players.PlayerRemoving:Connect(removeESPPlayer)
+
+local espUpdateAccumulator = 0
+RunService.Heartbeat:Connect(function(deltaTime)
+    if not Running then return end
+    espUpdateAccumulator += deltaTime
+    if espUpdateAccumulator < 0.05 then return end
+    espUpdateAccumulator %= 0.05
+
+    local inLobby = estaEnLobby()
+    for _, target in ipairs(espPlayers) do
+        pcall(ensurePlayerESP, target, inLobby)
     end
 end)
 
@@ -1642,7 +1693,14 @@ Tabs.Visual:CreateSection("ESP")
 Tabs.Visual:CreateToggle({
     Name = "Higlight",
     CurrentValue = false,
-    Callback = function(Value) espEnabled = Value end
+    Callback = function(Value)
+        espEnabled = Value
+        if not Value then
+            for _, target in ipairs(espPlayers) do
+                destroyPlayerESP(target)
+            end
+        end
+    end
 })
 
 local CONFIG_ESP2 = {
@@ -1756,7 +1814,8 @@ local function GetSkeletonPairs(char, hum)
     return pairs
 end
 
-local function GetBoxFromCharacter(char)
+local function GetBoxFromCharacter(char, cam)
+    if not cam then return nil end
     local cf, size = char:GetBoundingBox()
     local corners = {
         cf * Vector3.new(size.X/2, size.Y/2, size.Z/2),
@@ -1769,7 +1828,6 @@ local function GetBoxFromCharacter(char)
         cf * Vector3.new(-size.X/2, -size.Y/2, -size.Z/2),
     }
     local minX, maxX, minY, maxY = math.huge, -math.huge, math.huge, -math.huge
-    local cam = workspace.CurrentCamera
     for _, c in ipairs(corners) do
         local sp, on = cam:WorldToViewportPoint(c)
         if on then
@@ -1783,49 +1841,68 @@ local function GetBoxFromCharacter(char)
     return minX, minY, maxX - minX, maxY - minY
 end
 
-RunService.RenderStepped:Connect(function()
+local esp2Accumulator = 0
+RunService.Heartbeat:Connect(function(deltaTime)
+    esp2Accumulator += deltaTime
+    if esp2Accumulator < (1 / 30) then return end
+    esp2Accumulator %= (1 / 30)
+
+    if not CONFIG_ESP2.Box and not CONFIG_ESP2.Skeleton then return end
+
+    local camera = workspace.CurrentCamera
+    if not camera then return end
     local myChar = LocalPlayer.Character
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    local inLobby = estaEnLobby()
+
     for player, data in pairs(espData2) do
         local model = GetPlayerModel(player)
         local hum = model and model:FindFirstChildOfClass("Humanoid")
-        local root = model and (model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso") or model:FindFirstChild("UpperTorso"))
-        local visible = not estaEnLobby() and isEnemy(player) and not isDead(player)
-        if not visible or not model or not myRoot or not root then
+        local root = model and (model:FindFirstChild("HumanoidRootPart")
+            or model:FindFirstChild("Torso")
+            or model:FindFirstChild("UpperTorso"))
+        local visible = not inLobby and model and myRoot and root
+            and (not hum or hum.Health > 0) and isEnemy(player)
+
+        if not visible then
             if data.box then data.box.Visible = false end
             for _, line in ipairs(data.lines) do line.Visible = false end
         else
+            if data.skeletonModel ~= model then
+                data.skeletonModel = model
+                data.skeletonPairs = hum and GetSkeletonPairs(model, hum) or {}
+            end
+
             if useDrawing then
                 if data.box then data.box.Color = espColor end
-            else
-                if data.boxStroke then data.boxStroke.Color = espColor end
+            elseif data.boxStroke then
+                data.boxStroke.Color = espColor
             end
+
             if CONFIG_ESP2.Box then
-                local bx, by, bw, bh = GetBoxFromCharacter(model)
+                local bx, by, bw, bh = GetBoxFromCharacter(model, camera)
                 if bx then
                     if useDrawing then
                         data.box.Position = Vector2.new(bx, by)
                         data.box.Size = Vector2.new(bw, bh)
-                        data.box.Visible = true
                     else
                         data.box.Position = UDim2.new(0, bx, 0, by)
                         data.box.Size = UDim2.new(0, bw, 0, bh)
-                        data.box.Visible = true
                     end
-                else
-                    if data.box then data.box.Visible = false end
+                    data.box.Visible = true
+                elseif data.box then
+                    data.box.Visible = false
                 end
-            else
-                if data.box then data.box.Visible = false end
+            elseif data.box then
+                data.box.Visible = false
             end
+
             if CONFIG_ESP2.Skeleton and hum then
-                local pairs = GetSkeletonPairs(model, hum)
-                local cam = workspace.CurrentCamera
                 for i, line in ipairs(data.lines) do
-                    local bonePair = pairs[i]
-                    if bonePair then
-                        local sp1, on1 = cam:WorldToViewportPoint(bonePair[1].Position)
-                        local sp2, on2 = cam:WorldToViewportPoint(bonePair[2].Position)
+                    local bonePair = data.skeletonPairs[i]
+                    if bonePair and bonePair[1].Parent and bonePair[2].Parent then
+                        local sp1, on1 = camera:WorldToViewportPoint(bonePair[1].Position)
+                        local sp2, on2 = camera:WorldToViewportPoint(bonePair[2].Position)
                         if on1 and on2 and sp1.Z > 0 and sp2.Z > 0 then
                             if useDrawing then
                                 line.From = Vector2.new(sp1.X, sp1.Y)
@@ -1861,28 +1938,36 @@ end)
 for _, p in ipairs(Players:GetPlayers()) do
     CreatePlayerESP2(p)
 end
-Players.PlayerAdded:Connect(function(p)
-    CreatePlayerESP2(p)
-    p.CharacterAdded:Connect(function()
-        task.wait(0.3)
-        if espData2[p] then RemovePlayerESP2(p) end
-        CreatePlayerESP2(p)
-    end)
-end)
+Players.PlayerAdded:Connect(CreatePlayerESP2)
 Players.PlayerRemoving:Connect(function(p)
     RemovePlayerESP2(p)
 end)
 
+local function hideESP2()
+    for _, data in pairs(espData2) do
+        if data.box then data.box.Visible = false end
+        for _, line in ipairs(data.lines) do
+            line.Visible = false
+        end
+    end
+end
+
 Tabs.Visual:CreateToggle({
     Name = "ESP Esqueleto",
     CurrentValue = false,
-    Callback = function(Value) CONFIG_ESP2.Skeleton = Value end
+    Callback = function(Value)
+        CONFIG_ESP2.Skeleton = Value
+        if not Value and not CONFIG_ESP2.Box then hideESP2() end
+    end
 })
 
 Tabs.Visual:CreateToggle({
     Name = "ESP Box",
     CurrentValue = false,
-    Callback = function(Value) CONFIG_ESP2.Box = Value end
+    Callback = function(Value)
+        CONFIG_ESP2.Box = Value
+        if not Value and not CONFIG_ESP2.Skeleton then hideESP2() end
+    end
 })
 
 local tracerLines2 = {}
@@ -1901,16 +1986,20 @@ local function hideTracersOnce2()
     tracersLimpios2 = true
 end
 
-RunService.RenderStepped:Connect(function()
-    espLinesAccumulator2 = espLinesAccumulator2 + task.wait()
+RunService.Heartbeat:Connect(function(deltaTime)
+    espLinesAccumulator2 += deltaTime
     if espLinesAccumulator2 < (1 / 30) then return end
-    espLinesAccumulator2 = 0
+    espLinesAccumulator2 %= (1 / 30)
     local visibleGlobal = espLinesEnabled and not estaEnLobby()
     if not visibleGlobal then
         hideTracersOnce2()
         return
     end
     local cam = workspace.CurrentCamera
+    if not cam then
+        hideTracersOnce2()
+        return
+    end
     local viewport = cam.ViewportSize
     if viewport.X ~= cachedViewportX2 or viewport.Y ~= cachedViewportY2 then
         cachedViewportX2, cachedViewportY2 = viewport.X, viewport.Y
@@ -1918,11 +2007,11 @@ RunService.RenderStepped:Connect(function()
         tracerOrigin2 = Vector2.new(centroVector2.X, viewport.Y - 2)
     end
     tracersLimpios2 = false
-    for _, targetPlayer in ipairs(Players:GetPlayers()) do
+    for _, targetPlayer in ipairs(espPlayers) do
         if targetPlayer ~= LocalPlayer then
             local model = GetPlayerModel(targetPlayer)
             local root = model and (model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso") or model:FindFirstChild("UpperTorso"))
-            local playerVisible = isEnemy(targetPlayer) and not isDead(targetPlayer) and root
+            local playerVisible = root and isEnemy(targetPlayer)
             local tLine = tracerLines2[targetPlayer]
             if playerVisible then
                 local rootScreen, onScreen = cam:WorldToViewportPoint(root.Position)
@@ -1989,32 +2078,31 @@ local avatarBridge = {
 local accessoryApi = nil
 local skinApi = nil
 
-local function loadModule(moduleUrl, moduleName)
+local function loadModule(moduleUrl)
     local ok, api = pcall(function()
         local source = game:HttpGet(moduleUrl)
         if type(source) ~= "string" or source == "" then
-            error("GitHub devolvió un módulo vacío.")
+            error("GitHub devolvió un módulo vacío")
         end
 
         local compiler = environment.loadstring or loadstring
         if type(compiler) ~= "function" then
-            error("Este executor no tiene loadstring habilitado.")
+            error("Este executor no tiene loadstring habilitado")
         end
 
         local chunk, compileError = compiler(source)
         if type(chunk) ~= "function" then
-            error(compileError or "No se pudo compilar el módulo.")
+            error(compileError or "No se pudo compilar el módulo")
         end
 
         local result = chunk(avatarBridge)
         if type(result) ~= "table" then
-            error("El módulo no devolvió su API local.")
+            error("El módulo no devolvió su API local")
         end
         return result
     end)
 
     if not ok then
-        warn("[SnowX] Error cargando " .. moduleName .. ": " .. tostring(api))
         return nil
     end
 
@@ -2043,7 +2131,7 @@ local function setAccessoryLauncherEnabled(enabled)
 
     Window:Notify({Title = "SnowX", Text = "Cargando Accesorios", Duration = 3})
     if not accessoryApi then
-        accessoryApi = loadModule(ACCESSORY_URL, "Accesorios")
+        accessoryApi = loadModule(ACCESSORY_URL)
     end
 
     local api = getAccessoryApi()
@@ -2074,7 +2162,7 @@ local function setAvatarEnabled(enabled)
 
     Window:Notify({Title = "SnowX", Text = "Cargando Skins", Duration = 3})
     if not skinApi then
-        skinApi = loadModule(SKINS_URL, "Skins")
+        skinApi = loadModule(SKINS_URL)
     end
 
     local api = getSkinApi()
@@ -2091,7 +2179,7 @@ local function setAvatarEnabled(enabled)
     return true
 end
 
-Tabs.Performance:CreateSection("Avatar")
+Tabs.Performance:CreateSection("Edit Avatar")
 
 Tabs.Performance:CreateToggle({
     Name = "Accesorios",
@@ -2103,7 +2191,7 @@ Tabs.Performance:CreateToggle({
 })
 
 Tabs.Performance:CreateToggle({
-    Name = "Avatar",
+    Name = "Skins",
     CurrentValue = false,
     Flag = "AvatarToggle",
     Callback = function(state)
@@ -2119,7 +2207,7 @@ local spoofNameText = "Player"
 
 local function processOrbyText(v)
     local parentGui = v:FindFirstAncestorWhichIsA("ScreenGui")
-    if parentGui and (string.find(parentGui.Name, "OpenHub") or string.find(parentGui.Name, "Orby")) then return end
+    if parentGui and (string.find(parentGui.Name, "SnowX") or string.find(parentGui.Name, "Orby")) then return end
     if v:IsA("TextLabel") or v:IsA("TextBox") or v:IsA("TextButton") then
         local myName = LocalPlayer.Name
         local myDisp = LocalPlayer.DisplayName
@@ -2891,7 +2979,7 @@ TabTools:CreateButton({
         
         Window:Notify({Title = "Codes", Text = "Reclamando código...", Duration = 2})
 
-        local Ok, Result = pcall(function()
+        local Ok = pcall(function()
             return Remote:InvokeServer(Selected)
         end)
 
@@ -2899,7 +2987,6 @@ TabTools:CreateButton({
             Window:Notify({Title = "Codes", Text = "CodigoEnviado: " .. Selected, Duration = 3})
         else
             Window:Notify({Title = "Codes", Text = "Nosepudoreclamar", Duration = 3})
-            warn(Result)
         end
 
         Busy = false
@@ -2944,6 +3031,8 @@ local ShootEnabled = true
 local ReloadEnabled = true
 
 local SoundData = setmetatable({}, {__mode="k"})
+local SoundInstances = setmetatable({}, {__mode="k"})
+local SoundsIndexed = false
 
 local function GetSoundAsset(id)
     id = tostring(id or ""):gsub("%D","")
@@ -3019,15 +3108,29 @@ local function UpdateSound(s)
 end
 
 local function RefreshSounds()
-    for _,v in ipairs(game:GetDescendants()) do
-        UpdateSound(v)
+    if not SoundsIndexed then
+        for _, instance in ipairs(game:GetDescendants()) do
+            if instance:IsA("Sound") then
+                SoundInstances[instance] = true
+            end
+        end
+        SoundsIndexed = true
+    end
+
+    for sound in pairs(SoundInstances) do
+        if sound.Parent then
+            UpdateSound(sound)
+        else
+            SoundInstances[sound] = nil
+        end
     end
 end
 
-game.DescendantAdded:Connect(function(v)
-    task.defer(function()
-        UpdateSound(v)
-    end)
+game.DescendantAdded:Connect(function(instance)
+    if instance:IsA("Sound") then
+        SoundInstances[instance] = true
+        task.defer(UpdateSound, instance)
+    end
 end)
 
 LocalPlayer.CharacterAdded:Connect(function()
