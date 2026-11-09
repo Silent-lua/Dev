@@ -1310,6 +1310,19 @@ local function createNativeCameraTransparencyUpdater(char, modelo)
             for index = #visualEntries, 1, -1 do
                 local instance = visualEntries[index].instance
                 if not instance.Parent then
+                    local entry = visualEntries[index]
+                    pcall(function()
+                        if entry.kind == "nativeModifier" then
+                            instance.LocalTransparencyModifier = entry.originalLocalTransparencyModifier or 0
+                        elseif entry.kind == "decalTransparency" then
+                            instance.Transparency = entry.originalTransparency or 0
+                        elseif entry.kind == "sequenceEffect" then
+                            instance.Transparency = entry.originalTransparency
+                            instance.Enabled = entry.originalEnabled
+                        elseif entry.kind == "enabledEffect" then
+                            instance.Enabled = entry.originalEnabled
+                        end
+                    end)
                     trackedInstances[instance] = nil
                     table.remove(visualEntries, index)
                 end
