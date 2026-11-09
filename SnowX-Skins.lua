@@ -2023,23 +2023,24 @@ local function getGuiCenter(guiObject)
 	)
 end
 
-local function setGuiCenter(guiObject, position)
+local function clampGuiCenter(guiObject, position)
 	local viewport = getViewportSize()
 	local halfSize = Vector2.new(
 		guiObject.AbsoluteSize.X * 0.5 + 2,
 		guiObject.AbsoluteSize.Y * 0.5 + 2
 	)
 	local maxX, maxY = viewport.X - halfSize.X, viewport.Y - halfSize.Y
-	local target
 	if maxX < halfSize.X or maxY < halfSize.Y then
-		target = Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
-	else
-		target = Vector2.new(
-			math.clamp(position.X, halfSize.X, maxX),
-			math.clamp(position.Y, halfSize.Y, maxY)
-		)
+		return Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
 	end
+	return Vector2.new(
+		math.clamp(position.X, halfSize.X, maxX),
+		math.clamp(position.Y, halfSize.Y, maxY)
+	)
+end
 
+local function setGuiCenter(guiObject, position)
+	local target = clampGuiCenter(guiObject, position)
 	local anchorPoint = guiObject.AnchorPoint
 	local size = guiObject.AbsoluteSize
 	local anchorPosition = target - Vector2.new(
@@ -2047,6 +2048,10 @@ local function setGuiCenter(guiObject, position)
 		(0.5 - anchorPoint.Y) * size.Y
 	)
 	guiObject.Position = UDim2.fromOffset(anchorPosition.X, anchorPosition.Y)
+end
+
+local function clampFrameCenter(position)
+	return clampGuiCenter(Frame, position)
 end
 
 local function keepFrameInsideViewport()
@@ -2070,7 +2075,7 @@ local function fn44()
 end
 
 fn44()
-local Frame2 = fn3("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52), Active = true }, Frame)
+local Frame2 = fn3("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52) }, Frame)
 
 local titleLabel = fn3("TextLabel", {
 	BackgroundTransparency = 1,
@@ -2423,29 +2428,40 @@ end)
 
 local floatingPositionInitialized = false
 
+local function clampFloatingPosition(position)
+    local camera = workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+    local halfSize = Vector2.new(
+        TextButton5.AbsoluteSize.X * 0.5 + 1,
+        TextButton5.AbsoluteSize.Y * 0.5 + 1
+    )
+    local maxX, maxY = viewport.X - halfSize.X, viewport.Y - halfSize.Y
+    if maxX < halfSize.X or maxY < halfSize.Y then
+        return Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
+    end
+    return Vector2.new(
+        math.clamp(position.X, halfSize.X, maxX),
+        math.clamp(position.Y, halfSize.Y, maxY)
+    )
+end
+
 local function getFloatingCenter()
 	return getGuiCenter(TextButton5)
 end
 
 local function setFloatingCenter(position)
-	setGuiCenter(TextButton5, position)
+	setGuiCenter(TextButton5, clampFloatingPosition(position))
 end
 
 local function fn47(visible)
-	flag2 = visible
-	if visible and not floatingPositionInitialized then
-		setFloatingCenter(getGuiCenter(Frame) + Vector2.new(26, 26))
-		floatingPositionInitialized = true
-	end
-
-	Frame.Visible = not visible
-	TextButton5.Visible = visible
-	task.defer(keepFrameInsideViewport)
-	if visible and floatingPositionInitialized then
-		task.defer(function()
-			setFloatingCenter(getFloatingCenter())
-		end)
-	end
+    flag2 = visible
+    if visible and not floatingPositionInitialized then
+        setFloatingCenter(getGuiCenter(Frame) + Vector2.new(26, 26))
+        floatingPositionInitialized = true
+    end
+    Frame.Visible = not visible
+    TextButton5.Visible = visible
+    task.defer(keepFrameInsideViewport)
 end
 
 TextButton.Activated:Connect(function()
@@ -2457,10 +2473,7 @@ local tbl20 = nil
 local function beginFloatingDrag(input)
 	local inputType = input.UserInputType
 	if inputType ~= Enum.UserInputType.MouseButton1
-		and inputType ~= Enum.UserInputType.Touch then
-		return
-	end
-
+		and inputType ~= Enum.UserInputType.Touch then return end
 	tbl20 = {
 		input = input,
 		inputType = inputType,
@@ -2473,14 +2486,12 @@ end
 local function moveFloatingDrag(input, isTouch)
 	local drag = tbl20
 	if not drag then return end
-
 	if isTouch then
 		if drag.inputType ~= Enum.UserInputType.Touch or input ~= drag.input then return end
 	elseif drag.inputType ~= Enum.UserInputType.MouseButton1
 		or input.UserInputType ~= Enum.UserInputType.MouseMovement then
 		return
 	end
-
 	local pointer = Vector2.new(input.Position.X, input.Position.Y)
 	local delta = pointer - drag.desde
 	if delta.Magnitude > 6 then drag.movio = true end
@@ -2490,7 +2501,6 @@ end
 local function finishFloatingDrag(input, isTouch)
 	local drag = tbl20
 	if not drag then return end
-
 	local ended
 	if isTouch then
 		ended = drag.inputType == Enum.UserInputType.Touch and input == drag.input
@@ -2499,30 +2509,25 @@ local function finishFloatingDrag(input, isTouch)
 			and input.UserInputType == Enum.UserInputType.MouseButton1
 	end
 	if not ended then return end
-
 	tbl20 = nil
 	if not drag.movio then fn47(false) end
 end
 
 table.insert(tbl21, openClick.InputBegan:Connect(beginFloatingDrag))
-
 local connection3 = UserInputService.InputChanged:Connect(function(input)
 	moveFloatingDrag(input, false)
 end)
 local connection4 = UserInputService.InputEnded:Connect(function(input)
 	finishFloatingDrag(input, false)
 end)
-local connectionTouchMoved = UserInputService.TouchMoved:Connect(function(input)
-	moveFloatingDrag(input, true)
-end)
-local connectionTouchEnded = UserInputService.TouchEnded:Connect(function(input)
-	finishFloatingDrag(input, true)
-end)
-
 table.insert(tbl21, connection3)
 table.insert(tbl21, connection4)
-table.insert(tbl21, connectionTouchMoved)
-table.insert(tbl21, connectionTouchEnded)
+table.insert(tbl21, UserInputService.TouchMoved:Connect(function(input)
+	moveFloatingDrag(input, true)
+end))
+table.insert(tbl21, UserInputService.TouchEnded:Connect(function(input)
+	finishFloatingDrag(input, true)
+end))
 
 local Frame5 = fn3("Frame", {
 	Size = UDim2.fromScale(1, 1),
@@ -3407,10 +3412,7 @@ local panelDrag = nil
 table.insert(tbl21, Frame2.InputBegan:Connect(function(input)
 	local inputType = input.UserInputType
 	if inputType ~= Enum.UserInputType.MouseButton1
-		and inputType ~= Enum.UserInputType.Touch then
-		return
-	end
-
+		and inputType ~= Enum.UserInputType.Touch then return end
 	panelDrag = {
 		input = input,
 		inputType = inputType,
@@ -3422,14 +3424,12 @@ end))
 local function movePanelDrag(input, isTouch)
 	local drag = panelDrag
 	if not drag then return end
-
 	if isTouch then
 		if drag.inputType ~= Enum.UserInputType.Touch or input ~= drag.input then return end
 	elseif drag.inputType ~= Enum.UserInputType.MouseButton1
 		or input.UserInputType ~= Enum.UserInputType.MouseMovement then
 		return
 	end
-
 	local pointer = Vector2.new(input.Position.X, input.Position.Y)
 	setGuiCenter(Frame, drag.origin + pointer - drag.start)
 end
@@ -3437,7 +3437,6 @@ end
 local function finishPanelDrag(input, isTouch)
 	local drag = panelDrag
 	if not drag then return end
-
 	local ended
 	if isTouch then
 		ended = drag.inputType == Enum.UserInputType.Touch and input == drag.input
@@ -3524,6 +3523,8 @@ TextButton6.Activated:Connect(function()
 	tbl20 = nil
 	panelDrag = nil
     disconnectCharacterLifecycleConnections()
+	connection3:Disconnect()
+	connection4:Disconnect()
     fn59()
     if avatarBridge.skin.owner == skinBridgeToken then
         avatarBridge.skin.owner = nil
@@ -3536,7 +3537,6 @@ TextButton6.Activated:Connect(function()
 			v9:Disconnect()
 		end)
 	end
-	table.clear(tbl21)
     for _, template in pairs(skinModelTemplates) do
         pcall(function() template:Destroy() end)
     end
@@ -3575,6 +3575,8 @@ local skinApi = {
 		tbl20 = nil
 		panelDrag = nil
 		disconnectCharacterLifecycleConnections()
+		pcall(function() connection3:Disconnect() end)
+        pcall(function() connection4:Disconnect() end)
 		fn59()
 		if avatarBridge.skin.owner == skinBridgeToken then
 			avatarBridge.skin.owner = nil
@@ -3582,7 +3584,6 @@ local skinApi = {
 			avatarBridge.skin.refresh = nil
 		end
 		for _, connection in ipairs(tbl21) do pcall(function() connection:Disconnect() end) end
-		table.clear(tbl21)
 		for _, template in pairs(skinModelTemplates) do pcall(function() template:Destroy() end) end
 		table.clear(skinModelTemplates)
 		table.clear(skinModelTemplateOrder)
