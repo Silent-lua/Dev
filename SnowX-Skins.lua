@@ -2446,6 +2446,7 @@ task.spawn(function()
 end)
 
 local floatingPositionInitialized = false
+local stackedFloatingPositionInitialized = false
 
 local function getFloatingCenter()
 	return getGuiCenter(TextButton5)
@@ -2458,7 +2459,7 @@ end
 local function fn47(visible)
 	flag2 = visible
 	if visible and not floatingPositionInitialized then
-		setFloatingCenter(getStackedLauncherCenter(TextButton5, 2))
+		setFloatingCenter(getGuiCenter(Frame) + Vector2.new(26, 26))
 		floatingPositionInitialized = true
 	end
 
@@ -2470,25 +2471,28 @@ local function fn47(visible)
 			setFloatingCenter(getFloatingCenter())
 		end)
 	end
-end
 
-local function openSkinsPanel()
-	local closeAccessoriesPanel = uiPanels.closeAccessoriesPanel
-	if type(closeAccessoriesPanel) == "function" then
-		pcall(closeAccessoriesPanel)
+	if visible and not stackedFloatingPositionInitialized then
+		setFloatingCenter(getStackedLauncherCenter(TextButton5, 2))
+		stackedFloatingPositionInitialized = true
 	end
 
-	fn47(false)
-	centerGuiObject(Frame)
+	if not visible then
+		local closeAccessoriesPanel = uiPanels.closeAccessoriesPanel
+		if type(closeAccessoriesPanel) == "function" then
+			pcall(closeAccessoriesPanel)
+		end
+		centerGuiObject(Frame)
+	end
 end
 
-local function closePanelForOtherModule()
+local function closeSkinsPanelForOtherModule()
 	if Frame.Visible then
 		fn47(true)
 	end
 end
 
-uiPanels.closeSkinsPanel = closePanelForOtherModule
+uiPanels.closeSkinsPanel = closeSkinsPanelForOtherModule
 
 TextButton.Activated:Connect(function()
 	fn47(true)
@@ -2543,7 +2547,7 @@ local function finishFloatingDrag(input, isTouch)
 	if not ended then return end
 
 	tbl20 = nil
-	if not drag.movio then openSkinsPanel() end
+	if not drag.movio then fn47(false) end
 end
 
 table.insert(tbl21, openClick.InputBegan:Connect(beginFloatingDrag))
@@ -3555,7 +3559,7 @@ end))
 
 TextButton2.Activated:Connect(function()
 	if flag2 then
-		openSkinsPanel()
+		fn47(false)
 	end
 
 	Frame5.Visible = true
@@ -3563,11 +3567,11 @@ end)
 
 TextButton6.Activated:Connect(function()
 	Frame5.Visible = false
-	tbl20 = nil
-	panelDrag = nil
-	if uiPanels.closeSkinsPanel == closePanelForOtherModule then
+	if uiPanels.closeSkinsPanel == closeSkinsPanelForOtherModule then
 		uiPanels.closeSkinsPanel = nil
 	end
+	tbl20 = nil
+	panelDrag = nil
     disconnectCharacterLifecycleConnections()
     fn59()
     if avatarBridge.skin.owner == skinBridgeToken then
@@ -3606,10 +3610,11 @@ local skinApi = {
         return true
     end,
 	open = function()
-		if not screenGui.Parent then return false end
 		screenGui.Enabled = true
-		openSkinsPanel()
-		return true
+		Frame.Visible = true
+		TextButton5.Visible = false
+		fn47(false)
+		return screenGui.Parent ~= nil
 	end,
 	aplicar = fn58,
 	quitar = fn59,
@@ -3619,7 +3624,7 @@ local skinApi = {
 	destroy = function()
 		tbl20 = nil
 		panelDrag = nil
-		if uiPanels.closeSkinsPanel == closePanelForOtherModule then
+		if uiPanels.closeSkinsPanel == closeSkinsPanelForOtherModule then
 			uiPanels.closeSkinsPanel = nil
 		end
 		disconnectCharacterLifecycleConnections()
