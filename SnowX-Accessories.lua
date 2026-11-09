@@ -12,8 +12,6 @@ if not localPlayer then
     error("Fallo")
 end
 
-
-
 local avatarBridge = ...
 if type(avatarBridge) ~= "table" then avatarBridge = {} end
 avatarBridge.version = 2
@@ -834,7 +832,6 @@ local function buildRigSyncPlan(sourceCharacter, visualModel, rootPart)
         end
     end
 
-
     local ordered = {}
     local reached = { [rootPart] = true }
     while #pending > 0 do
@@ -858,7 +855,6 @@ local function buildRigSyncPlan(sourceCharacter, visualModel, rootPart)
         if not progressed then break end
     end
 
-
     local fallbackParts = {}
     for _, descendant in ipairs(visualModel:GetDescendants()) do
         if descendant:IsA("BasePart")
@@ -879,7 +875,6 @@ local function buildRigSyncPlan(sourceCharacter, visualModel, rootPart)
             table.insert(allParts, descendant)
         end
     end
-
 
     for _, descendant in ipairs(visualModel:GetDescendants()) do
         if (descendant:IsA("JointInstance") or descendant:IsA("Constraint"))
@@ -904,7 +899,6 @@ local function prepareVisualModel(model, sourceCharacter)
         return nil, nil, "Roblox no generó un rig con HumanoidRootPart y Humanoid."
     end
 
-
     local syncPlan = buildRigSyncPlan(sourceCharacter, model, rootPart)
 
     for _, descendant in ipairs(model:GetDescendants()) do
@@ -923,7 +917,6 @@ local function prepareVisualModel(model, sourceCharacter)
     pcall(function() humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false) end)
     local animator = humanoid:FindFirstChildOfClass("Animator")
     if animator then pcall(function() animator:Destroy() end) end
-
 
     for _, descendant in ipairs(model:GetDescendants()) do
         if descendant:IsA("BasePart") then
@@ -964,7 +957,6 @@ end
 
 local function syncVisualPose(rootPart, syncPlan, sourceRoot, footOffset)
     if not (rootPart and rootPart.Parent and sourceRoot and sourceRoot.Parent) then return end
-
 
     for _, part in ipairs(syncPlan.allParts) do
         if part and part.Parent then
@@ -1086,18 +1078,13 @@ local function enforceOriginalCharacterHidden()
 end
 
 local function bindOriginalCharacterVisibility()
-    if state.hiddenRenderStepBound or state.hiddenRenderConnection then return end
-    local ok = pcall(function()
-        RunService:BindToRenderStep(
-            state.hiddenRenderStepName,
-            Enum.RenderPriority.Last.Value + 5,
-            enforceOriginalCharacterHidden
-        )
-    end)
-    if ok then
-        state.hiddenRenderStepBound = true
-    else
-        state.hiddenRenderConnection = RunService.RenderStepped:Connect(enforceOriginalCharacterHidden)
+    if state.hiddenRenderConnection then
+        pcall(function() state.hiddenRenderConnection:Disconnect() end)
+        state.hiddenRenderConnection = nil
+    end
+    if state.hiddenRenderStepBound then
+        pcall(function() RunService:UnbindFromRenderStep(state.hiddenRenderStepName) end)
+        state.hiddenRenderStepBound = false
     end
 end
 
@@ -1140,9 +1127,9 @@ local function hideOriginalCharacter(character)
         state.hiddenDescendantConnection = character.DescendantAdded:Connect(function(descendant)
             hideOriginalDescendant(character, descendant)
         end)
-    end
-    for _, descendant in ipairs(character:GetDescendants()) do
-        hideOriginalDescendant(character, descendant)
+        for _, descendant in ipairs(character:GetDescendants()) do
+            hideOriginalDescendant(character, descendant)
+        end
     end
     bindOriginalCharacterVisibility()
     enforceOriginalCharacterHidden()
@@ -1180,9 +1167,6 @@ local function createNativeCameraTransparencyUpdater(model, beforeTrack)
         table.insert(entries, entry)
     end
 
-    if type(beforeTrack) == "function" then
-        pcall(beforeTrack)
-    end
     for _, descendant in ipairs(model:GetDescendants()) do track(descendant) end
 
     local function getTargetTransparency()
@@ -1203,7 +1187,6 @@ local function createNativeCameraTransparencyUpdater(model, beforeTrack)
         local now = os.clock()
         local dt = math.max(0, now - lastUpdate)
         lastUpdate = now
-
 
         if lastTransparency ~= nil and target > lastTransparency and target < 1 then
             target = lastTransparency + math.clamp(target - lastTransparency, 0, maxTweenRate * dt)
@@ -1314,24 +1297,39 @@ local function isActivatableNativeEffect(instance)
         or instance:IsA("SurfaceGui")
 end
 
+local function enableNativeEffect(instance, container)
+    if not instance or not instance.Parent or not isActivatableNativeEffect(instance)
+        or isToolDescendant(instance) then
+        return false
+    end
+
+    if instance:IsA("Highlight") then
+        pcall(function()
+            local adornee = instance.Adornee
+            if not adornee or (adornee ~= container and not adornee:IsDescendantOf(container)) then
+                instance.Adornee = container
+            end
+        end)
+    end
+
+    local ok, enabled = pcall(function() return instance.Enabled end)
+    if not ok or enabled then return false end
+    return pcall(function() instance.Enabled = true end)
+end
+
 local function enableNativeEffectsIn(container)
     if not container then return 0 end
     local activated = 0
     for _, descendant in ipairs(container:GetDescendants()) do
-        if isActivatableNativeEffect(descendant) and not isToolDescendant(descendant) then
-            local ok, enabled = pcall(function() return descendant.Enabled end)
-            if ok and not enabled then
-                local setOk = pcall(function() descendant.Enabled = true end)
-                if setOk then activated += 1 end
-            end
+        if enableNativeEffect(descendant, container) then
+            activated += 1
         end
     end
     return activated
 end
 
 local function activateSelectedNativeEffects(model)
-    
-    
+
     return enableNativeEffectsIn(model)
 end
 
@@ -1429,8 +1427,6 @@ local function applyCurrentAppearance()
             return false, "Roblox no pudo generar el modelo visual: " .. tostring(modelError)
         end
 
-        
-        
         local templateOk, templateClone = pcall(function()
             return visualModel:Clone()
         end)
@@ -1471,11 +1467,10 @@ local function applyCurrentAppearance()
     local activatedNativeEffects = activateSelectedNativeEffects(visualModel)
     local cameraUpdate, cameraDescendantConnection = createNativeCameraTransparencyUpdater(
         visualModel,
-        function()
-            activateSelectedNativeEffects(visualModel)
+        function(descendant)
+            enableNativeEffect(descendant, visualModel)
         end
     )
-
 
     local oldModel = state.overlayModel
     if state.syncConnection then pcall(function() state.syncConnection:Disconnect() end) end
@@ -1487,11 +1482,8 @@ local function applyCurrentAppearance()
     state.overlayOffsetY = footOffset
     state.cameraDescendantConnection = cameraDescendantConnection
     hideOriginalCharacter(character)
-    local lastHideRefresh = 0
-
-
-    local lastEffectRecovery = 0
-    state.syncConnection = RunService.RenderStepped:Connect(function()
+    local hiddenEnforcementAccumulator = 0
+    state.syncConnection = RunService.RenderStepped:Connect(function(deltaTime)
         if state.overlayModel ~= visualModel or not visualModel.Parent then return end
         if not character.Parent then return end
         local currentOriginalRoot = character:FindFirstChild("HumanoidRootPart")
@@ -1501,19 +1493,11 @@ local function applyCurrentAppearance()
             visualModel.Parent = currentFolder
         end
         syncVisualPose(visualRoot, visualJoints, currentOriginalRoot, footOffset)
-        local firstPerson = cameraUpdate()
-        local now = os.clock()
-        
-        
-        
-        if not firstPerson and now - lastEffectRecovery >= 0.5 then
-            lastEffectRecovery = now
-            activateSelectedNativeEffects(visualModel)
-        end
-        enforceOriginalCharacterHidden()
-        if now - lastHideRefresh > 0.5 then
-            lastHideRefresh = now
-            hideOriginalCharacter(character)
+        cameraUpdate()
+        hiddenEnforcementAccumulator += deltaTime
+        if hiddenEnforcementAccumulator >= 0.1 then
+            hiddenEnforcementAccumulator %= 0.1
+            enforceOriginalCharacterHidden()
         end
     end)
 
@@ -1543,7 +1527,6 @@ local function applyCurrentAppearance()
     return true, "Apariencia local sincronizada. " .. effectSummary
 end
 
-
 local function setAccessoryDesired(meta, desired)
     local assetId = math.floor(tonumber(meta and meta.id) or 0)
     if assetId <= 0 then return false, "ID de accesorio no válido." end
@@ -1551,7 +1534,6 @@ local function setAccessoryDesired(meta, desired)
         return false, "No se pudo determinar el tipo de accesorio. Busca de nuevo el ID para verificarlo."
     end
     desired = desired == true
-
 
     local baselineDescription = getActiveAppearanceBaseDescription()
     if not baselineDescription then
@@ -1592,7 +1574,6 @@ local function setAccessoryDesired(meta, desired)
 
     local callOk, ok, message = pcall(applyCurrentAppearance)
     if not callOk then
-
 
         state.applying = false
         state.accessoryOverrides[assetId] = oldOverride
@@ -1745,7 +1726,6 @@ local function getItemMeta(assetId, providedName, providedAssetType)
 
     local accessoryType, isLayered = mapAccessoryType(assetType)
 
-
     if not accessoryType then
         local objects
         local loaded, result = pcall(function()
@@ -1798,7 +1778,6 @@ local function getItemMeta(assetId, providedName, providedAssetType)
         isLayered = isLayered == true,
     }
 end
-
 
 local function create(className, properties, parent)
     local instance = Instance.new(className)
@@ -2120,8 +2099,6 @@ local function collectCurrentItems(forceRefresh)
         end
     end
 
-    
-    
     for rawId, enabled in pairs(state.accessoryOverrides) do
         local assetId = math.floor(tonumber(rawId) or 0)
         if enabled == true and assetId > 0 and not seen[assetId] then
@@ -2186,7 +2163,6 @@ avatarBridge.accessory.refreshInventory = function()
     end
     return true
 end
-
 
 local cleanup
 local function buildUI()
@@ -2312,7 +2288,6 @@ local function buildUI()
         uiScale.Scale = math.clamp(math.min(viewport.X * widthFactor / baseWidth, viewport.Y * heightFactor / baseHeight), 0.40, 1)
     end
     updateScale()
-
 
     create("TextButton", {
         Name = "InputSurface",
@@ -2898,8 +2873,16 @@ local function buildUI()
         return (minimum + maximum) * 0.5, maximum - minimum
     end
 
-    local function preparePreviewInstance(instance)
-        if instance:IsA("BasePart") then
+    local function preparePreviewInstance(instance, previewRoot)
+        if instance:IsA("Highlight") then
+            pcall(function()
+                local adornee = instance.Adornee
+                if not adornee or (adornee ~= previewRoot and not adornee:IsDescendantOf(previewRoot)) then
+                    instance.Adornee = previewRoot
+                end
+                instance.Enabled = true
+            end)
+        elseif instance:IsA("BasePart") then
             pcall(function()
                 instance.Anchored = true
                 instance.CanCollide = false
@@ -2922,9 +2905,9 @@ local function buildUI()
     end
 
     local function enablePreviewEffects(root)
-        preparePreviewInstance(root)
+        preparePreviewInstance(root, root)
         for _, descendant in ipairs(root:GetDescendants()) do
-            preparePreviewInstance(descendant)
+            preparePreviewInstance(descendant, root)
         end
     end
 
@@ -3062,8 +3045,7 @@ local function buildUI()
             local focusRoot = nil
             local previewAvatar = nil
             if accessory then
-                
-                
+
                 if accessory.Parent then
                     pcall(function() accessory.Parent = nil end)
                 end
@@ -3111,7 +3093,7 @@ local function buildUI()
             local horizontalFov = 2 * math.atan(math.tan(verticalFov * 0.5) * math.max(aspect, 0.1))
             local limitingHalfFov = math.min(verticalFov, horizontalFov) * 0.5
             local boundingRadius = math.max(boundsSize.Magnitude * 0.5, 0.12)
-            
+
             local distance = math.max((boundingRadius / math.max(math.sin(limitingHalfFov), 0.05)) * 1.48, 0.45)
             local cameraSide = -1
             if previewAvatar then
@@ -3127,7 +3109,6 @@ local function buildUI()
             previewImage.Visible = false
             previewViewport.Visible = true
 
-            
             local rotation = 0
             local stagePivot = stage:GetPivot()
             previewSpinConnection = RunService.RenderStepped:Connect(function(deltaTime)
@@ -3435,8 +3416,6 @@ local function buildUI()
             table.insert(state.favoriteRows, emptyFavorites)
         end
 
-        
-        
         addSidebarSection("Recomendados")
         local recommendedCount = 0
         local recommendedSeen = {}
@@ -3465,8 +3444,6 @@ local function buildUI()
             table.insert(state.favoriteRows, noRecommendations)
         end
 
-        
-        
         removeSelectedEquippedButton = nil
         if sideCategory == "accessory" then
             addSidebarSection("Gestión de equipados")
@@ -3560,9 +3537,6 @@ local function buildUI()
             end
         end
 
-        
-        
-        
         task.spawn(function()
             RunService.Heartbeat:Wait()
             RunService.Heartbeat:Wait()
@@ -3639,7 +3613,6 @@ local function buildUI()
         selectItem(item)
         refreshSidebar()
     end
-
 
     local defaultItem = itemFromAccessoryPreset(PRESETS[1])
     setSelectedItemAndRefresh(defaultItem)
@@ -3969,8 +3942,6 @@ local function onCharacterAdded(character)
             end)
         end))
 
-        
-        
         local appearanceSignalOk, appearanceSignal = pcall(function()
             return humanoid.ApplyDescriptionFinished
         end)
@@ -3979,7 +3950,7 @@ local function onCharacterAdded(character)
                 if generation ~= state.generation or character ~= localPlayer.Character then return end
                 if isSkinRendererActive() then
                     if state.refreshFavoritesPage then pcall(state.refreshFavoritesPage) end
-                    return 
+                    return
                 end
 
                 local clonedDescription = nil
@@ -4053,8 +4024,6 @@ local function onCharacterAdded(character)
             clearVisualTemplate()
         end
 
-        
-        
         while state.applying and generation == state.generation and character == localPlayer.Character do
             RunService.Heartbeat:Wait()
         end
@@ -4122,8 +4091,7 @@ end
 
 addConnection(state.connections, Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
     task.defer(function()
-        
-        
+
         if not isSkinRendererActive() and hasVisualChanges()
             and state.character == localPlayer.Character then
             applyCurrentAppearance()
