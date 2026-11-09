@@ -2003,6 +2003,31 @@ local uiScale = Instance.new("UIScale")
 uiScale.Parent = Frame
 local flag = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
+local function clampFrameCenter(position)
+	local camera = Workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	local halfSize = Vector2.new(Frame.AbsoluteSize.X * 0.5 + 2, Frame.AbsoluteSize.Y * 0.5 + 2)
+	local maxX, maxY = viewport.X - halfSize.X, viewport.Y - halfSize.Y
+	if maxX < halfSize.X or maxY < halfSize.Y then
+		return Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
+	end
+	return Vector2.new(
+		math.clamp(position.X, halfSize.X, maxX),
+		math.clamp(position.Y, halfSize.Y, maxY)
+	)
+end
+
+local function keepFrameInsideViewport()
+	if not Frame.Parent then return end
+	local absolute = Frame.AbsolutePosition
+	local center = Vector2.new(
+		absolute.X + Frame.AbsoluteSize.X * 0.5,
+		absolute.Y + Frame.AbsoluteSize.Y * 0.5
+	)
+	local target = clampFrameCenter(center)
+	Frame.Position = UDim2.fromOffset(target.X, target.Y)
+end
+
 local function fn44()
 	local currentCamera = workspace.CurrentCamera
 	currentCamera = currentCamera and currentCamera.ViewportSize or Vector2.new(1280, 720)
@@ -2014,7 +2039,8 @@ local function fn44()
 		n4 = 0.9
 	end
 
-	uiScale.Scale = math.clamp(math.min(currentCamera.X * n4 / n, currentCamera.Y * n3 / n2), 0.4, 1)
+	uiScale.Scale = math.clamp(math.min(currentCamera.X * n4 / n, currentCamera.Y * n3 / n2), 0.01, 1)
+	task.defer(keepFrameInsideViewport)
 end
 
 fn44()
@@ -2374,22 +2400,46 @@ local floatingPositionInitialized = false
 local function clampFloatingPosition(position)
     local camera = workspace.CurrentCamera
     local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
-    local halfSize = Vector2.new(75, 23)
-    local x = math.clamp(position.X, halfSize.X, math.max(halfSize.X, viewport.X - halfSize.X))
-    local y = math.clamp(position.Y, halfSize.Y, math.max(halfSize.Y, viewport.Y - halfSize.Y))
-    return Vector2.new(x, y)
+    local halfSize = Vector2.new(
+        TextButton5.AbsoluteSize.X * 0.5 + 1,
+        TextButton5.AbsoluteSize.Y * 0.5 + 1
+    )
+    local maxX, maxY = viewport.X - halfSize.X, viewport.Y - halfSize.Y
+    if maxX < halfSize.X or maxY < halfSize.Y then
+        return Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
+    end
+    return Vector2.new(
+        math.clamp(position.X, halfSize.X, maxX),
+        math.clamp(position.Y, halfSize.Y, maxY)
+    )
+end
+
+local function getFloatingCenter()
+    local absolute = TextButton5.AbsolutePosition
+    return Vector2.new(
+        absolute.X + TextButton5.AbsoluteSize.X * 0.5,
+        absolute.Y + TextButton5.AbsoluteSize.Y * 0.5
+    )
+end
+
+local function setFloatingCenter(position)
+    local target = clampFloatingPosition(position)
+    TextButton5.Position = UDim2.fromOffset(target.X, target.Y)
 end
 
 local function fn47(visible)
-	flag2 = visible
-	if visible and not floatingPositionInitialized then
-		local absolutePosition = Frame.AbsolutePosition
-        local target = clampFloatingPosition(Vector2.new(absolutePosition.X + 26, absolutePosition.Y + 26))
-		TextButton5.Position = UDim2.fromOffset(target.X, target.Y)
+    flag2 = visible
+    if visible and not floatingPositionInitialized then
+        local absolutePosition = Frame.AbsolutePosition
+        setFloatingCenter(Vector2.new(absolutePosition.X + 26, absolutePosition.Y + 26))
         floatingPositionInitialized = true
-	end
-	Frame.Visible = not visible
-	TextButton5.Visible = visible
+    end
+    Frame.Visible = not visible
+    TextButton5.Visible = visible
+    task.defer(keepFrameInsideViewport)
+    if visible and floatingPositionInitialized then
+        task.defer(function() setFloatingCenter(getFloatingCenter()) end)
+    end
 end
 
 TextButton.Activated:Connect(function()
@@ -2399,29 +2449,27 @@ end)
 local tbl20 = nil
 
 openClick.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
         tbl20 = {
             input = input,
             desde = Vector2.new(input.Position.X, input.Position.Y),
-            origen = Vector2.new(TextButton5.Position.X.Offset, TextButton5.Position.Y.Offset),
+            origen = getFloatingCenter(),
             movio = false,
         }
-	end
+    end
 end)
 
 local connection3 = UserInputService.InputChanged:Connect(function(input)
-	local drag = tbl20
-	if not drag then return end
+    local drag = tbl20
+    if not drag then return end
     local isMouseMove = drag.input.UserInputType == Enum.UserInputType.MouseButton1
         and input.UserInputType == Enum.UserInputType.MouseMovement
     if not isMouseMove and input ~= drag.input then return end
     local pointer = Vector2.new(input.Position.X, input.Position.Y)
     local delta = pointer - drag.desde
-	if delta.Magnitude > 6 then drag.movio = true end
-	if drag.movio then
-        local target = clampFloatingPosition(drag.origen + delta)
-		TextButton5.Position = UDim2.fromOffset(target.X, target.Y)
-	end
+    if delta.Magnitude > 6 then drag.movio = true end
+    if drag.movio then setFloatingCenter(drag.origen + delta) end
 end)
 
 local connection4 = UserInputService.InputEnded:Connect(function(input)
@@ -3313,36 +3361,41 @@ table.insert(tbl21, localPlayer.CharacterAdded:Connect(function(character)
     end)
 end))
 
-local flag4 = false
-local v7 = nil
-local v8 = nil
+local panelDrag = nil
 
 Frame2.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		local position = input.Position
-		local position2 = Frame.Position
-		flag4 = true
-		v7 = position
-		v8 = position2
-	end
-end)
-
-Frame2.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		flag4 = false
-	end
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        local absolute = Frame.AbsolutePosition
+        panelDrag = {
+            input = input,
+            start = Vector2.new(input.Position.X, input.Position.Y),
+            origin = Vector2.new(
+                absolute.X + Frame.AbsoluteSize.X * 0.5,
+                absolute.Y + Frame.AbsoluteSize.Y * 0.5
+            ),
+        }
+    end
 end)
 
 table.insert(tbl21, UserInputService.InputChanged:Connect(function(input)
-	if not (flag4 and v7 and v8) then
-		return
-	end
+    local drag = panelDrag
+    if not drag then return end
+    local isMouseMove = drag.input.UserInputType == Enum.UserInputType.MouseButton1
+        and input.UserInputType == Enum.UserInputType.MouseMovement
+    if not isMouseMove and input ~= drag.input then return end
+    local pointer = Vector2.new(input.Position.X, input.Position.Y)
+    local target = clampFrameCenter(drag.origin + pointer - drag.start)
+    Frame.Position = UDim2.fromOffset(target.X, target.Y)
+end))
 
-	if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
-		return
-	end
-	local n5 = input.Position - v7
-	Frame.Position = UDim2.new(v8.X.Scale, v8.X.Offset + n5.X, v8.Y.Scale, v8.Y.Offset + n5.Y)
+table.insert(tbl21, UserInputService.InputEnded:Connect(function(input)
+    local drag = panelDrag
+    if not drag then return end
+    local ended = input == drag.input
+        or (drag.input.UserInputType == Enum.UserInputType.MouseButton1
+            and input.UserInputType == Enum.UserInputType.MouseButton1)
+    if ended then panelDrag = nil end
 end))
 
 local currentCameraViewportConnection = nil
@@ -3361,10 +3414,20 @@ local function connectCurrentCameraViewport()
 
 	local currentCamera = Workspace.CurrentCamera
 	if currentCamera then
-		currentCameraViewportConnection = currentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fn44)
+		currentCameraViewportConnection = currentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+			fn44()
+			task.defer(keepFrameInsideViewport)
+			if TextButton5.Visible and floatingPositionInitialized then
+				task.defer(function() setFloatingCenter(getFloatingCenter()) end)
+			end
+		end)
 		table.insert(tbl21, currentCameraViewportConnection)
 	end
 	fn44()
+	task.defer(keepFrameInsideViewport)
+	if TextButton5.Visible and floatingPositionInitialized then
+		task.defer(function() setFloatingCenter(getFloatingCenter()) end)
+	end
 end
 
 connectCurrentCameraViewport()
