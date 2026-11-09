@@ -1584,6 +1584,7 @@ Players.PlayerRemoving:Connect(removeESPPlayer)
 local CONFIG_ESP2 = {
     Skeleton = false,
     Box = false,
+    Advanced = false,
     MaxDistance = 500,
     SkeletonThickness = 2,
     BoxThickness = 1,
@@ -1602,6 +1603,12 @@ local function CreatePlayerESP2(player)
     data.box.Thickness = CONFIG_ESP2.BoxThickness
     data.box.Filled = false
     data.box.Transparency = 1
+    data.outerBox = Drawing.new("Square")
+    data.outerBox.Visible = false
+    data.outerBox.Color = Color3.fromRGB(12, 12, 12)
+    data.outerBox.Thickness = 2
+    data.outerBox.Filled = false
+    data.outerBox.Transparency = 0.85
     for i = 1, 13 do
         local line = Drawing.new("Line")
         line.Visible = false
@@ -1618,6 +1625,9 @@ local function RemovePlayerESP2(player)
     if not data then return end
     if data.box then
         pcall(function() data.box:Remove() end)
+    end
+    if data.outerBox then
+        pcall(function() data.outerBox:Remove() end)
     end
     for _, line in ipairs(data.lines) do
         pcall(function() line:Remove() end)
@@ -1657,31 +1667,85 @@ local function GetSkeletonPairs(char, hum)
     return pairs
 end
 
-local function GetBoxFromCharacter(char, cam)
-    if not cam then return nil end
-    local cf, size = char:GetBoundingBox()
-    local corners = {
-        cf * Vector3.new(size.X/2, size.Y/2, size.Z/2),
-        cf * Vector3.new(-size.X/2, size.Y/2, size.Z/2),
-        cf * Vector3.new(size.X/2, -size.Y/2, size.Z/2),
-        cf * Vector3.new(-size.X/2, -size.Y/2, size.Z/2),
-        cf * Vector3.new(size.X/2, size.Y/2, -size.Z/2),
-        cf * Vector3.new(-size.X/2, size.Y/2, -size.Z/2),
-        cf * Vector3.new(size.X/2, -size.Y/2, -size.Z/2),
-        cf * Vector3.new(-size.X/2, -size.Y/2, -size.Z/2),
-    }
-    local minX, maxX, minY, maxY = math.huge, -math.huge, math.huge, -math.huge
-    for _, c in ipairs(corners) do
-        local sp, on = cam:WorldToViewportPoint(c)
-        if on then
-            minX = math.min(minX, sp.X)
-            maxX = math.max(maxX, sp.X)
-            minY = math.min(minY, sp.Y)
-            maxY = math.max(maxY, sp.Y)
+local ESP_BODY_PART_NAMES = {
+    "Head",
+    "Torso",
+    "UpperTorso",
+    "LowerTorso",
+    "Left Arm",
+    "Right Arm",
+    "Left Leg",
+    "Right Leg",
+    "LeftUpperArm",
+    "LeftLowerArm",
+    "LeftHand",
+    "RightUpperArm",
+    "RightLowerArm",
+    "RightHand",
+    "LeftUpperLeg",
+    "LeftLowerLeg",
+    "LeftFoot",
+    "RightUpperLeg",
+    "RightLowerLeg",
+    "RightFoot",
+}
+
+local function GetBodyParts(char)
+    local parts = {}
+    for _, name in ipairs(ESP_BODY_PART_NAMES) do
+        local part = char:FindFirstChild(name)
+        if part and part:IsA("BasePart") then
+            table.insert(parts, part)
         end
     end
-    if minX >= maxX or minY >= maxY then return nil end
-    return minX, minY, maxX - minX, maxY - minY
+    return parts
+end
+
+local function GetBoxFromCharacter(bodyParts, cam)
+    if not cam or not bodyParts or #bodyParts == 0 then return nil end
+
+    local minX, maxX = math.huge, -math.huge
+    local minY, maxY = math.huge, -math.huge
+    local foundPoint = false
+
+    for _, part in ipairs(bodyParts) do
+        if part and part.Parent then
+            local half = part.Size * 0.5
+            for xSign = -1, 1, 2 do
+                for ySign = -1, 1, 2 do
+                    for zSign = -1, 1, 2 do
+                        local corner = part.CFrame * Vector3.new(
+                            half.X * xSign,
+                            half.Y * ySign,
+                            half.Z * zSign
+                        )
+                        local screen = cam:WorldToViewportPoint(corner)
+                        if screen.Z > 0 then
+                            foundPoint = true
+                            minX = math.min(minX, screen.X)
+                            maxX = math.max(maxX, screen.X)
+                            minY = math.min(minY, screen.Y)
+                            maxY = math.max(maxY, screen.Y)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if not foundPoint then return nil end
+
+    local viewport = cam.ViewportSize
+    minX = math.clamp(minX, 0, viewport.X)
+    maxX = math.clamp(maxX, 0, viewport.X)
+    minY = math.clamp(minY, 0, viewport.Y)
+    maxY = math.clamp(maxY, 0, viewport.Y)
+
+    local width = maxX - minX
+    local height = maxY - minY
+    if width < 2 or height < 2 then return nil end
+
+    return minX, minY, width, height
 end
 
 local esp2Accumulator = 0
@@ -1690,7 +1754,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
     if esp2Accumulator < (1 / 30) then return end
     esp2Accumulator %= (1 / 30)
 
-    if not CONFIG_ESP2.Box and not CONFIG_ESP2.Skeleton then return end
+    if not CONFIG_ESP2.Box and not CONFIG_ESP2.Skeleton and not CONFIG_ESP2.Advanced then return end
 
     local camera = workspace.CurrentCamera
     if not camera then return end
@@ -1709,29 +1773,39 @@ RunService.Heartbeat:Connect(function(deltaTime)
 
         if not visible then
             if data.box then data.box.Visible = false end
+            if data.outerBox then data.outerBox.Visible = false end
             for _, line in ipairs(data.lines) do line.Visible = false end
         else
             if data.skeletonModel ~= model then
                 data.skeletonModel = model
                 data.skeletonPairs = hum and GetSkeletonPairs(model, hum) or {}
+                data.boxParts = GetBodyParts(model)
             end
+
+            local showBox = CONFIG_ESP2.Box or CONFIG_ESP2.Advanced
+            local showSkeleton = CONFIG_ESP2.Skeleton or CONFIG_ESP2.Advanced
 
             if data.box then data.box.Color = espColor end
 
-            if CONFIG_ESP2.Box then
-                local bx, by, bw, bh = GetBoxFromCharacter(model, camera)
+            if showBox then
+                local bx, by, bw, bh = GetBoxFromCharacter(data.boxParts, camera)
                 if bx then
                     data.box.Position = Vector2.new(bx, by)
                     data.box.Size = Vector2.new(bw, bh)
                     data.box.Visible = true
-                elseif data.box then
+                    data.outerBox.Position = Vector2.new(bx - 2, by - 2)
+                    data.outerBox.Size = Vector2.new(bw + 4, bh + 4)
+                    data.outerBox.Visible = true
+                else
                     data.box.Visible = false
+                    data.outerBox.Visible = false
                 end
-            elseif data.box then
+            else
                 data.box.Visible = false
+                data.outerBox.Visible = false
             end
 
-            if CONFIG_ESP2.Skeleton and hum then
+            if showSkeleton and hum then
                 for i, line in ipairs(data.lines) do
                     local bonePair = data.skeletonPairs[i]
                     if bonePair and bonePair[1].Parent and bonePair[2].Parent then
@@ -1767,6 +1841,7 @@ end)
 local function hideESP2()
     for _, data in pairs(espData2) do
         if data.box then data.box.Visible = false end
+        if data.outerBox then data.outerBox.Visible = false end
         for _, line in ipairs(data.lines) do
             line.Visible = false
         end
@@ -1778,7 +1853,7 @@ Tabs.Visual:CreateToggle({
     CurrentValue = false,
     Callback = function(Value)
         CONFIG_ESP2.Skeleton = Value
-        if not Value and not CONFIG_ESP2.Box then hideESP2() end
+        if not Value and not CONFIG_ESP2.Box and not CONFIG_ESP2.Advanced then hideESP2() end
     end
 })
 
@@ -1787,7 +1862,16 @@ Tabs.Visual:CreateToggle({
     CurrentValue = false,
     Callback = function(Value)
         CONFIG_ESP2.Box = Value
-        if not Value and not CONFIG_ESP2.Skeleton then hideESP2() end
+        if not Value and not CONFIG_ESP2.Skeleton and not CONFIG_ESP2.Advanced then hideESP2() end
+    end
+})
+
+Tabs.Visual:CreateToggle({
+    Name = "Advanced Highlight",
+    CurrentValue = false,
+    Callback = function(Value)
+        CONFIG_ESP2.Advanced = Value
+        if not Value and not CONFIG_ESP2.Box and not CONFIG_ESP2.Skeleton then hideESP2() end
     end
 })
 
