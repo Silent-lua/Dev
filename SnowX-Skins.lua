@@ -8,17 +8,10 @@ local UserService = game:GetService("UserService")
 local CONFIG_PATH = "snowx/skins.json"
 local localPlayer = Players.LocalPlayer
 
-local sharedEnv
-pcall(function()
-    sharedEnv = type(getgenv) == "function" and getgenv() or _G
-end)
-local avatarBridge = sharedEnv and sharedEnv.SnowXAvatarSync
-if type(avatarBridge) ~= "table" then
-    avatarBridge = {}
-    if sharedEnv then sharedEnv.SnowXAvatarSync = avatarBridge end
-end
--- v2 adds a shared, revisioned equipped-accessory snapshot. Keep existing
--- v1 skin/accessory state so either module can be reloaded independently.
+-- The main loader passes a private bridge as the chunk argument.
+-- Running this file directly creates an isolated bridge without executor globals.
+local avatarBridge = ...
+if type(avatarBridge) ~= "table" then avatarBridge = {} end
 avatarBridge.version = 2
 avatarBridge.skin = type(avatarBridge.skin) == "table" and avatarBridge.skin or {}
 avatarBridge.accessory = type(avatarBridge.accessory) == "table" and avatarBridge.accessory or {}
@@ -34,22 +27,22 @@ local function bumpSkinRevision()
 end
 
 local tbl = {
-	Background = Color3.fromRGB(7, 14, 30),
-	BackgroundAlt = Color3.fromRGB(11, 23, 48),
-	Surface = Color3.fromRGB(14, 27, 52),
-	SurfaceUp = Color3.fromRGB(18, 36, 68),
-	Soft = Color3.fromRGB(99, 170, 255),
-	Line = Color3.fromRGB(40, 66, 112),
-	Border = Color3.fromRGB(96, 146, 236),
-	Text = Color3.fromRGB(236, 245, 255),
-	Icon = Color3.fromRGB(176, 200, 236),
-	Faint = Color3.fromRGB(176, 200, 236),
-	On = Color3.fromRGB(255, 255, 255),
-	OnFill = Color3.fromRGB(40, 123, 75),
-	Accent = Color3.fromRGB(255, 255, 255),
-	AccentFill = Color3.fromRGB(31, 76, 164),
-	Danger = Color3.fromRGB(255, 255, 255),
-	DangerFill = Color3.fromRGB(141, 58, 58),
+    Background = Color3.fromRGB(12, 12, 14),
+    BackgroundAlt = Color3.fromRGB(18, 18, 22),
+    Surface = Color3.fromRGB(26, 26, 32),
+    SurfaceUp = Color3.fromRGB(36, 36, 44),
+    Soft = Color3.fromRGB(190, 190, 198),
+    Line = Color3.fromRGB(54, 54, 62),
+    Border = Color3.fromRGB(74, 74, 84),
+    Text = Color3.fromRGB(245, 245, 245),
+    Icon = Color3.fromRGB(190, 190, 198),
+    Faint = Color3.fromRGB(170, 170, 178),
+    On = Color3.fromRGB(255, 255, 255),
+    OnFill = Color3.fromRGB(75, 75, 82),
+    Accent = Color3.fromRGB(255, 255, 255),
+    AccentFill = Color3.fromRGB(42, 42, 48),
+    Danger = Color3.fromRGB(255, 255, 255),
+    DangerFill = Color3.fromRGB(95, 45, 45),
 }
 
 local n = 590
@@ -1845,16 +1838,6 @@ removeOldGui(v3, "snowx-skins")
 local playerGui = localPlayer:FindFirstChild("PlayerGui")
 removeOldGui(playerGui, "snowx-skins")
 
-local env = sharedEnv or _G
-if env.SnowXSkins then
-	pcall(function()
-		if type(env.SnowXSkins.destroy) == "function" then
-			env.SnowXSkins.destroy()
-		elseif type(env.SnowXSkins.quitar) == "function" then
-			env.SnowXSkins.quitar()
-		end
-	end)
-end
 fn()
 task.spawn(fn21)
 local screenGui = Instance.new("ScreenGui")
@@ -1870,6 +1853,32 @@ end) then
 	screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
 end
 
+local function loadBackgroundAsset()
+    local url = "https://raw.githubusercontent.com/Styx-ui/w/refs/heads/main/Slow2.jpg"
+    local path = "avatar-visual/Slow2.jpg"
+    pcall(function()
+        if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder("avatar-visual") then
+            makefolder("avatar-visual")
+        end
+    end)
+    local exists = false
+    pcall(function()
+        if type(isfile) == "function" then exists = isfile(path) end
+    end)
+    if not exists and type(writefile) == "function" then
+        local ok, data = pcall(function() return game:HttpGet(url) end)
+        if ok and type(data) == "string" and #data > 0 then
+            pcall(function() writefile(path, data) end)
+        end
+    end
+    if type(getcustomasset) == "function" then
+        local ok, asset = pcall(getcustomasset, path)
+        if ok and type(asset) == "string" then return asset end
+    end
+    return nil
+end
+
+local bgAsset = loadBackgroundAsset()
 local Frame = fn3("Frame", {
 	AnchorPoint = Vector2.new(0.5, 0.5),
 	Position = UDim2.fromScale(0.5, 0.5),
@@ -1885,6 +1894,25 @@ local uiGradient = Instance.new("UIGradient")
 uiGradient.Color = ColorSequence.new(tbl.BackgroundAlt, tbl.Background)
 uiGradient.Rotation = 90
 uiGradient.Parent = Frame
+
+local backgroundImage = Instance.new("ImageLabel")
+backgroundImage.Name = "ReferenceBackground"
+backgroundImage.Size = UDim2.fromScale(1, 1)
+backgroundImage.BackgroundTransparency = 1
+backgroundImage.Image = bgAsset or ""
+backgroundImage.ImageTransparency = bgAsset and 0.38 or 1
+backgroundImage.ScaleType = Enum.ScaleType.Crop
+backgroundImage.ZIndex = 1
+backgroundImage.Parent = Frame
+fn3("UICorner", { CornerRadius = UDim.new(0, 16) }, backgroundImage)
+fn3("Frame", {
+    Name = "ReferenceBackgroundOverlay",
+    Size = UDim2.fromScale(1, 1),
+    BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+    BackgroundTransparency = bgAsset and 0.58 or 1,
+    BorderSizePixel = 0,
+    ZIndex = 1,
+}, Frame)
 
 fn3("TextButton", {
 	Text = "",
@@ -1917,7 +1945,7 @@ end
 fn44()
 local Frame2 = fn3("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52) }, Frame)
 
-fn3("TextLabel", {
+local titleLabel = fn3("TextLabel", {
 	BackgroundTransparency = 1,
 	Position = UDim2.fromOffset(18, 15),
 	Size = UDim2.fromOffset(166, 22),
@@ -1928,6 +1956,23 @@ fn3("TextLabel", {
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextTruncate = Enum.TextTruncate.AtEnd,
 }, Frame)
+local titleGradient = Instance.new("UIGradient")
+titleGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(145, 145, 145)),
+    ColorSequenceKeypoint.new(0.25, Color3.fromRGB(255, 255, 255)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(210, 210, 210)),
+    ColorSequenceKeypoint.new(0.75, Color3.fromRGB(255, 255, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(135, 135, 135)),
+})
+titleGradient.Rotation = 90
+titleGradient.Parent = titleLabel
+task.spawn(function()
+    local offset = 0
+    while titleLabel.Parent do
+        offset = (offset + task.wait(0.04) * 0.35) % 1
+        titleGradient.Offset = Vector2.new(offset * 2 - 1, 0)
+    end
+end)
 fn3("TextLabel", {
 	BackgroundTransparency = 1,
 	Position = UDim2.fromOffset(19, 32),
@@ -2178,20 +2223,69 @@ end
 
 local flag2 = false
 
-local TextButton5 = fn3("TextButton", {
+local TextButton5 = fn3("Frame", {
 	AnchorPoint = Vector2.new(0.5, 0.5),
-	Size = UDim2.fromOffset(46, 46),
-	BackgroundColor3 = tbl.Background,
+	Size = UDim2.fromOffset(150, 46),
+	BackgroundColor3 = tbl.BackgroundAlt,
+	BackgroundTransparency = 0.05,
 	BorderSizePixel = 0,
-	AutoButtonColor = true,
-	Font = Enum.Font.GothamBold,
-	Text = "S",
-	TextSize = 18,
-	TextColor3 = tbl.Text,
+	ClipsDescendants = true,
 	Visible = false,
-}, screenGui, 23)
+	ZIndex = 50,
+}, screenGui, 12)
 
-fn3("UIStroke", { Color = tbl.Border, Thickness = 1.5, Transparency = 0.1 }, TextButton5)
+fn3("UIStroke", { Color = tbl.Text, Thickness = 1.5, Transparency = 0.45 }, TextButton5)
+local reopenBackground = Instance.new("ImageLabel")
+reopenBackground.Size = UDim2.fromScale(1, 1)
+reopenBackground.BackgroundTransparency = 1
+reopenBackground.Image = bgAsset or ""
+reopenBackground.ImageTransparency = bgAsset and 0.5 or 1
+reopenBackground.ScaleType = Enum.ScaleType.Crop
+reopenBackground.ZIndex = 50
+reopenBackground.Parent = TextButton5
+fn3("UICorner", { CornerRadius = UDim.new(0, 12) }, reopenBackground)
+fn3("Frame", {
+    Size = UDim2.fromScale(1, 1),
+    BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+    BackgroundTransparency = bgAsset and 0.55 or 0.82,
+    BorderSizePixel = 0,
+    ZIndex = 51,
+}, TextButton5)
+local reopenDot = fn3("Frame", {
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(1, -12, 0, 10),
+    Size = UDim2.fromOffset(8, 8),
+    BackgroundColor3 = tbl.Text,
+    BorderSizePixel = 0,
+    ZIndex = 53,
+}, TextButton5, 4)
+fn3("TextLabel", {
+    BackgroundTransparency = 1,
+    Position = UDim2.fromOffset(14, 0),
+    Size = UDim2.new(1, -24, 1, 0),
+    Font = Enum.Font.GothamBold,
+    Text = "Open SnowX",
+    TextSize = 13,
+    TextColor3 = tbl.Text,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 53,
+}, TextButton5)
+local openClick = fn3("TextButton", {
+    Size = UDim2.fromScale(1, 1),
+    BackgroundTransparency = 1,
+    AutoButtonColor = false,
+    Text = "",
+    ZIndex = 54,
+}, TextButton5)
+task.spawn(function()
+    while reopenDot.Parent do
+        reopenDot.BackgroundTransparency = 0.65
+        task.wait(0.8)
+        if not reopenDot.Parent then break end
+        reopenDot.BackgroundTransparency = 0
+        task.wait(0.8)
+    end
+end)
 
 local function fn47(visible)
 	flag2 = visible
@@ -2211,13 +2305,13 @@ end)
 
 local tbl20 = nil
 
-TextButton5.InputBegan:Connect(function(input)
+openClick.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 		tbl20 = { desde = input.Position, origen = TextButton5.Position, movio = false }
 	end
 end)
 
-TextButton5.InputEnded:Connect(function(input)
+openClick.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 		local v7 = tbl20
 		tbl20 = nil
@@ -3231,11 +3325,10 @@ TextButton6.Activated:Connect(function()
     table.clear(skinModelTemplates)
     table.clear(skinModelTemplateOrder)
 
-	(sharedEnv or _G).SnowXSkins = nil
 	screenGui:Destroy()
 end)
 
-(sharedEnv or _G).SnowXSkins = {
+local skinApi = {
 	gui = screenGui,
 	open = function()
 		screenGui.Enabled = true
@@ -3261,8 +3354,7 @@ end)
 		for _, template in pairs(skinModelTemplates) do pcall(function() template:Destroy() end) end
 		table.clear(skinModelTemplates)
 		table.clear(skinModelTemplateOrder)
-		(sharedEnv or _G).SnowXSkins = nil
-		if screenGui.Parent then screenGui:Destroy() end
+			if screenGui.Parent then screenGui:Destroy() end
 	end,
 	-- FE is intentionally fixed ON. Legacy OFF requests are rejected.
 	setFEMode = function(mode)
@@ -3307,3 +3399,5 @@ task.spawn(function()
 end)
 
 -- FE mode is applied only while a copied skin is active.
+
+return skinApi
