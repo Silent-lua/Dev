@@ -1048,7 +1048,6 @@ local function enableCopiedAppearanceEffect(model, instance)
         return false
     end
 
-
     local ok, enabled = pcall(function() return instance.Enabled end)
     if not ok or enabled then
         return false
