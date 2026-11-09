@@ -2174,6 +2174,7 @@ local avatarBridge = {
     version = 2,
     skin = { revision = 0 },
     accessory = { revision = 0 },
+    uiPanels = {},
 }
 
 local accessoryApi = nil
