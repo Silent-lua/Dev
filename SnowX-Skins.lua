@@ -1051,6 +1051,55 @@ local function enableCopiedAppearanceEffect(model, instance)
 end
 
 
+local hiddenCharacterModel = nil
+local hiddenCharacterInstances = {}
+local hiddenCharacterTracked = setmetatable({}, { __mode = "k" })
+
+local function trackHiddenCharacterInstance(descendant)
+    if not descendant or not descendant.Parent or hiddenCharacterTracked[descendant]
+        or descendant:FindFirstAncestorOfClass("Tool") then
+        return
+    end
+
+    local isBodyVisual = (descendant:IsA("BasePart") and descendant.Name ~= "HumanoidRootPart")
+        or descendant:IsA("Decal")
+    local isEffect = isNativeVisualEffect(descendant)
+    if not isBodyVisual and not isEffect then return end
+
+    hiddenCharacterTracked[descendant] = true
+    table.insert(hiddenCharacterInstances, descendant)
+
+    if isBodyVisual then
+        if descendant:GetAttribute("SnowXOriginalTransparency") == nil then
+            descendant:SetAttribute("SnowXOriginalTransparency", descendant.Transparency)
+        end
+        if descendant.Transparency < 1 then descendant.Transparency = 1 end
+    else
+        if hiddenCharacterEffectStates[descendant] == nil then
+            hiddenCharacterEffectStates[descendant] = { enabled = descendant.Enabled }
+        end
+        if descendant.Enabled then descendant.Enabled = false end
+        if descendant:IsA("ParticleEmitter") or descendant:IsA("Trail") then
+            pcall(function() descendant:Clear() end)
+        end
+    end
+end
+
+local function enforceHiddenCharacter()
+    for index = #hiddenCharacterInstances, 1, -1 do
+        local descendant = hiddenCharacterInstances[index]
+        if not descendant.Parent then
+            hiddenCharacterTracked[descendant] = nil
+            table.remove(hiddenCharacterInstances, index)
+        elseif descendant:GetAttribute("SnowXOriginalTransparency") ~= nil then
+            if descendant.Transparency < 1 then descendant.Transparency = 1 end
+        else
+            local saved = hiddenCharacterEffectStates[descendant]
+            if saved and descendant.Enabled then descendant.Enabled = false end
+        end
+    end
+end
+
 local function fn28(arg, arg2)
     if arg2 then
         if hiddenCharacterModel ~= arg then
