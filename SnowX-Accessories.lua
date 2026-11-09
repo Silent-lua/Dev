@@ -3760,7 +3760,6 @@ local function buildUI()
         end
     end
     state.refreshFavoritesPage = function() refreshSidebar() end
-    state.refreshEquipped = function() refreshSidebar() end
 
     local function setSelectedItemAndRefresh(item)
         selectItem(item)
@@ -4303,6 +4302,7 @@ cleanup = function()
     disconnectBucket(state.connections)
     disconnectBucket(state.characterConnections)
     disconnectBucket(state.uiConnections)
+    disconnectBucket(state.equippedConnections)
     state.initializeReopenPosition = nil
     state.openPanel = nil
     if uiPanels.closeAccessoriesPanel == state.closePanelCallback then
