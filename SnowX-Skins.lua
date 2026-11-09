@@ -15,6 +15,7 @@ avatarBridge.skin = type(avatarBridge.skin) == "table" and avatarBridge.skin or 
 avatarBridge.accessory = type(avatarBridge.accessory) == "table" and avatarBridge.accessory or {}
 avatarBridge.uiPanels = type(avatarBridge.uiPanels) == "table" and avatarBridge.uiPanels or {}
 local uiPanels = avatarBridge.uiPanels
+uiPanels.activePanel = uiPanels.activePanel or "none"
 avatarBridge.skin.revision = tonumber(avatarBridge.skin.revision) or 0
 avatarBridge.accessory.revision = tonumber(avatarBridge.accessory.revision) or 0
 local skinBridgeToken = {}
@@ -2484,6 +2485,14 @@ local function fn47(visible)
 		end
 		centerGuiObject(Frame)
 	end
+
+	if visible then
+		if uiPanels.activePanel == "skins" then
+			uiPanels.activePanel = "none"
+		end
+	else
+		uiPanels.activePanel = "skins"
+	end
 end
 
 local function closeSkinsPanelForOtherModule()
@@ -3570,6 +3579,9 @@ TextButton6.Activated:Connect(function()
 	if uiPanels.closeSkinsPanel == closeSkinsPanelForOtherModule then
 		uiPanels.closeSkinsPanel = nil
 	end
+	if uiPanels.activePanel == "skins" then
+		uiPanels.activePanel = "none"
+	end
 	tbl20 = nil
 	panelDrag = nil
     disconnectCharacterLifecycleConnections()
@@ -3607,6 +3619,9 @@ local skinApi = {
         else
             screenGui.Enabled = false
         end
+        if enabled ~= true and uiPanels.activePanel == "skins" then
+            uiPanels.activePanel = "none"
+        end
         return true
     end,
 	open = function()
@@ -3626,6 +3641,9 @@ local skinApi = {
 		panelDrag = nil
 		if uiPanels.closeSkinsPanel == closeSkinsPanelForOtherModule then
 			uiPanels.closeSkinsPanel = nil
+		end
+		if uiPanels.activePanel == "skins" then
+			uiPanels.activePanel = "none"
 		end
 		disconnectCharacterLifecycleConnections()
 		fn59()
