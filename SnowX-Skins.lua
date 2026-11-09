@@ -3563,7 +3563,8 @@ TextButton2.Activated:Connect(function()
 end)
 
 TextButton6.Activated:Connect(function()
-	Frame5.Visible = false	if uiPanels.activePanel == "skins" then
+	Frame5.Visible = false
+	if uiPanels.activePanel == "skins" then
 		uiPanels.activePanel = "none"
 	end
 	tbl20 = nil
@@ -3622,7 +3623,8 @@ local skinApi = {
 	pararEmote = fn41,
 	destroy = function()
 		tbl20 = nil
-		panelDrag = nil		if uiPanels.activePanel == "skins" then
+		panelDrag = nil
+		if uiPanels.activePanel == "skins" then
 			uiPanels.activePanel = "none"
 		end
 		disconnectCharacterLifecycleConnections()
