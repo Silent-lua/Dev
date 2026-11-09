@@ -1367,15 +1367,26 @@ local function fn29()
 end
 
 local function fn30(arg, arg2)
-	local y = arg2.Position.Y
+	local lowestY = 0
 
-	for _, child in ipairs(arg:GetChildren()) do
-		if child:IsA("BasePart") and child ~= arg2 then
-			y = math.min(y, child.Position.Y - child.Size.Y / 2)
+	for _, descendant in ipairs(arg:GetDescendants()) do
+		if descendant:IsA("BasePart") and descendant ~= arg2
+			and not descendant:FindFirstAncestorOfClass("Accessory")
+			and not descendant:FindFirstAncestorOfClass("Tool") then
+			local relative = arg2.CFrame:ToObjectSpace(descendant.CFrame)
+			local half = descendant.Size * 0.5
+			local verticalExtent =
+				math.abs(relative.RightVector.Y) * half.X
+				+ math.abs(relative.UpVector.Y) * half.Y
+				+ math.abs(relative.LookVector.Y) * half.Z
+			local bottom = relative.Position.Y - verticalExtent
+			if bottom < lowestY then
+				lowestY = bottom
+			end
 		end
 	end
 
-	return arg2.Position.Y - y
+	return -lowestY
 end
 
 local function fn31(arg, arg2, arg3, arg4)
@@ -1409,7 +1420,7 @@ local function fn32(char, modelo)
 	end
 	local humanoid = modelo:FindFirstChildOfClass("Humanoid")
 	char:FindFirstChildOfClass("Humanoid")
-	local cframe = CFrame.new(0, (humanoid and humanoid.HipHeight > 0 and humanoid.HipHeight + humanoidRootPart2.Size.Y / 2 or fn30(modelo, humanoidRootPart2)) - fn30(char, humanoidRootPart), 0)
+	local cframe = CFrame.new(0, fn30(modelo, humanoidRootPart2) - fn30(char, humanoidRootPart), 0)
 
 	local function fn33(arg)
 		local insideAccessory = arg:FindFirstAncestorOfClass("Accessory") ~= nil
@@ -1419,6 +1430,10 @@ local function fn32(char, modelo)
 		arg.CanTouch = false
 		arg.CanQuery = false
 		arg.Massless = true
+		pcall(function()
+			arg.AssemblyLinearVelocity = Vector3.zero
+			arg.AssemblyAngularVelocity = Vector3.zero
+		end)
 	end
 
 	for _, descendant in ipairs(modelo:GetDescendants()) do
@@ -1455,12 +1470,12 @@ local function fn32(char, modelo)
 
 	local function fn34(arg)
 
-		if arg:FindFirstAncestorOfClass("Accessory") then
+		if arg:FindFirstAncestorOfClass("Accessory") or arg:FindFirstAncestorOfClass("Tool") then
 			return
 		end
 
 		if arg:IsA("BallSocketConstraint") then
-			arg.Enabled = false
+			pcall(function() arg.Enabled = false end)
 		elseif arg:IsA("AnimationConstraint") or arg:IsA("Motor6D") then
 			pcall(function()
 				arg.IsKinematic = true
@@ -1471,6 +1486,14 @@ local function fn32(char, modelo)
 			if v4 then
 				table.insert(cadena, { src = v4, tgt = arg })
 			end
+		elseif arg:IsA("AlignPosition") or arg:IsA("AlignOrientation")
+			or arg:IsA("LinearVelocity") or arg:IsA("AngularVelocity")
+			or arg:IsA("VectorForce") or arg:IsA("Torque")
+			or arg:IsA("RopeConstraint") or arg:IsA("SpringConstraint")
+			or arg:IsA("RodConstraint") or arg:IsA("HingeConstraint")
+			or arg:IsA("PrismaticConstraint") or arg:IsA("CylindricalConstraint")
+			or arg:IsA("PlaneConstraint") then
+			pcall(function() arg.Enabled = false end)
 		end
 	end
 
