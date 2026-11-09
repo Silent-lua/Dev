@@ -735,12 +735,7 @@ local function getFootDepth(model, rootPart)
             and not descendant:FindFirstAncestorOfClass("Accessory")
             and not descendant:FindFirstAncestorOfClass("Tool") then
             local relative = rootPart.CFrame:ToObjectSpace(descendant.CFrame)
-            local half = descendant.Size * 0.5
-            local verticalExtent =
-                math.abs(relative.RightVector.Y) * half.X
-                + math.abs(relative.UpVector.Y) * half.Y
-                + math.abs(relative.LookVector.Y) * half.Z
-            local bottom = relative.Position.Y - verticalExtent
+            local bottom = relative.Position.Y - descendant.Size.Y * 0.5
             if bottom < lowestY then lowestY = bottom end
         end
     end

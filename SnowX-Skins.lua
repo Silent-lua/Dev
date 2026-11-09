@@ -1367,85 +1367,15 @@ local function fn29()
 end
 
 local function fn30(arg, arg2)
-    if not (arg and arg2 and arg2:IsA("BasePart")) then
-        return 0
-    end
+	local y = arg2.Position.Y
 
-    local relativeFrames = {[arg2] = CFrame.identity}
-    local joints = {}
+	for _, child in ipairs(arg:GetChildren()) do
+		if child:IsA("BasePart") and child ~= arg2 then
+			y = math.min(y, child.Position.Y - child.Size.Y / 2)
+		end
+	end
 
-    for _, descendant in ipairs(arg:GetDescendants()) do
-        if descendant:IsA("Motor6D")
-            and not descendant:FindFirstAncestorOfClass("Accessory")
-            and not descendant:FindFirstAncestorOfClass("Tool") then
-            table.insert(joints, descendant)
-        end
-    end
-
-    local changed = true
-    local passes = 0
-    while changed and passes < #joints do
-        changed = false
-        passes += 1
-
-        for _, joint in ipairs(joints) do
-            local part0 = joint.Part0
-            local part1 = joint.Part1
-            if part0 and part1 then
-                if relativeFrames[part0] and not relativeFrames[part1] then
-                    relativeFrames[part1] = relativeFrames[part0] * joint.C0 * joint.C1:Inverse()
-                    changed = true
-                elseif relativeFrames[part1] and not relativeFrames[part0] then
-                    relativeFrames[part0] = relativeFrames[part1] * joint.C1 * joint.C0:Inverse()
-                    changed = true
-                end
-            end
-        end
-    end
-
-    local lowestY = 0
-    local resolvedParts = 0
-    for _, descendant in ipairs(arg:GetDescendants()) do
-        local relative = relativeFrames[descendant]
-        if descendant:IsA("BasePart") and descendant ~= arg2 and relative
-            and not descendant:FindFirstAncestorOfClass("Accessory")
-            and not descendant:FindFirstAncestorOfClass("Tool") then
-            resolvedParts += 1
-            local half = descendant.Size * 0.5
-            local verticalExtent =
-                math.abs(relative.RightVector.Y) * half.X
-                + math.abs(relative.UpVector.Y) * half.Y
-                + math.abs(relative.LookVector.Y) * half.Z
-            local bottom = relative.Position.Y - verticalExtent
-            if bottom < lowestY then
-                lowestY = bottom
-            end
-        end
-    end
-
-    if resolvedParts >= 3 then
-        return -lowestY
-    end
-
-    lowestY = 0
-    for _, descendant in ipairs(arg:GetDescendants()) do
-        if descendant:IsA("BasePart") and descendant ~= arg2
-            and not descendant:FindFirstAncestorOfClass("Accessory")
-            and not descendant:FindFirstAncestorOfClass("Tool") then
-            local relative = arg2.CFrame:ToObjectSpace(descendant.CFrame)
-            local half = descendant.Size * 0.5
-            local verticalExtent =
-                math.abs(relative.RightVector.Y) * half.X
-                + math.abs(relative.UpVector.Y) * half.Y
-                + math.abs(relative.LookVector.Y) * half.Z
-            local bottom = relative.Position.Y - verticalExtent
-            if bottom < lowestY then
-                lowestY = bottom
-            end
-        end
-    end
-
-    return -lowestY
+	return arg2.Position.Y - y
 end
 
 local function fn31(arg, arg2, arg3, arg4)
@@ -1469,46 +1399,6 @@ local function fn31(arg, arg2, arg3, arg4)
 	end
 end
 
-local function isSkinForceController(instance)
-    return instance:IsA("BallSocketConstraint")
-        or instance:IsA("AlignPosition")
-        or instance:IsA("AlignOrientation")
-        or instance:IsA("LinearVelocity")
-        or instance:IsA("AngularVelocity")
-        or instance:IsA("VectorForce")
-        or instance:IsA("Torque")
-        or instance:IsA("LineForce")
-        or instance:IsA("RopeConstraint")
-        or instance:IsA("SpringConstraint")
-        or instance:IsA("RodConstraint")
-        or instance:IsA("HingeConstraint")
-        or instance:IsA("PrismaticConstraint")
-        or instance:IsA("CylindricalConstraint")
-        or instance:IsA("PlaneConstraint")
-        or instance:IsA("TorsionSpringConstraint")
-        or instance:IsA("BodyVelocity")
-        or instance:IsA("BodyPosition")
-        or instance:IsA("BodyGyro")
-        or instance:IsA("BodyAngularVelocity")
-        or instance:IsA("BodyForce")
-        or instance:IsA("BodyThrust")
-        or instance:IsA("RocketPropulsion")
-end
-
-local function disableSkinForceController(instance)
-    if instance:IsA("BodyVelocity")
-        or instance:IsA("BodyPosition")
-        or instance:IsA("BodyGyro")
-        or instance:IsA("BodyAngularVelocity")
-        or instance:IsA("BodyForce")
-        or instance:IsA("BodyThrust")
-        or instance:IsA("RocketPropulsion") then
-        pcall(function() instance:Destroy() end)
-    else
-        pcall(function() instance.Enabled = false end)
-    end
-end
-
 local function fn32(char, modelo)
 	local humanoidRootPart = char:FindFirstChild("HumanoidRootPart")
 	local humanoidRootPart2 = modelo:FindFirstChild("HumanoidRootPart")
@@ -1519,7 +1409,7 @@ local function fn32(char, modelo)
 	end
 	local humanoid = modelo:FindFirstChildOfClass("Humanoid")
 	char:FindFirstChildOfClass("Humanoid")
-	local cframe = CFrame.new(0, fn30(modelo, humanoidRootPart2) - fn30(char, humanoidRootPart), 0)
+	local cframe = CFrame.new(0, (humanoid and humanoid.HipHeight > 0 and humanoid.HipHeight + humanoidRootPart2.Size.Y / 2 or fn30(modelo, humanoidRootPart2)) - fn30(char, humanoidRootPart), 0)
 
 	local function fn33(arg)
 		local insideAccessory = arg:FindFirstAncestorOfClass("Accessory") ~= nil
@@ -1529,10 +1419,6 @@ local function fn32(char, modelo)
 		arg.CanTouch = false
 		arg.CanQuery = false
 		arg.Massless = true
-		pcall(function()
-			arg.AssemblyLinearVelocity = Vector3.zero
-			arg.AssemblyAngularVelocity = Vector3.zero
-		end)
 	end
 
 	for _, descendant in ipairs(modelo:GetDescendants()) do
@@ -1568,20 +1454,14 @@ local function fn32(char, modelo)
 	local cadena = {}
 
 	local function fn34(arg)
-		if arg:FindFirstAncestorOfClass("Tool") then
-			return
-		end
-
-		if isSkinForceController(arg) then
-			disableSkinForceController(arg)
-			return
-		end
 
 		if arg:FindFirstAncestorOfClass("Accessory") then
 			return
 		end
 
-		if arg:IsA("AnimationConstraint") or arg:IsA("Motor6D") then
+		if arg:IsA("BallSocketConstraint") then
+			arg.Enabled = false
+		elseif arg:IsA("AnimationConstraint") or arg:IsA("Motor6D") then
 			pcall(function()
 				arg.IsKinematic = true
 			end)
@@ -1686,8 +1566,6 @@ local function fn33(char, modelo)
 			descendant.CanTouch = false
 			descendant.CanQuery = false
 			descendant.Massless = true
-		elseif isSkinForceController(descendant) then
-			disableSkinForceController(descendant)
 		elseif (descendant:IsA("JointInstance") or descendant:IsA("Constraint"))
 			and not descendant:FindFirstAncestorOfClass("Accessory")
 			and not descendant:FindFirstAncestorOfClass("Tool") then
@@ -1727,9 +1605,7 @@ local function fn33(char, modelo)
 
 	if tbl17.connDescendant then tbl17.connDescendant:Disconnect() end
 	tbl17.connDescendant = modelo.DescendantAdded:Connect(function(descendant)
-		if isSkinForceController(descendant) then
-			disableSkinForceController(descendant)
-		elseif (descendant:IsA("Constraint") or descendant:IsA("JointInstance"))
+		if (descendant:IsA("Constraint") or descendant:IsA("JointInstance"))
 			and not descendant:FindFirstAncestorOfClass("Accessory")
 			and not descendant:FindFirstAncestorOfClass("Tool") then
 			task.defer(function()
