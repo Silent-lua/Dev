@@ -3959,7 +3959,8 @@ local function buildUI()
         end
     end
 
-    local function showWindow()        main.Visible = true
+    local function showWindow()
+        main.Visible = true
         minimizedButton.Visible = false
         updateScale()
         centerGuiObject(main)
@@ -4293,7 +4294,8 @@ cleanup = function()
     disconnectBucket(state.uiConnections)
     disconnectBucket(state.equippedConnections)
     state.initializeReopenPosition = nil
-    state.openPanel = nil    disconnectBucket(state.resultConnections)
+    state.openPanel = nil
+    disconnectBucket(state.resultConnections)
     if uiPanels.activePanel == "accessories" then
         uiPanels.activePanel = "none"
     end
