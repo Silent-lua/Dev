@@ -1425,6 +1425,7 @@ local function fn32(char, modelo)
 	local humanoid = modelo:FindFirstChildOfClass("Humanoid")
 	char:FindFirstChildOfClass("Humanoid")
 	local cframe = CFrame.new(0, (humanoid and humanoid.HipHeight > 0 and humanoid.HipHeight + humanoidRootPart2.Size.Y / 2 or fn30(modelo, humanoidRootPart2)) - fn30(char, humanoidRootPart), 0)
+	local tbl18 = {}
 
 	local function fn33(arg)
 		local insideAccessory = arg:FindFirstAncestorOfClass("Accessory") ~= nil
@@ -1434,6 +1435,7 @@ local function fn32(char, modelo)
 		arg.CanTouch = false
 		arg.CanQuery = false
 		arg.Massless = true
+		table.insert(tbl18, arg)
 	end
 
 	for _, descendant in ipairs(modelo:GetDescendants()) do
@@ -1522,6 +1524,19 @@ local function fn32(char, modelo)
 		end
 	end
 
+	tbl17.connFisica = RunService.Stepped:Connect(function()
+		if tbl17.modelo ~= modelo then
+			return
+		end
+		for _, part in ipairs(tbl18) do
+			if part.Parent then
+				if part.CanCollide then part.CanCollide = false end
+				if part.CanTouch then part.CanTouch = false end
+			end
+		end
+		fn35()
+	end)
+
 	local n3 = 0
     local cameraAccumulator = 0
 
@@ -1579,6 +1594,7 @@ local function fn33(char, modelo)
 	end
 
 	local cframe = CFrame.new(0, n3 - fn30(char, humanoidRootPart), 0)
+	local tbl18 = {}
 
 	for _, descendant in ipairs(modelo:GetDescendants()) do
 		if descendant:IsA("BaseScript") then
@@ -1589,6 +1605,7 @@ local function fn33(char, modelo)
 			descendant.CanTouch = false
 			descendant.CanQuery = false
 			descendant.Massless = true
+			table.insert(tbl18, descendant)
 		elseif (descendant:IsA("JointInstance") or descendant:IsA("Constraint"))
 			and not descendant:FindFirstAncestorOfClass("Accessory")
 			and not descendant:FindFirstAncestorOfClass("Tool") then
@@ -1644,6 +1661,7 @@ local function fn33(char, modelo)
 			descendant.CanTouch = false
 			descendant.CanQuery = false
 			descendant.Massless = true
+			table.insert(tbl18, descendant)
 		end
 	end)
 
@@ -1655,6 +1673,16 @@ local function fn33(char, modelo)
 	fn28(char, true)
 	local updateCameraTransparency, cameraDescendantConnection = createNativeCameraTransparencyUpdater(char, modelo)
 	tbl17.connCamera = cameraDescendantConnection
+
+	tbl17.connFisica = RunService.Stepped:Connect(function()
+		if tbl17.modelo ~= modelo then return end
+		for _, part in ipairs(tbl18) do
+			if part.Parent then
+				if part.CanCollide then part.CanCollide = false end
+				if part.CanTouch then part.CanTouch = false end
+			end
+		end
+	end)
 
 	local n4 = 0
     local cameraAccumulator = 0
