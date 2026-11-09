@@ -1962,71 +1962,69 @@ Tabs.Visual:CreateToggle({
     Callback = function(Value) espLinesEnabled = Value end
 })
 
-local function getSnowXEnvironment()
-    if typeof(getgenv) == "function" then
+local function getEnvironment()
+    if type(getgenv) == "function" then
         local ok, env = pcall(getgenv)
-        if ok and typeof(env) == "table" then
+        if ok and type(env) == "table" then
             return env
         end
     end
     return _G
 end
 
--- SnowX modules are hosted in the public Dev repository and loaded automatically.
-local SNOWX_MODULE_BASE = "https://raw.githubusercontent.com/Silent-lua/Dev/main/"
+local environment = getEnvironment()
+local moduleBaseUrl = "https://raw.githubusercontent.com/Silent-lua/Dev/main/"
+local avatarBridge = {
+    version = 2,
+    skin = { revision = 0 },
+    accessory = { revision = 0 },
+}
 
-local function loadSnowXModule(fileName, apiName)
-    local moduleUrl = SNOWX_MODULE_BASE .. fileName
-    local env = getSnowXEnvironment()
-    local ok, result = pcall(function()
-        local source = game:HttpGet(moduleUrl)
+local function loadModule(fileName)
+    local ok, api = pcall(function()
+        local source = game:HttpGet(moduleBaseUrl .. fileName)
         if type(source) ~= "string" or source == "" then
             error("GitHub devolvió un módulo vacío.")
         end
 
-        if type(loadstring) ~= "function" then
+        local compiler = environment.loadstring or loadstring
+        if type(compiler) ~= "function" then
             error("Este executor no tiene loadstring habilitado.")
         end
 
-        local chunk, compileError = loadstring(source)
+        local chunk, compileError = compiler(source)
         if type(chunk) ~= "function" then
             error(compileError or "No se pudo compilar el módulo.")
         end
 
-        return chunk()
+        local result = chunk(avatarBridge)
+        if type(result) ~= "table" then
+            error("El módulo no devolvió su API local.")
+        end
+        return result
     end)
 
-    local api = env and env[apiName]
-    if type(api) ~= "table" and type(result) == "table" then
-        api = result
-        if env then env[apiName] = api end
-    end
-
-    if not ok or type(api) ~= "table" then
-        local reason = not ok and tostring(result) or ("No se registró " .. apiName .. ".")
-        warn("[SnowX] Error cargando " .. fileName .. ": " .. reason)
+    if not ok then
+        warn("[SnowX] Error cargando " .. fileName .. ": " .. tostring(api))
         Window:Notify({
             Title = "SnowX",
             Text = "No se pudo cargar " .. fileName .. ". Revisa tu conexión o executor.",
-            Duration = 5
+            Duration = 5,
         })
-        return false
+        return nil
     end
 
-    return true
+    return api
 end
 
-loadSnowXModule("SnowX-Accessories.lua", "SnowXAccessory")
-loadSnowXModule("SnowX-Skins.lua", "SnowXSkins")
+local accessoryApi = loadModule("SnowX-Accessories.lua")
+local skinApi = loadModule("SnowX-Skins.lua")
 
-local function getSnowXAccessoryApi()
-    local env = getSnowXEnvironment()
-    local api = env and env.SnowXAccessory
-    return typeof(api) == "table" and api or nil
+local function getAccessoryApi()
+    return type(accessoryApi) == "table" and accessoryApi or nil
 end
-
 local function openSnowXAccessory()
-    local api = getSnowXAccessoryApi()
+    local api = getAccessoryApi()
     if not api then
         Window:Notify({Title = "SnowX", Text = "Ejecuta SnowX-Accessories.lua para cargar el sistema de accesorios.", Duration = 4})
         return false
@@ -2042,7 +2040,7 @@ local function openSnowXAccessory()
 end
 
 local function applySnowXAsset(assetId, successText)
-    local api = getSnowXAccessoryApi()
+    local api = getAccessoryApi()
     if not api or type(api.ApplyAsset) ~= "function" then
         Window:Notify({Title = "Avatar", Text = "Ejecuta SnowX-Accessories.lua primero.", Duration = 4})
         return false
@@ -2057,7 +2055,7 @@ local function applySnowXAsset(assetId, successText)
 end
 
 local function applyHeadless()
-    local api = getSnowXAccessoryApi()
+    local api = getAccessoryApi()
     if not api or type(api.ToggleBodyPart) ~= "function" then
         Window:Notify({Title = "Avatar", Text = "Ejecuta SnowX-Accessories.lua primero.", Duration = 4})
         return
@@ -2067,7 +2065,7 @@ local function applyHeadless()
 end
 
 local function applyKorblox()
-    local api = getSnowXAccessoryApi()
+    local api = getAccessoryApi()
     if not api or type(api.ToggleBodyPart) ~= "function" then
         Window:Notify({Title = "Avatar", Text = "Ejecuta SnowX-Accessories.lua primero.", Duration = 4})
         return
@@ -2945,14 +2943,12 @@ TabTools:CreateButton({
 
 TabTools:CreateSection("Avatar")
 
-local function getSnowXSkinApi()
-    local env = getSnowXEnvironment()
-    local api = env and env.SnowXSkins
-    return typeof(api) == "table" and api or nil
+local function getSkinApi()
+    return type(skinApi) == "table" and skinApi or nil
 end
 
 local function openAvatar()
-    local api = getSnowXSkinApi()
+    local api = getSkinApi()
     if not api then
         Window:Notify({Title = "SnowX", Text = "Ejecuta SnowX-Skins.lua para cargar el sistema de skins.", Duration = 4})
         return false
@@ -2974,7 +2970,7 @@ local function openAvatar()
 end
 
 local function closeAvatar()
-    local api = getSnowXSkinApi()
+    local api = getSkinApi()
     if api and api.gui then
         pcall(function() api.gui.Enabled = false end)
     end
