@@ -1487,7 +1487,7 @@ Tabs.Combat:CreateSlider({
     Callback = function(v) hitboxSize = v end
 })
 
-local espColor = Color3.fromRGB(255, 255, 255)
+local espColor = Color3.fromRGB(255, 0, 0)
 local espPlayers = {}
 local espPlayerIndex = {}
 
@@ -1615,7 +1615,7 @@ local function EnsureBoxDrawings(data)
 
     data.outerBox = Drawing.new("Square")
     data.outerBox.Visible = false
-    data.outerBox.Color = Color3.fromRGB(12, 12, 12)
+    data.outerBox.Color = Color3.fromRGB(0, 0, 0)
     data.outerBox.Thickness = 2
     data.outerBox.Filled = false
     data.outerBox.Transparency = 0.85
@@ -1634,12 +1634,30 @@ local function EnsureSkeletonDrawings(data)
 end
 
 local function EnsureArrowDrawings(data)
-    if #data.arrowLines > 0 then return end
+    if data.arrow or #data.arrowLines > 0 then return end
+
+    local triangleOk, triangle = pcall(function()
+        return Drawing.new("Triangle")
+    end)
+    if triangleOk and triangle then
+        local configured = pcall(function()
+            triangle.Visible = false
+            triangle.Color = espColor
+            triangle.Filled = true
+            triangle.Transparency = 1
+        end)
+        if configured then
+            data.arrow = triangle
+            return
+        end
+        pcall(function() triangle:Remove() end)
+    end
+
     for i = 1, 3 do
         local line = Drawing.new("Line")
         line.Visible = false
         line.Color = espColor
-        line.Thickness = 2
+        line.Thickness = 1.5
         line.Transparency = 1
         table.insert(data.arrowLines, line)
     end
@@ -1654,6 +1672,9 @@ local function RemovePlayerESP2(player)
     end
     if data.outerBox then
         pcall(function() data.outerBox:Remove() end)
+    end
+    if data.arrow then
+        pcall(function() data.arrow:Remove() end)
     end
     for _, line in ipairs(data.lines) do
         pcall(function() line:Remove() end)
@@ -1792,6 +1813,9 @@ local function GetBoxFromCharacter(bodyParts, anchor, cam)
 end
 
 local function HideOffscreenArrow(data)
+    if data.arrow and data.arrow.Visible then
+        data.arrow.Visible = false
+    end
     for _, line in ipairs(data.arrowLines) do
         if line.Visible then line.Visible = false end
     end
@@ -1812,12 +1836,29 @@ local function UpdateOffscreenArrow(data, screenPoint, viewport)
     direction = direction.Unit
     local radius = math.min(viewport.X, viewport.Y) / 2 - 40
     local position = center + direction * radius
-    local tip = position + direction * 9
-    local baseCenter = position - direction * 7
-    local perpendicular = Vector2.new(-direction.Y, direction.X) * 6
+    local tip = position + direction * 7
+    local baseCenter = position - direction * 5
+    local perpendicular = Vector2.new(-direction.Y, direction.X) * 4.5
     local pointLeft = baseCenter + perpendicular
     local pointRight = baseCenter - perpendicular
+
+    if data.arrow then
+        data.arrow.PointA = tip
+        data.arrow.PointB = pointLeft
+        data.arrow.PointC = pointRight
+        data.arrow.Color = espColor
+        data.arrow.Visible = true
+        for _, line in ipairs(data.arrowLines) do
+            line.Visible = false
+        end
+        return
+    end
+
     local lines = data.arrowLines
+    if #lines < 3 then
+        HideOffscreenArrow(data)
+        return
+    end
 
     lines[1].From = tip
     lines[1].To = pointLeft
@@ -1996,6 +2037,37 @@ local cachedViewportX2, cachedViewportY2 = -1, -1
 local centroVector2 = Vector2.new(0, 0)
 local tracerOrigin2 = Vector2.new(0, 0)
 local espLinesEnabled = false
+
+local function setESPColor(color)
+    if typeof(color) ~= "Color3" then return end
+    espColor = color
+
+    for _, data in pairs(espData2) do
+        if data.box then data.box.Color = espColor end
+        if data.outerBox then data.outerBox.Color = Color3.fromRGB(0, 0, 0) end
+        if data.arrow then data.arrow.Color = espColor end
+        for _, line in ipairs(data.lines) do
+            line.Color = espColor
+        end
+        for _, line in ipairs(data.arrowLines) do
+            line.Color = espColor
+        end
+    end
+
+    for _, line in pairs(tracerLines2) do
+        pcall(function() line.Color = espColor end)
+    end
+end
+
+Tabs.Visual:CreateSection("ESP Color")
+
+Tabs.Visual:CreateColorPicker({
+    Name = "Color del ESP",
+    Color = Color3.fromRGB(255, 0, 0),
+    Callback = function(value)
+        setESPColor(value)
+    end
+})
 
 local function hideTracersOnce2()
     if tracersLimpios2 then return end
