@@ -201,8 +201,6 @@ local state = {
     favoriteButtons = {},
     favoriteRows = {},
     favoriteConnections = {},
-    equippedRows = {},
-    equippedConnections = {},
     inventoryCache = { key = nil, items = {}, byId = {}, revision = 0 },
     actionButtons = {},
     refreshFavoriteButtons = nil,
@@ -2307,7 +2305,6 @@ local function buildUI()
     disconnectBucket(state.uiConnections)
     disconnectBucket(state.resultConnections)
     disconnectBucket(state.favoriteConnections)
-    disconnectBucket(state.equippedConnections)
     state.tabButtons = {}
     state.pages = {}
     state.actionButtons = {}
@@ -2317,8 +2314,6 @@ local function buildUI()
     state.searchButtons = {}
     state.resultRows = {}
     state.favoriteRows = {}
-    state.equippedRows = {}
-    state.showEquippedCompact = false
 
     local guiRoot = nil
     if type(gethui) == "function" then
@@ -2408,27 +2403,55 @@ local function buildUI()
     local uiScale = create("UIScale", {}, main)
     local isTouchOnly = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
-    local function clampMainCenter(position)
+    local function getViewportSize()
         local camera = Workspace.CurrentCamera
-        local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
-        local halfSize = Vector2.new(main.AbsoluteSize.X * 0.5 + 2, main.AbsoluteSize.Y * 0.5 + 2)
-        local minX, minY = halfSize.X, halfSize.Y
+        return camera and camera.ViewportSize or Vector2.new(1280, 720)
+    end
+
+    local function getGuiCenter(guiObject)
+        local viewport = getViewportSize()
+        local position = guiObject.Position
+        local anchorPoint = guiObject.AnchorPoint
+        local size = guiObject.AbsoluteSize
+        local anchorPosition = Vector2.new(
+            position.X.Scale * viewport.X + position.X.Offset,
+            position.Y.Scale * viewport.Y + position.Y.Offset
+        )
+        return anchorPosition + Vector2.new(
+            (0.5 - anchorPoint.X) * size.X,
+            (0.5 - anchorPoint.Y) * size.Y
+        )
+    end
+
+    local function setGuiCenter(guiObject, position)
+        local viewport = getViewportSize()
+        local halfSize = Vector2.new(
+            guiObject.AbsoluteSize.X * 0.5 + 2,
+            guiObject.AbsoluteSize.Y * 0.5 + 2
+        )
         local maxX, maxY = viewport.X - halfSize.X, viewport.Y - halfSize.Y
-        if maxX < minX or maxY < minY then
-            return Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
+        local target
+        if maxX < halfSize.X or maxY < halfSize.Y then
+            target = Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
+        else
+            target = Vector2.new(
+                math.clamp(position.X, halfSize.X, maxX),
+                math.clamp(position.Y, halfSize.Y, maxY)
+            )
         end
-        return Vector2.new(math.clamp(position.X, minX, maxX), math.clamp(position.Y, minY, maxY))
+
+        local anchorPoint = guiObject.AnchorPoint
+        local size = guiObject.AbsoluteSize
+        local anchorPosition = target - Vector2.new(
+            (0.5 - anchorPoint.X) * size.X,
+            (0.5 - anchorPoint.Y) * size.Y
+        )
+        guiObject.Position = UDim2.fromOffset(anchorPosition.X, anchorPosition.Y)
     end
 
     local function keepMainInsideViewport()
         if not main.Parent then return end
-        local absolute = main.AbsolutePosition
-        local center = Vector2.new(
-            absolute.X + main.AbsoluteSize.X * 0.5,
-            absolute.Y + main.AbsoluteSize.Y * 0.5
-        )
-        local target = clampMainCenter(center)
-        main.Position = UDim2.fromOffset(target.X, target.Y)
+        setGuiCenter(main, getGuiCenter(main))
     end
 
     local function updateScale()
@@ -3377,20 +3400,11 @@ local function buildUI()
 
     local refreshSidebar
     local setCurrentSelectionActive
-    local removeSelectedEquippedButton = nil
-
-    local function isItemCurrentlyEquipped(item)
-        if not item or item.kind ~= "accessory" then return false end
-        return isAccessoryDesired(item.id, getActiveAppearanceBaseDescription())
-    end
-
     local function cleanSidebarRows()
         disconnectBucket(state.favoriteConnections)
-        disconnectBucket(state.equippedConnections)
         for _, row in ipairs(currentSideRows) do pcall(function() row:Destroy() end) end
         table.clear(currentSideRows)
         table.clear(state.favoriteRows)
-        table.clear(state.equippedRows)
     end
 
     local function addSidebarSection(text)
@@ -3406,11 +3420,7 @@ local function buildUI()
         }, sideList)
         label:SetAttribute("SnowXSidebarAnchor", "SECTION:" .. string.lower(text))
         table.insert(currentSideRows, label)
-        if text == "Equipados" then
-            table.insert(state.equippedRows, label)
-        else
-            table.insert(state.favoriteRows, label)
-        end
+        table.insert(state.favoriteRows, label)
     end
 
     local function sidebarItemKey(item)
@@ -3426,8 +3436,6 @@ local function buildUI()
             subtitle = "★ GUARDADO  ·  ID " .. tostring(item.id)
         elseif sourceLabel == "RESULTADO" then
             subtitle = (item.kind == "body" and "PARTE CORPORAL" or "ACCESORIO") .. "  ·  ID " .. tostring(item.id)
-        elseif sourceLabel == "EQUIPADO" then
-            subtitle = tostring(item.source or "EQUIPADO") .. "  ·  ID " .. tostring(item.id)
         elseif item.kind == "body" then
             subtitle = "RECOMENDADO  ·  PARTE CORPORAL"
         else
@@ -3467,19 +3475,14 @@ local function buildUI()
         }, row)
         local anchorKey = "ROW:" .. tostring(sourceLabel) .. ":" .. tostring(sidebarItemKey(item))
         row:SetAttribute("SnowXSidebarAnchor", anchorKey)
-        local connectionBucket = sourceLabel == "EQUIPADO" and state.equippedConnections or state.favoriteConnections
-        addConnection(connectionBucket, row.Activated:Connect(function()
+        addConnection(state.favoriteConnections, row.Activated:Connect(function()
             sideCategory = item.kind == "body" and "body" or "accessory"
             if item.source == "RESULTADO" then sideMode = "results" end
             selectItem(item)
             refreshSidebar()
         end))
         table.insert(currentSideRows, row)
-        if sourceLabel == "EQUIPADO" then
-            table.insert(state.equippedRows, row)
-        else
-            table.insert(state.favoriteRows, row)
-        end
+        table.insert(state.favoriteRows, row)
         return row
     end
 
@@ -3591,69 +3594,6 @@ local function buildUI()
             table.insert(state.favoriteRows, noRecommendations)
         end
 
-        removeSelectedEquippedButton = nil
-        if sideCategory == "accessory" then
-            local selectedIsEquipped = isItemCurrentlyEquipped(selectedItem)
-            local removeButton = create("TextButton", {
-                Name = "RemoveSelectedEquipped",
-                Size = UDim2.new(1, -6, 0, 34),
-                BackgroundColor3 = selectedIsEquipped and COLORS.DangerFill or COLORS.Surface,
-                BorderSizePixel = 0,
-                AutoButtonColor = selectedIsEquipped and not state.busy,
-                Font = Enum.Font.GothamBold,
-                Text = "RETIRAR SELECCIONADO",
-                TextSize = 9,
-                TextColor3 = selectedIsEquipped and Color3.new(1, 1, 1) or COLORS.Muted,
-                TextTransparency = selectedIsEquipped and 0 or 0.25,
-                Active = selectedIsEquipped and not state.busy,
-                Selectable = selectedIsEquipped and not state.busy,
-                LayoutOrder = #currentSideRows + 1,
-            }, sideList)
-            round(removeButton, 7)
-            removeButton:SetAttribute("SnowXSidebarAnchor", "ACTION:REMOVE_SELECTED")
-            addConnection(state.equippedConnections, removeButton.Activated:Connect(function()
-                local item = selectedItem
-                if state.busy or not isItemCurrentlyEquipped(item) then return end
-                runAction(function()
-                    return setCurrentSelectionActive(item, false)
-                end, "Retirado")
-            end))
-            removeSelectedEquippedButton = removeButton
-            table.insert(currentSideRows, removeButton)
-            table.insert(state.equippedRows, removeButton)
-
-            addSidebarSection("Equipados")
-            local equippedItems = {}
-            for _, item in ipairs(collectCurrentItems(false)) do
-                if item.kind == "accessory" then
-                    local key = sidebarItemKey(item)
-                    if key then
-                        table.insert(equippedItems, item)
-                    end
-                end
-            end
-            if #equippedItems > 0 then
-                for _, item in ipairs(equippedItems) do
-                    makeSidebarRow(item, "EQUIPADO")
-                end
-            else
-                local emptyEquipped = create("TextLabel", {
-                    Size = UDim2.new(1, -8, 0, 28),
-                    BackgroundTransparency = 1,
-                    Font = Enum.Font.Gotham,
-                    Text = "No hay accesorios equipados",
-                    TextColor3 = COLORS.Muted,
-                    TextSize = 9,
-                    TextWrapped = true,
-                    TextXAlignment = Enum.TextXAlignment.Left,
-                    LayoutOrder = #currentSideRows + 1,
-                }, sideList)
-                emptyEquipped:SetAttribute("SnowXSidebarAnchor", "EMPTY:EQUIPPED")
-                table.insert(currentSideRows, emptyEquipped)
-                table.insert(state.equippedRows, emptyEquipped)
-            end
-        end
-
         if sideMode == "results" then
             addSidebarSection("Resultados")
             local resultCount = 0
@@ -3702,15 +3642,6 @@ local function buildUI()
             end
             local maxY = math.max(0, sideList.AbsoluteCanvasSize.Y - sideList.AbsoluteSize.Y)
             sideList.CanvasPosition = Vector2.new(0, math.clamp(targetCanvasY, 0, maxY))
-            if removeSelectedEquippedButton and removeSelectedEquippedButton.Parent then
-                local active = isItemCurrentlyEquipped(selectedItem)
-                removeSelectedEquippedButton.Active = active and not state.busy
-                removeSelectedEquippedButton.Selectable = active and not state.busy
-                removeSelectedEquippedButton.AutoButtonColor = active and not state.busy
-                removeSelectedEquippedButton.BackgroundColor3 = active and COLORS.DangerFill or COLORS.Surface
-                removeSelectedEquippedButton.TextColor3 = active and Color3.new(1, 1, 1) or COLORS.Muted
-                removeSelectedEquippedButton.TextTransparency = active and 0 or 0.25
-            end
         end)
     end
 
@@ -3927,37 +3858,17 @@ local function buildUI()
 
     local floatingPositionInitialized = false
 
-    local function clampReopenPosition(position)
-        local camera = Workspace.CurrentCamera
-        local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
-        local halfSize = Vector2.new(
-            minimizedButton.AbsoluteSize.X * 0.5 + 1,
-            minimizedButton.AbsoluteSize.Y * 0.5 + 1
-        )
-        local maxX, maxY = viewport.X - halfSize.X, viewport.Y - halfSize.Y
-        if maxX < halfSize.X or maxY < halfSize.Y then
-            return Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
-        end
-        return Vector2.new(math.clamp(position.X, halfSize.X, maxX), math.clamp(position.Y, halfSize.Y, maxY))
-    end
-
     local function getReopenCenter()
-        local absolute = minimizedButton.AbsolutePosition
-        return Vector2.new(
-            absolute.X + minimizedButton.AbsoluteSize.X * 0.5,
-            absolute.Y + minimizedButton.AbsoluteSize.Y * 0.5
-        )
+        return getGuiCenter(minimizedButton)
     end
 
     local function setReopenCenter(position)
-        local target = clampReopenPosition(position)
-        minimizedButton.Position = UDim2.fromOffset(target.X, target.Y)
+        setGuiCenter(minimizedButton, position)
     end
 
     local function initializeReopenPosition()
         if floatingPositionInitialized then return end
-        local absolutePosition = main.AbsolutePosition
-        setReopenCenter(Vector2.new(absolutePosition.X + 26, absolutePosition.Y + 26))
+        setReopenCenter(getGuiCenter(main) + Vector2.new(26, 26))
         floatingPositionInitialized = true
     end
 
@@ -3965,49 +3876,80 @@ local function buildUI()
         initializeReopenPosition()
         main.Visible = false
         minimizedButton.Visible = true
-        setReopenCenter(getReopenCenter())
     end
+
     local function showWindow()
         main.Visible = true
         minimizedButton.Visible = false
         updateScale()
     end
+
     minimize.Activated:Connect(hideWindow)
 
     local reopenDrag = nil
-    minimizedClick.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-            reopenDrag = {
-                input = input,
-                start = Vector2.new(input.Position.X, input.Position.Y),
-                origin = getReopenCenter(),
-                moved = false,
-            }
-        end
-    end)
 
-    addConnection(state.uiConnections, UserInputService.InputChanged:Connect(function(input)
+    local function beginReopenDrag(input)
+        local inputType = input.UserInputType
+        if inputType ~= Enum.UserInputType.MouseButton1
+            and inputType ~= Enum.UserInputType.Touch then
+            return
+        end
+
+        reopenDrag = {
+            input = input,
+            inputType = inputType,
+            start = Vector2.new(input.Position.X, input.Position.Y),
+            origin = getReopenCenter(),
+            moved = false,
+        }
+    end
+
+    local function moveReopenDrag(input, isTouch)
         local drag = reopenDrag
         if not drag then return end
-        local isMouseMove = drag.input.UserInputType == Enum.UserInputType.MouseButton1
-            and input.UserInputType == Enum.UserInputType.MouseMovement
-        if not isMouseMove and input ~= drag.input then return end
+
+        if isTouch then
+            if drag.inputType ~= Enum.UserInputType.Touch or input ~= drag.input then return end
+        elseif drag.inputType ~= Enum.UserInputType.MouseButton1
+            or input.UserInputType ~= Enum.UserInputType.MouseMovement then
+            return
+        end
+
         local pointer = Vector2.new(input.Position.X, input.Position.Y)
         local delta = pointer - drag.start
         if delta.Magnitude > 6 then drag.moved = true end
         if drag.moved then setReopenCenter(drag.origin + delta) end
-    end))
+    end
 
-    addConnection(state.uiConnections, UserInputService.InputEnded:Connect(function(input)
+    local function finishReopenDrag(input, isTouch)
         local drag = reopenDrag
         if not drag then return end
-        local ended = input == drag.input
-            or (drag.input.UserInputType == Enum.UserInputType.MouseButton1
-                and input.UserInputType == Enum.UserInputType.MouseButton1)
+
+        local ended
+        if isTouch then
+            ended = drag.inputType == Enum.UserInputType.Touch and input == drag.input
+        else
+            ended = drag.inputType == Enum.UserInputType.MouseButton1
+                and input.UserInputType == Enum.UserInputType.MouseButton1
+        end
         if not ended then return end
+
         reopenDrag = nil
         if not drag.moved then showWindow() end
+    end
+
+    addConnection(state.uiConnections, minimizedClick.InputBegan:Connect(beginReopenDrag))
+    addConnection(state.uiConnections, UserInputService.InputChanged:Connect(function(input)
+        moveReopenDrag(input, false)
+    end))
+    addConnection(state.uiConnections, UserInputService.TouchMoved:Connect(function(input)
+        moveReopenDrag(input, true)
+    end))
+    addConnection(state.uiConnections, UserInputService.InputEnded:Connect(function(input)
+        finishReopenDrag(input, false)
+    end))
+    addConnection(state.uiConnections, UserInputService.TouchEnded:Connect(function(input)
+        finishReopenDrag(input, true)
     end))
 
     closeButton.Activated:Connect(function() closeOverlay.Visible = true end)
@@ -4022,37 +3964,62 @@ local function buildUI()
     end)
 
     local mainDrag = nil
+
     addConnection(state.uiConnections, header.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-            local absolute = main.AbsolutePosition
-            mainDrag = {
-                input = input,
-                start = Vector2.new(input.Position.X, input.Position.Y),
-                origin = Vector2.new(
-                    absolute.X + main.AbsoluteSize.X * 0.5,
-                    absolute.Y + main.AbsoluteSize.Y * 0.5
-                ),
-            }
+        local inputType = input.UserInputType
+        if inputType ~= Enum.UserInputType.MouseButton1
+            and inputType ~= Enum.UserInputType.Touch then
+            return
         end
+
+        mainDrag = {
+            input = input,
+            inputType = inputType,
+            start = Vector2.new(input.Position.X, input.Position.Y),
+            origin = getGuiCenter(main),
+        }
     end))
-    addConnection(state.uiConnections, UserInputService.InputChanged:Connect(function(input)
+
+    local function moveMainDrag(input, isTouch)
         local drag = mainDrag
         if not drag then return end
-        local isMouseMove = drag.input.UserInputType == Enum.UserInputType.MouseButton1
-            and input.UserInputType == Enum.UserInputType.MouseMovement
-        if not isMouseMove and input ~= drag.input then return end
+
+        if isTouch then
+            if drag.inputType ~= Enum.UserInputType.Touch or input ~= drag.input then return end
+        elseif drag.inputType ~= Enum.UserInputType.MouseButton1
+            or input.UserInputType ~= Enum.UserInputType.MouseMovement then
+            return
+        end
+
         local pointer = Vector2.new(input.Position.X, input.Position.Y)
-        local target = clampMainCenter(drag.origin + pointer - drag.start)
-        main.Position = UDim2.fromOffset(target.X, target.Y)
+        setGuiCenter(main, drag.origin + pointer - drag.start)
+    end
+
+    local function finishMainDrag(input, isTouch)
+        local drag = mainDrag
+        if not drag then return end
+
+        local ended
+        if isTouch then
+            ended = drag.inputType == Enum.UserInputType.Touch and input == drag.input
+        else
+            ended = drag.inputType == Enum.UserInputType.MouseButton1
+                and input.UserInputType == Enum.UserInputType.MouseButton1
+        end
+        if ended then mainDrag = nil end
+    end
+
+    addConnection(state.uiConnections, UserInputService.InputChanged:Connect(function(input)
+        moveMainDrag(input, false)
+    end))
+    addConnection(state.uiConnections, UserInputService.TouchMoved:Connect(function(input)
+        moveMainDrag(input, true)
     end))
     addConnection(state.uiConnections, UserInputService.InputEnded:Connect(function(input)
-        local drag = mainDrag
-        if not drag then return end
-        local ended = input == drag.input
-            or (drag.input.UserInputType == Enum.UserInputType.MouseButton1
-                and input.UserInputType == Enum.UserInputType.MouseButton1)
-        if ended then mainDrag = nil end
+        finishMainDrag(input, false)
+    end))
+    addConnection(state.uiConnections, UserInputService.TouchEnded:Connect(function(input)
+        finishMainDrag(input, true)
     end))
 
     local viewportConnection = nil
@@ -4242,7 +4209,6 @@ cleanup = function()
     disconnectBucket(state.uiConnections)
     disconnectBucket(state.resultConnections)
     disconnectBucket(state.favoriteConnections)
-    disconnectBucket(state.equippedConnections)
     local skinActive = isSkinRendererActive()
     disposeVisualOverlay(true)
     clearVisualTemplate()
