@@ -2176,6 +2176,7 @@ local avatarBridge = {
     accessory = { revision = 0 },
     uiPanels = {},
 }
+avatarBridge.uiPanels.activePanel = "none"
 
 local accessoryApi = nil
 local skinApi = nil
