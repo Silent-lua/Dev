@@ -1410,6 +1410,46 @@ local function fn31(arg, arg2, arg3, arg4)
 	end
 end
 
+local function isSkinForceController(instance)
+    return instance:IsA("BallSocketConstraint")
+        or instance:IsA("AlignPosition")
+        or instance:IsA("AlignOrientation")
+        or instance:IsA("LinearVelocity")
+        or instance:IsA("AngularVelocity")
+        or instance:IsA("VectorForce")
+        or instance:IsA("Torque")
+        or instance:IsA("LineForce")
+        or instance:IsA("RopeConstraint")
+        or instance:IsA("SpringConstraint")
+        or instance:IsA("RodConstraint")
+        or instance:IsA("HingeConstraint")
+        or instance:IsA("PrismaticConstraint")
+        or instance:IsA("CylindricalConstraint")
+        or instance:IsA("PlaneConstraint")
+        or instance:IsA("TorsionSpringConstraint")
+        or instance:IsA("BodyVelocity")
+        or instance:IsA("BodyPosition")
+        or instance:IsA("BodyGyro")
+        or instance:IsA("BodyAngularVelocity")
+        or instance:IsA("BodyForce")
+        or instance:IsA("BodyThrust")
+        or instance:IsA("RocketPropulsion")
+end
+
+local function disableSkinForceController(instance)
+    if instance:IsA("BodyVelocity")
+        or instance:IsA("BodyPosition")
+        or instance:IsA("BodyGyro")
+        or instance:IsA("BodyAngularVelocity")
+        or instance:IsA("BodyForce")
+        or instance:IsA("BodyThrust")
+        or instance:IsA("RocketPropulsion") then
+        pcall(function() instance:Destroy() end)
+    else
+        pcall(function() instance.Enabled = false end)
+    end
+end
+
 local function fn32(char, modelo)
 	local humanoidRootPart = char:FindFirstChild("HumanoidRootPart")
 	local humanoidRootPart2 = modelo:FindFirstChild("HumanoidRootPart")
@@ -1469,14 +1509,20 @@ local function fn32(char, modelo)
 	local cadena = {}
 
 	local function fn34(arg)
-
-		if arg:FindFirstAncestorOfClass("Accessory") or arg:FindFirstAncestorOfClass("Tool") then
+		if arg:FindFirstAncestorOfClass("Tool") then
 			return
 		end
 
-		if arg:IsA("BallSocketConstraint") then
-			pcall(function() arg.Enabled = false end)
-		elseif arg:IsA("AnimationConstraint") or arg:IsA("Motor6D") then
+		if isSkinForceController(arg) then
+			disableSkinForceController(arg)
+			return
+		end
+
+		if arg:FindFirstAncestorOfClass("Accessory") then
+			return
+		end
+
+		if arg:IsA("AnimationConstraint") or arg:IsA("Motor6D") then
 			pcall(function()
 				arg.IsKinematic = true
 			end)
@@ -1486,15 +1532,6 @@ local function fn32(char, modelo)
 			if v4 then
 				table.insert(cadena, { src = v4, tgt = arg })
 			end
-		elseif arg:IsA("AlignPosition") or arg:IsA("AlignOrientation")
-			or arg:IsA("LinearVelocity") or arg:IsA("AngularVelocity")
-			or arg:IsA("VectorForce") or arg:IsA("Torque")
-			or arg:IsA("RopeConstraint") or arg:IsA("SpringConstraint")
-			or arg:IsA("RodConstraint") or arg:IsA("HingeConstraint")
-			or arg:IsA("PrismaticConstraint") or arg:IsA("CylindricalConstraint")
-			or arg:IsA("PlaneConstraint") or arg:IsA("LineForce")
-			or arg:IsA("TorsionSpringConstraint") then
-			pcall(function() arg.Enabled = false end)
 		end
 	end
 
@@ -1590,6 +1627,8 @@ local function fn33(char, modelo)
 			descendant.CanTouch = false
 			descendant.CanQuery = false
 			descendant.Massless = true
+		elseif isSkinForceController(descendant) then
+			disableSkinForceController(descendant)
 		elseif (descendant:IsA("JointInstance") or descendant:IsA("Constraint"))
 			and not descendant:FindFirstAncestorOfClass("Accessory")
 			and not descendant:FindFirstAncestorOfClass("Tool") then
@@ -1629,7 +1668,9 @@ local function fn33(char, modelo)
 
 	if tbl17.connDescendant then tbl17.connDescendant:Disconnect() end
 	tbl17.connDescendant = modelo.DescendantAdded:Connect(function(descendant)
-		if (descendant:IsA("Constraint") or descendant:IsA("JointInstance"))
+		if isSkinForceController(descendant) then
+			disableSkinForceController(descendant)
+		elseif (descendant:IsA("Constraint") or descendant:IsA("JointInstance"))
 			and not descendant:FindFirstAncestorOfClass("Accessory")
 			and not descendant:FindFirstAncestorOfClass("Tool") then
 			task.defer(function()
