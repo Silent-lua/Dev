@@ -1329,7 +1329,11 @@ local function createNativeCameraTransparencyUpdater(model, beforeTrack)
         elseif entry.kind == "enabled" then
             if entry.hidden ~= firstPerson then
                 pcall(function()
-                    instance.Enabled = firstPerson and false or entry.originalEnabled
+                    if firstPerson then
+                        instance.Enabled = false
+                    else
+                        instance.Enabled = entry.originalEnabled
+                    end
                 end)
                 entry.hidden = firstPerson
             end
