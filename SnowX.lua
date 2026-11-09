@@ -1584,7 +1584,7 @@ Players.PlayerRemoving:Connect(removeESPPlayer)
 local CONFIG_ESP2 = {
     Skeleton = false,
     Box = false,
-    Advanced = false,
+    OffscreenArrows = false,
     MaxDistance = 500,
     SkeletonThickness = 2,
     BoxThickness = 1,
@@ -1596,19 +1596,27 @@ local espData2 = {}
 local function CreatePlayerESP2(player)
     if player == LocalPlayer or not useDrawing then return end
     if espData2[player] then return end
-    local data = { player = player, lines = {}, box = nil }
+
+    local data = {
+        player = player,
+        lines = {},
+        arrowLines = {},
+    }
+
     data.box = Drawing.new("Square")
     data.box.Visible = false
     data.box.Color = espColor
     data.box.Thickness = CONFIG_ESP2.BoxThickness
     data.box.Filled = false
     data.box.Transparency = 1
+
     data.outerBox = Drawing.new("Square")
     data.outerBox.Visible = false
     data.outerBox.Color = Color3.fromRGB(12, 12, 12)
     data.outerBox.Thickness = 2
     data.outerBox.Filled = false
     data.outerBox.Transparency = 0.85
+
     for i = 1, 13 do
         local line = Drawing.new("Line")
         line.Visible = false
@@ -1617,12 +1625,23 @@ local function CreatePlayerESP2(player)
         line.Transparency = 1
         table.insert(data.lines, line)
     end
+
+    for i = 1, 3 do
+        local line = Drawing.new("Line")
+        line.Visible = false
+        line.Color = espColor
+        line.Thickness = 2
+        line.Transparency = 1
+        table.insert(data.arrowLines, line)
+    end
+
     espData2[player] = data
 end
 
 local function RemovePlayerESP2(player)
     local data = espData2[player]
     if not data then return end
+
     if data.box then
         pcall(function() data.box:Remove() end)
     end
@@ -1632,6 +1651,10 @@ local function RemovePlayerESP2(player)
     for _, line in ipairs(data.lines) do
         pcall(function() line:Remove() end)
     end
+    for _, line in ipairs(data.arrowLines) do
+        pcall(function() line:Remove() end)
+    end
+
     espData2[player] = nil
 end
 
@@ -1691,18 +1714,37 @@ local ESP_BODY_PART_NAMES = {
 }
 
 local function GetBodyParts(char)
+    local anchor = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+    if not anchor or not anchor:IsA("BasePart") then
+        return {}, nil
+    end
+
     local parts = {}
+    local added = {}
     for _, name in ipairs(ESP_BODY_PART_NAMES) do
         local part = char:FindFirstChild(name)
-        if part and part:IsA("BasePart") then
+        if part and part:IsA("BasePart") and not added[part] then
+            added[part] = true
             table.insert(parts, part)
         end
     end
-    return parts
+
+    if not added[anchor] then
+        table.insert(parts, anchor)
+    end
+
+    return parts, anchor
 end
 
-local function GetBoxFromCharacter(bodyParts, cam)
-    if not cam or not bodyParts or #bodyParts == 0 then return nil end
+local function GetBoxFromCharacter(bodyParts, anchor, cam)
+    if not cam or not anchor or not anchor.Parent or not bodyParts or #bodyParts == 0 then
+        return nil
+    end
+
+    local anchorScreen, anchorOnScreen = cam:WorldToViewportPoint(anchor.Position)
+    if not anchorOnScreen or anchorScreen.Z <= 0 then
+        return nil
+    end
 
     local minX, maxX = math.huge, -math.huge
     local minY, maxY = math.huge, -math.huge
@@ -1735,17 +1777,79 @@ local function GetBoxFromCharacter(bodyParts, cam)
 
     if not foundPoint then return nil end
 
-    local viewport = cam.ViewportSize
-    minX = math.clamp(minX, 0, viewport.X)
-    maxX = math.clamp(maxX, 0, viewport.X)
-    minY = math.clamp(minY, 0, viewport.Y)
-    maxY = math.clamp(maxY, 0, viewport.Y)
-
     local width = maxX - minX
     local height = maxY - minY
     if width < 2 or height < 2 then return nil end
 
     return minX, minY, width, height
+end
+
+local function HideOffscreenArrow(data)
+    for _, line in ipairs(data.arrowLines) do
+        line.Visible = false
+    end
+end
+
+local function UpdateOffscreenArrow(data, targetPosition, cam)
+    local screenPoint, onScreen = cam:WorldToViewportPoint(targetPosition)
+    if onScreen and screenPoint.Z > 0 then
+        HideOffscreenArrow(data)
+        return
+    end
+
+    local localPosition = cam.CFrame:PointToObjectSpace(targetPosition)
+    local direction = Vector2.new(localPosition.X, -localPosition.Y)
+    if localPosition.Z > 0 then
+        direction = direction * -1
+    end
+    if direction.Magnitude < 0.001 then
+        direction = Vector2.new(0, 1)
+    end
+    direction = direction.Unit
+
+    local viewport = cam.ViewportSize
+    local center = Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
+    local halfWidth = math.max(center.X - 30, 1)
+    local halfHeight = math.max(center.Y - 30, 1)
+    local scaleX = math.huge
+    local scaleY = math.huge
+
+    if math.abs(direction.X) > 0.0001 then
+        scaleX = halfWidth / math.abs(direction.X)
+    end
+    if math.abs(direction.Y) > 0.0001 then
+        scaleY = halfHeight / math.abs(direction.Y)
+    end
+
+    local edgeDistance = math.min(scaleX, scaleY)
+    local tip = center + direction * edgeDistance
+    local baseCenter = tip - direction * 16
+    local perpendicular = Vector2.new(-direction.Y, direction.X) * 7
+
+    local pointLeft = baseCenter + perpendicular
+    local pointRight = baseCenter - perpendicular
+    local lines = data.arrowLines
+
+    lines[1].From = tip
+    lines[1].To = pointLeft
+    lines[2].From = pointLeft
+    lines[2].To = pointRight
+    lines[3].From = pointRight
+    lines[3].To = tip
+
+    for _, line in ipairs(lines) do
+        line.Color = espColor
+        line.Visible = true
+    end
+end
+
+local function HideESPPlayerVisuals(data)
+    if data.box then data.box.Visible = false end
+    if data.outerBox then data.outerBox.Visible = false end
+    for _, line in ipairs(data.lines) do
+        line.Visible = false
+    end
+    HideOffscreenArrow(data)
 end
 
 local esp2Accumulator = 0
@@ -1754,7 +1858,9 @@ RunService.Heartbeat:Connect(function(deltaTime)
     if esp2Accumulator < (1 / 30) then return end
     esp2Accumulator %= (1 / 30)
 
-    if not CONFIG_ESP2.Box and not CONFIG_ESP2.Skeleton and not CONFIG_ESP2.Advanced then return end
+    if not CONFIG_ESP2.Box and not CONFIG_ESP2.Skeleton and not CONFIG_ESP2.OffscreenArrows then
+        return
+    end
 
     local camera = workspace.CurrentCamera
     if not camera then return end
@@ -1772,26 +1878,33 @@ RunService.Heartbeat:Connect(function(deltaTime)
             and (not hum or hum.Health > 0) and isEnemy(player)
 
         if not visible then
-            if data.box then data.box.Visible = false end
-            if data.outerBox then data.outerBox.Visible = false end
-            for _, line in ipairs(data.lines) do line.Visible = false end
+            HideESPPlayerVisuals(data)
         else
             if data.skeletonModel ~= model then
                 data.skeletonModel = model
                 data.skeletonPairs = hum and GetSkeletonPairs(model, hum) or {}
-                data.boxParts = GetBodyParts(model)
+                data.boxParts, data.boxAnchor = GetBodyParts(model)
             end
 
-            local showBox = CONFIG_ESP2.Box or CONFIG_ESP2.Advanced
-            local showSkeleton = CONFIG_ESP2.Skeleton or CONFIG_ESP2.Advanced
+            local refreshBodyParts = not data.boxAnchor or data.boxAnchor.Parent ~= model
+            if not refreshBodyParts then
+                for _, part in ipairs(data.boxParts) do
+                    if not part.Parent or part.Parent ~= model then
+                        refreshBodyParts = true
+                        break
+                    end
+                end
+            end
+            if refreshBodyParts then
+                data.boxParts, data.boxAnchor = GetBodyParts(model)
+            end
 
-            if data.box then data.box.Color = espColor end
-
-            if showBox then
-                local bx, by, bw, bh = GetBoxFromCharacter(data.boxParts, camera)
+            if CONFIG_ESP2.Box then
+                local bx, by, bw, bh = GetBoxFromCharacter(data.boxParts, data.boxAnchor, camera)
                 if bx then
                     data.box.Position = Vector2.new(bx, by)
                     data.box.Size = Vector2.new(bw, bh)
+                    data.box.Color = espColor
                     data.box.Visible = true
                     data.outerBox.Position = Vector2.new(bx - 2, by - 2)
                     data.outerBox.Size = Vector2.new(bw + 4, bh + 4)
@@ -1805,7 +1918,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
                 data.outerBox.Visible = false
             end
 
-            if showSkeleton and hum then
+            if CONFIG_ESP2.Skeleton and hum then
                 for i, line in ipairs(data.lines) do
                     local bonePair = data.skeletonPairs[i]
                     if bonePair and bonePair[1].Parent and bonePair[2].Parent then
@@ -1824,7 +1937,15 @@ RunService.Heartbeat:Connect(function(deltaTime)
                     end
                 end
             else
-                for _, line in ipairs(data.lines) do line.Visible = false end
+                for _, line in ipairs(data.lines) do
+                    line.Visible = false
+                end
+            end
+
+            if CONFIG_ESP2.OffscreenArrows then
+                UpdateOffscreenArrow(data, root.Position, camera)
+            else
+                HideOffscreenArrow(data)
             end
         end
     end
@@ -1840,11 +1961,7 @@ end)
 
 local function hideESP2()
     for _, data in pairs(espData2) do
-        if data.box then data.box.Visible = false end
-        if data.outerBox then data.outerBox.Visible = false end
-        for _, line in ipairs(data.lines) do
-            line.Visible = false
-        end
+        HideESPPlayerVisuals(data)
     end
 end
 
@@ -1853,7 +1970,9 @@ Tabs.Visual:CreateToggle({
     CurrentValue = false,
     Callback = function(Value)
         CONFIG_ESP2.Skeleton = Value
-        if not Value and not CONFIG_ESP2.Box and not CONFIG_ESP2.Advanced then hideESP2() end
+        if not Value and not CONFIG_ESP2.Box and not CONFIG_ESP2.OffscreenArrows then
+            hideESP2()
+        end
     end
 })
 
@@ -1862,16 +1981,20 @@ Tabs.Visual:CreateToggle({
     CurrentValue = false,
     Callback = function(Value)
         CONFIG_ESP2.Box = Value
-        if not Value and not CONFIG_ESP2.Skeleton and not CONFIG_ESP2.Advanced then hideESP2() end
+        if not Value and not CONFIG_ESP2.Skeleton and not CONFIG_ESP2.OffscreenArrows then
+            hideESP2()
+        end
     end
 })
 
 Tabs.Visual:CreateToggle({
-    Name = "Advanced Highlight",
+    Name = "Off-screen Arrows",
     CurrentValue = false,
     Callback = function(Value)
-        CONFIG_ESP2.Advanced = Value
-        if not Value and not CONFIG_ESP2.Box and not CONFIG_ESP2.Skeleton then hideESP2() end
+        CONFIG_ESP2.OffscreenArrows = Value
+        if not Value and not CONFIG_ESP2.Box and not CONFIG_ESP2.Skeleton then
+            hideESP2()
+        end
     end
 })
 
