@@ -1036,7 +1036,6 @@ local function isNativeVisualEffect(instance)
 		or instance:IsA("Smoke")
 		or instance:IsA("Sparkles")
 		or instance:IsA("Light")
-		or instance:IsA("Highlight")
 		or instance:IsA("BillboardGui")
 		or instance:IsA("SurfaceGui")
 end
@@ -1045,78 +1044,59 @@ local function enableCopiedAppearanceEffect(model, instance)
     if not (model and instance and instance.Parent and isNativeVisualEffect(instance)) then
         return false
     end
-    if instance:FindFirstAncestorOfClass("Tool") then
-        return false
-    end
-
+    if instance:FindFirstAncestorOfClass("Tool") then return false end
     local ok, enabled = pcall(function() return instance.Enabled end)
-    if not ok or enabled then
-        return false
-    end
+    if not ok or enabled then return false end
     return pcall(function() instance.Enabled = true end)
 end
 
-local function activateCopiedAppearanceEffects(model)
-    if not model then return 0 end
-    local activated = 0
-    for _, descendant in ipairs(model:GetDescendants()) do
-        if enableCopiedAppearanceEffect(model, descendant) then
-            activated += 1
-        end
-    end
-    return activated
-end
 
 local function fn28(arg, arg2)
-	for _, descendant in ipairs(arg:GetDescendants()) do
-		local isToolDescendant = descendant:FindFirstAncestorOfClass("Tool") ~= nil
-		local isBodyVisual = (descendant:IsA("BasePart") and descendant.Name ~= "HumanoidRootPart" or descendant:IsA("Decal"))
+    if arg2 then
+        if hiddenCharacterModel ~= arg then
+            if hiddenCharacterModel then fn28(hiddenCharacterModel, false) end
+            hiddenCharacterModel = arg
+            table.clear(hiddenCharacterInstances)
+            hiddenCharacterTracked = setmetatable({}, { __mode = "k" })
+            for _, descendant in ipairs(arg:GetDescendants()) do
+                trackHiddenCharacterInstance(descendant)
+            end
+            if tbl17.connHideCharacter then
+                tbl17.connHideCharacter:Disconnect()
+                tbl17.connHideCharacter = nil
+            end
+            tbl17.connHideCharacter = arg.DescendantAdded:Connect(trackHiddenCharacterInstance)
+        end
+        enforceHiddenCharacter()
+        return
+    end
 
-		if not isToolDescendant and isBodyVisual then
-			if arg2 then
-				if descendant:GetAttribute("SnowXOriginalTransparency") == nil then
-					descendant:SetAttribute("SnowXOriginalTransparency", descendant.Transparency)
-				end
-
-				if descendant.Transparency < 1 then
-					descendant.Transparency = 1
-				end
-			else
-				local attribute = descendant:GetAttribute("SnowXOriginalTransparency")
-
-				if attribute ~= nil then
-					descendant.Transparency = attribute
-					descendant:SetAttribute("SnowXOriginalTransparency", nil)
-				end
-			end
-		elseif not isToolDescendant and isNativeVisualEffect(descendant) then
-			if arg2 then
-				if hiddenCharacterEffectStates[descendant] == nil then
-					hiddenCharacterEffectStates[descendant] = { enabled = descendant.Enabled }
-				end
-
-				if descendant.Enabled then
-					descendant.Enabled = false
-				end
-				if descendant:IsA("ParticleEmitter") then
-					pcall(function()
-						descendant:Clear()
-					end)
-				elseif descendant:IsA("Trail") then
-					pcall(function()
-						descendant:Clear()
-					end)
-				end
-			else
-				local saved = hiddenCharacterEffectStates[descendant]
-				if saved then
-					descendant.Enabled = saved.enabled
-					hiddenCharacterEffectStates[descendant] = nil
-				end
-			end
-		end
-	end
+    if hiddenCharacterModel ~= arg then return end
+    if tbl17.connHideCharacter then
+        tbl17.connHideCharacter:Disconnect()
+        tbl17.connHideCharacter = nil
+    end
+    for _, descendant in ipairs(hiddenCharacterInstances) do
+        if descendant.Parent then
+            pcall(function()
+                local original = descendant:GetAttribute("SnowXOriginalTransparency")
+                if original ~= nil then
+                    descendant.Transparency = original
+                    descendant:SetAttribute("SnowXOriginalTransparency", nil)
+                end
+                local saved = hiddenCharacterEffectStates[descendant]
+                if saved then
+                    descendant.Enabled = saved.enabled
+                    hiddenCharacterEffectStates[descendant] = nil
+                end
+            end)
+        end
+        hiddenCharacterTracked[descendant] = nil
+    end
+    table.clear(hiddenCharacterInstances)
+    hiddenCharacterModel = nil
 end
+
 
 local function createNativeCameraTransparencyUpdater(char, modelo)
 
@@ -1124,6 +1104,7 @@ local function createNativeCameraTransparencyUpdater(char, modelo)
 	local trackedInstances = setmetatable({}, { __mode = "k" })
 	local lastTransparency = nil
 	local lastUpdate = os.clock()
+    local lastPrune = lastUpdate
 	local MAX_TWEEN_RATE = 2.8
 
 	local function isInsideTool(instance)
@@ -1162,7 +1143,7 @@ local function createNativeCameraTransparencyUpdater(char, modelo)
 			entry.originalEnabled = instance.Enabled
 			entry.originalTransparency = instance.Transparency
 		elseif instance:IsA("Fire") or instance:IsA("Smoke") or instance:IsA("Sparkles")
-			or instance:IsA("Light") or instance:IsA("Highlight")
+			or instance:IsA("Light")
 			or instance:IsA("BillboardGui") or instance:IsA("SurfaceGui") then
 			entry.kind = "enabledEffect"
 			entry.originalEnabled = instance.Enabled
@@ -1274,6 +1255,17 @@ local function createNativeCameraTransparencyUpdater(char, modelo)
 		end
 
 		local nativeTransparency = getNativeTransparency()
+        local now = os.clock()
+        if now - lastPrune >= 2 then
+            lastPrune = now
+            for index = #visualEntries, 1, -1 do
+                local instance = visualEntries[index].instance
+                if not instance.Parent then
+                    trackedInstances[instance] = nil
+                    table.remove(visualEntries, index)
+                end
+            end
+        end
 		for _, entry in ipairs(visualEntries) do
 			applyVisual(entry, nativeTransparency)
 		end
@@ -1281,9 +1273,7 @@ local function createNativeCameraTransparencyUpdater(char, modelo)
 	end
 
 	local descendantConnection = modelo.DescendantAdded:Connect(function(descendant)
-        enableCopiedAppearanceEffect(modelo, descendant)
 		trackVisual(descendant)
-		update()
 	end)
 
 	update()
@@ -1373,7 +1363,6 @@ local function fn32(char, modelo)
 	local humanoid = modelo:FindFirstChildOfClass("Humanoid")
 	char:FindFirstChildOfClass("Humanoid")
 	local cframe = CFrame.new(0, (humanoid and humanoid.HipHeight > 0 and humanoid.HipHeight + humanoidRootPart2.Size.Y / 2 or fn30(modelo, humanoidRootPart2)) - fn30(char, humanoidRootPart), 0)
-	local tbl18 = {}
 
 	local function fn33(arg)
 		local insideAccessory = arg:FindFirstAncestorOfClass("Accessory") ~= nil
@@ -1383,7 +1372,6 @@ local function fn32(char, modelo)
 		arg.CanTouch = false
 		arg.CanQuery = false
 		arg.Massless = true
-		table.insert(tbl18, arg)
 	end
 
 	for _, descendant in ipairs(modelo:GetDescendants()) do
@@ -1414,7 +1402,6 @@ local function fn32(char, modelo)
 	modelo.PrimaryPart = humanoidRootPart2
 	modelo:PivotTo(humanoidRootPart.CFrame * cframe)
 	modelo.Parent = v2
-    activateCopiedAppearanceEffects(modelo)
 
 	local v3 = fn23(char)
 	local cadena = {}
@@ -1461,7 +1448,6 @@ local function fn32(char, modelo)
 	fn28(char, true)
 
 	local updateCameraTransparency, cameraDescendantConnection = createNativeCameraTransparencyUpdater(char, modelo)
-    activateCopiedAppearanceEffects(modelo)
 	tbl17.connCamera = cameraDescendantConnection
 
 	local function fn35()
@@ -1474,47 +1460,31 @@ local function fn32(char, modelo)
 		end
 	end
 
-	tbl17.connFisica = RunService.Stepped:Connect(function()
-		if tbl17.modelo ~= modelo then
-			return
-		end
-
-		for _, v6 in ipairs(tbl18) do
-			if v6.CanCollide then
-				v6.CanCollide = false
-			end
-
-			if v6.CanTouch then
-				v6.CanTouch = false
-			end
-		end
-
-		fn35()
-	end)
-
 	local n3 = 0
-    local lastEffectRecovery = 0
+    local cameraAccumulator = 0
 
 	tbl17.conn = RunService.RenderStepped:Connect(function(deltaTime)
 		if tbl17.modelo ~= modelo then
 			return
 		end
-		local currentVisualFolder = fn27()
-		if currentVisualFolder and modelo.Parent ~= currentVisualFolder then
-			modelo.Parent = currentVisualFolder
-		end
-		fn35()
-		local firstPerson = updateCameraTransparency()
-        local now = os.clock()
-        if not firstPerson and now - lastEffectRecovery >= 0.5 then
-            lastEffectRecovery = now
-            activateCopiedAppearanceEffects(modelo)
+        local currentCamera = workspace.CurrentCamera
+        if not v2 or v2.Parent ~= currentCamera then
+            v2 = fn27()
+        end
+        if v2 and modelo.Parent ~= v2 then
+            modelo.Parent = v2
+        end
+        fn35()
+        cameraAccumulator += deltaTime
+        if cameraAccumulator >= (1 / 30) then
+            cameraAccumulator %= (1 / 30)
+            updateCameraTransparency()
         end
 		n3 += deltaTime
 
-		if n3 > 0.5 then
-			n3 = 0
-			fn28(char, true)
+		if n3 >= 0.5 then
+			n3 %= 0.5
+			enforceHiddenCharacter()
 		end
 	end)
 
@@ -1547,7 +1517,6 @@ local function fn33(char, modelo)
 	end
 
 	local cframe = CFrame.new(0, n3 - fn30(char, humanoidRootPart), 0)
-	local tbl18 = {}
 
 	for _, descendant in ipairs(modelo:GetDescendants()) do
 		if descendant:IsA("BaseScript") then
@@ -1558,7 +1527,6 @@ local function fn33(char, modelo)
 			descendant.CanTouch = false
 			descendant.CanQuery = false
 			descendant.Massless = true
-			table.insert(tbl18, descendant)
 		elseif (descendant:IsA("JointInstance") or descendant:IsA("Constraint"))
 			and not descendant:FindFirstAncestorOfClass("Accessory")
 			and not descendant:FindFirstAncestorOfClass("Tool") then
@@ -1587,7 +1555,6 @@ local function fn33(char, modelo)
 	local v3 = fn26(char, modelo, humanoidRootPart2, humanoid)
 	fn31(humanoidRootPart, humanoidRootPart2, v3, cframe)
 	modelo.Parent = v2
-    activateCopiedAppearanceEffects(modelo)
 
 	for _, descendant in ipairs(modelo:GetDescendants()) do
 		if (descendant:IsA("Constraint") or descendant:IsA("JointInstance"))
@@ -1615,7 +1582,6 @@ local function fn33(char, modelo)
 			descendant.CanTouch = false
 			descendant.CanQuery = false
 			descendant.Massless = true
-			table.insert(tbl18, descendant)
 		end
 	end)
 
@@ -1626,43 +1592,33 @@ local function fn33(char, modelo)
 	v5.cadena = v3
 	fn28(char, true)
 	local updateCameraTransparency, cameraDescendantConnection = createNativeCameraTransparencyUpdater(char, modelo)
-    activateCopiedAppearanceEffects(modelo)
 	tbl17.connCamera = cameraDescendantConnection
 
-	tbl17.connFisica = RunService.Stepped:Connect(function()
-		for _, v6 in ipairs(tbl18) do
-			if v6.CanCollide then
-				v6.CanCollide = false
-			end
-			if v6.CanTouch then
-				v6.CanTouch = false
-			end
-		end
-	end)
-
 	local n4 = 0
-    local lastEffectRecovery = 0
+    local cameraAccumulator = 0
 
 	tbl17.conn = RunService.RenderStepped:Connect(function(deltaTime)
 		if tbl17.modelo ~= modelo then
 			return
 		end
-		local currentVisualFolder = fn27()
-		if currentVisualFolder and modelo.Parent ~= currentVisualFolder then
-			modelo.Parent = currentVisualFolder
-		end
-		fn31(humanoidRootPart, humanoidRootPart2, v3, cframe)
-        local firstPerson = updateCameraTransparency()
-        local now = os.clock()
-        if not firstPerson and now - lastEffectRecovery >= 0.5 then
-            lastEffectRecovery = now
-            activateCopiedAppearanceEffects(modelo)
+        local currentCamera = workspace.CurrentCamera
+        if not v2 or v2.Parent ~= currentCamera then
+            v2 = fn27()
+        end
+        if v2 and modelo.Parent ~= v2 then
+            modelo.Parent = v2
+        end
+        fn31(humanoidRootPart, humanoidRootPart2, v3, cframe)
+        cameraAccumulator += deltaTime
+        if cameraAccumulator >= (1 / 30) then
+            cameraAccumulator %= (1 / 30)
+            updateCameraTransparency()
         end
 		n4 += deltaTime
 
-		if n4 > 0.5 then
-			n4 = 0
-			fn28(char, true)
+		if n4 >= 0.5 then
+			n4 %= 0.5
+			enforceHiddenCharacter()
 		end
 	end)
 
