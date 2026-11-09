@@ -3959,26 +3959,7 @@ local function buildUI()
         end
     end
 
-    local function closePanelForOtherModule()
-        if not main.Visible then return end
-        initializeReopenPosition()
-        main.Visible = false
-        minimizedButton.Visible = true
-        if uiPanels.activePanel == "accessories" then
-            uiPanels.activePanel = "none"
-        end
-    end
-
-    state.closePanelCallback = closePanelForOtherModule
-    uiPanels.closeAccessoriesPanel = closePanelForOtherModule
-
-    local function showWindow()
-        local closeSkinsPanel = uiPanels.closeSkinsPanel
-        if type(closeSkinsPanel) == "function" then
-            pcall(closeSkinsPanel)
-        end
-
-        main.Visible = true
+    local function showWindow()        main.Visible = true
         minimizedButton.Visible = false
         updateScale()
         centerGuiObject(main)
@@ -4312,12 +4293,7 @@ cleanup = function()
     disconnectBucket(state.uiConnections)
     disconnectBucket(state.equippedConnections)
     state.initializeReopenPosition = nil
-    state.openPanel = nil
-    if uiPanels.closeAccessoriesPanel == state.closePanelCallback then
-        uiPanels.closeAccessoriesPanel = nil
-    end
-    state.closePanelCallback = nil
-    disconnectBucket(state.resultConnections)
+    state.openPanel = nil    disconnectBucket(state.resultConnections)
     if uiPanels.activePanel == "accessories" then
         uiPanels.activePanel = "none"
     end
