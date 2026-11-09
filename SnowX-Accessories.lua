@@ -650,7 +650,6 @@ local function isNativeEffect(instance)
         or instance:IsA("Smoke")
         or instance:IsA("Sparkles")
         or instance:IsA("Light")
-        or instance:IsA("Highlight")
 end
 
 local function isToolDescendant(instance)
@@ -1292,24 +1291,14 @@ local function isActivatableNativeEffect(instance)
         or instance:IsA("PointLight")
         or instance:IsA("SpotLight")
         or instance:IsA("SurfaceLight")
-        or instance:IsA("Highlight")
         or instance:IsA("BillboardGui")
         or instance:IsA("SurfaceGui")
 end
 
-local function enableNativeEffect(instance, container)
+local function enableNativeEffect(instance)
     if not instance or not instance.Parent or not isActivatableNativeEffect(instance)
         or isToolDescendant(instance) then
         return false
-    end
-
-    if instance:IsA("Highlight") then
-        pcall(function()
-            local adornee = instance.Adornee
-            if not adornee or (adornee ~= container and not adornee:IsDescendantOf(container)) then
-                instance.Adornee = container
-            end
-        end)
     end
 
     local ok, enabled = pcall(function() return instance.Enabled end)
@@ -1321,7 +1310,7 @@ local function enableNativeEffectsIn(container)
     if not container then return 0 end
     local activated = 0
     for _, descendant in ipairs(container:GetDescendants()) do
-        if enableNativeEffect(descendant, container) then
+        if enableNativeEffect(descendant) then
             activated += 1
         end
     end
@@ -1468,7 +1457,7 @@ local function applyCurrentAppearance()
     local cameraUpdate, cameraDescendantConnection = createNativeCameraTransparencyUpdater(
         visualModel,
         function(descendant)
-            enableNativeEffect(descendant, visualModel)
+            enableNativeEffect(descendant)
         end
     )
 
@@ -2873,16 +2862,8 @@ local function buildUI()
         return (minimum + maximum) * 0.5, maximum - minimum
     end
 
-    local function preparePreviewInstance(instance, previewRoot)
-        if instance:IsA("Highlight") then
-            pcall(function()
-                local adornee = instance.Adornee
-                if not adornee or (adornee ~= previewRoot and not adornee:IsDescendantOf(previewRoot)) then
-                    instance.Adornee = previewRoot
-                end
-                instance.Enabled = true
-            end)
-        elseif instance:IsA("BasePart") then
+    local function preparePreviewInstance(instance)
+        if instance:IsA("BasePart") then
             pcall(function()
                 instance.Anchored = true
                 instance.CanCollide = false
@@ -2896,8 +2877,7 @@ local function buildUI()
             or instance:IsA("Fire")
             or instance:IsA("Smoke")
             or instance:IsA("Sparkles")
-            or instance:IsA("Light")
-            or instance:IsA("Highlight") then
+            or instance:IsA("Light") then
             pcall(function() instance.Enabled = true end)
         elseif instance:IsA("BaseScript") or instance:IsA("ModuleScript") then
             pcall(function() instance:Destroy() end)
@@ -2905,9 +2885,9 @@ local function buildUI()
     end
 
     local function enablePreviewEffects(root)
-        preparePreviewInstance(root, root)
+        preparePreviewInstance(root)
         for _, descendant in ipairs(root:GetDescendants()) do
-            preparePreviewInstance(descendant, root)
+            preparePreviewInstance(descendant)
         end
     end
 
