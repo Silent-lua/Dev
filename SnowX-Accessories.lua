@@ -4400,10 +4400,13 @@ accessoryApi = {
         else
             state.gui.Enabled = false
         end
+        if uiPanels.activePanel == "accessories" then
+            uiPanels.activePanel = "none"
+        end
         return true
     end,
     Open = function()
-        if enabled ~= true and uiPanels.activePanel == "accessories" then
+        if uiPanels.activePanel == "skins" then
             uiPanels.activePanel = "none"
         end
         if not state.gui then return false end
@@ -4413,6 +4416,7 @@ accessoryApi = {
         elseif state.main then
             state.main.Visible = true
             if state.reopen then state.reopen.Visible = false end
+            uiPanels.activePanel = "accessories"
         end
         return true
     end,
