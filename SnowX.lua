@@ -1972,38 +1972,35 @@ local function getSnowXEnvironment()
     return _G
 end
 
--- SnowX modules are hosted in the public Dev repository and loaded automatically.
+-- SnowX modules use a private in-memory bridge; no custom getgenv() keys.
 local SNOWX_MODULE_BASE = "https://raw.githubusercontent.com/Silent-lua/Dev/main/"
+local avatarBridge = { version = 2, skin = { revision = 0 }, accessory = { revision = 0 } }
+local snowXAccessoryApi = nil
+local snowXSkinApi = nil
 
 local function loadSnowXModule(fileName, apiName)
     local moduleUrl = SNOWX_MODULE_BASE .. fileName
-    local env = getSnowXEnvironment()
-    local ok, result = pcall(function()
+    local ok, api = pcall(function()
         local source = game:HttpGet(moduleUrl)
         if type(source) ~= "string" or source == "" then
             error("GitHub devolvió un módulo vacío.")
         end
-
         if type(loadstring) ~= "function" then
             error("Este executor no tiene loadstring habilitado.")
         end
-
         local chunk, compileError = loadstring(source)
         if type(chunk) ~= "function" then
             error(compileError or "No se pudo compilar el módulo.")
         end
-
-        return chunk()
+        local result = chunk(avatarBridge)
+        if type(result) ~= "table" then
+            error("El módulo no devolvió su API local.")
+        end
+        return result
     end)
 
-    local api = env and env[apiName]
-    if type(api) ~= "table" and type(result) == "table" then
-        api = result
-        if env then env[apiName] = api end
-    end
-
     if not ok or type(api) ~= "table" then
-        local reason = not ok and tostring(result) or ("No se registró " .. apiName .. ".")
+        local reason = not ok and tostring(api) or ("No se registró " .. apiName .. ".")
         warn("[SnowX] Error cargando " .. fileName .. ": " .. reason)
         Window:Notify({
             Title = "SnowX",
@@ -2013,6 +2010,11 @@ local function loadSnowXModule(fileName, apiName)
         return false
     end
 
+    if apiName == "SnowXAccessory" then
+        snowXAccessoryApi = api
+    elseif apiName == "SnowXSkins" then
+        snowXSkinApi = api
+    end
     return true
 end
 
@@ -2020,9 +2022,7 @@ loadSnowXModule("SnowX-Accessories.lua", "SnowXAccessory")
 loadSnowXModule("SnowX-Skins.lua", "SnowXSkins")
 
 local function getSnowXAccessoryApi()
-    local env = getSnowXEnvironment()
-    local api = env and env.SnowXAccessory
-    return typeof(api) == "table" and api or nil
+    return type(snowXAccessoryApi) == "table" and snowXAccessoryApi or nil
 end
 
 local function openSnowXAccessory()
@@ -2946,9 +2946,7 @@ TabTools:CreateButton({
 TabTools:CreateSection("Avatar")
 
 local function getSnowXSkinApi()
-    local env = getSnowXEnvironment()
-    local api = env and env.SnowXSkins
-    return typeof(api) == "table" and api or nil
+    return type(snowXSkinApi) == "table" and snowXSkinApi or nil
 end
 
 local function openAvatar()
