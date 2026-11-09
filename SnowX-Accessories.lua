@@ -650,7 +650,6 @@ local function isNativeEffect(instance)
         or instance:IsA("Smoke")
         or instance:IsA("Sparkles")
         or instance:IsA("Light")
-        or instance:IsA("Highlight")
 end
 
 local function isToolDescendant(instance)
@@ -1078,19 +1077,14 @@ local function enforceOriginalCharacterHidden()
 end
 
 local function bindOriginalCharacterVisibility()
-    if state.hiddenRenderStepBound or state.hiddenRenderConnection then return end
-    local ok = pcall(function()
-        RunService:BindToRenderStep(
-            state.hiddenRenderStepName,
-            Enum.RenderPriority.Last.Value + 5,
-            enforceOriginalCharacterHidden
-        )
+    if state.hiddenRenderConnection then return end
+    local accumulator = 0
+    state.hiddenRenderConnection = RunService.Heartbeat:Connect(function(deltaTime)
+        accumulator += deltaTime
+        if accumulator < 0.05 then return end
+        accumulator %= 0.05
+        enforceOriginalCharacterHidden()
     end)
-    if ok then
-        state.hiddenRenderStepBound = true
-    else
-        state.hiddenRenderConnection = RunService.RenderStepped:Connect(enforceOriginalCharacterHidden)
-    end
 end
 
 local function restoreOriginalCharacter()
@@ -1132,9 +1126,9 @@ local function hideOriginalCharacter(character)
         state.hiddenDescendantConnection = character.DescendantAdded:Connect(function(descendant)
             hideOriginalDescendant(character, descendant)
         end)
-    end
-    for _, descendant in ipairs(character:GetDescendants()) do
-        hideOriginalDescendant(character, descendant)
+        for _, descendant in ipairs(character:GetDescendants()) do
+            hideOriginalDescendant(character, descendant)
+        end
     end
     bindOriginalCharacterVisibility()
     enforceOriginalCharacterHidden()
@@ -1300,21 +1294,26 @@ local function isActivatableNativeEffect(instance)
         or instance:IsA("PointLight")
         or instance:IsA("SpotLight")
         or instance:IsA("SurfaceLight")
-        or instance:IsA("Highlight")
         or instance:IsA("BillboardGui")
         or instance:IsA("SurfaceGui")
+end
+
+local function enableNativeEffect(instance)
+    if not instance or not instance.Parent or not isActivatableNativeEffect(instance)
+        or isToolDescendant(instance) then
+        return false
+    end
+    local ok, enabled = pcall(function() return instance.Enabled end)
+    if not ok or enabled then return false end
+    return pcall(function() instance.Enabled = true end)
 end
 
 local function enableNativeEffectsIn(container)
     if not container then return 0 end
     local activated = 0
     for _, descendant in ipairs(container:GetDescendants()) do
-        if isActivatableNativeEffect(descendant) and not isToolDescendant(descendant) then
-            local ok, enabled = pcall(function() return descendant.Enabled end)
-            if ok and not enabled then
-                local setOk = pcall(function() descendant.Enabled = true end)
-                if setOk then activated += 1 end
-            end
+        if enableNativeEffect(descendant) then
+            activated += 1
         end
     end
     return activated
@@ -1459,8 +1458,8 @@ local function applyCurrentAppearance()
     local activatedNativeEffects = activateSelectedNativeEffects(visualModel)
     local cameraUpdate, cameraDescendantConnection = createNativeCameraTransparencyUpdater(
         visualModel,
-        function()
-            activateSelectedNativeEffects(visualModel)
+        function(descendant)
+            enableNativeEffect(descendant)
         end
     )
 
@@ -1474,30 +1473,32 @@ local function applyCurrentAppearance()
     state.overlayOffsetY = footOffset
     state.cameraDescendantConnection = cameraDescendantConnection
     hideOriginalCharacter(character)
-    local lastHideRefresh = 0
-
-    local lastEffectRecovery = 0
-    state.syncConnection = RunService.RenderStepped:Connect(function()
+    local cameraUpdateAccumulator = 0
+    local currentOriginalRoot = originalRoot
+    local cachedCamera = Workspace.CurrentCamera
+    local cachedFolder = folder
+    state.syncConnection = RunService.RenderStepped:Connect(function(deltaTime)
         if state.overlayModel ~= visualModel or not visualModel.Parent then return end
         if not character.Parent then return end
-        local currentOriginalRoot = character:FindFirstChild("HumanoidRootPart")
+        if not currentOriginalRoot or not currentOriginalRoot.Parent then
+            currentOriginalRoot = character:FindFirstChild("HumanoidRootPart")
+        end
         if not currentOriginalRoot or not currentOriginalRoot.Parent then return end
-        local currentFolder = getCameraFolder()
-        if currentFolder and visualModel.Parent ~= currentFolder then
-            visualModel.Parent = currentFolder
-        end
-        syncVisualPose(visualRoot, visualJoints, currentOriginalRoot, footOffset)
-        local firstPerson = cameraUpdate()
-        local now = os.clock()
 
-        if not firstPerson and now - lastEffectRecovery >= 0.5 then
-            lastEffectRecovery = now
-            activateSelectedNativeEffects(visualModel)
+        local currentCamera = Workspace.CurrentCamera
+        if currentCamera ~= cachedCamera or not cachedFolder or cachedFolder.Parent ~= currentCamera then
+            cachedCamera = currentCamera
+            cachedFolder = getCameraFolder()
         end
-        enforceOriginalCharacterHidden()
-        if now - lastHideRefresh > 0.5 then
-            lastHideRefresh = now
-            hideOriginalCharacter(character)
+        if cachedFolder and visualModel.Parent ~= cachedFolder then
+            visualModel.Parent = cachedFolder
+        end
+
+        syncVisualPose(visualRoot, visualJoints, currentOriginalRoot, footOffset)
+        cameraUpdateAccumulator += deltaTime
+        if cameraUpdateAccumulator >= (1 / 30) then
+            cameraUpdateAccumulator %= (1 / 30)
+            cameraUpdate()
         end
     end)
 
@@ -2888,8 +2889,7 @@ local function buildUI()
             or instance:IsA("Fire")
             or instance:IsA("Smoke")
             or instance:IsA("Sparkles")
-            or instance:IsA("Light")
-            or instance:IsA("Highlight") then
+            or instance:IsA("Light") then
             pcall(function() instance.Enabled = true end)
         elseif instance:IsA("BaseScript") or instance:IsA("ModuleScript") then
             pcall(function() instance:Destroy() end)
