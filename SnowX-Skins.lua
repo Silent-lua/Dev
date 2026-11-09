@@ -851,7 +851,7 @@ tbl10[3] = tbl13
 tbl10[4] = tbl14
 tbl10[5] = tbl15
 tbl10[6] = tbl16
-local tbl17 = { modelo = nil, char = nil, cadena = {}, conn = nil, connFisica = nil, connCamera = nil, connDescendant = nil, connHideCharacter = nil }
+local tbl17 = { modelo = nil, char = nil, cadena = {}, folder = nil, conn = nil, connFisica = nil, connCamera = nil, connCameraRemoving = nil, connDescendant = nil, connHideCharacter = nil, connHideCharacterRemoving = nil }
 
 local function fn23(arg)
 	local tbl18 = {}
@@ -1055,20 +1055,38 @@ local hiddenCharacterModel = nil
 local hiddenCharacterInstances = {}
 local hiddenCharacterTracked = setmetatable({}, { __mode = "k" })
 
+local function restoreHiddenCharacterInstance(descendant)
+    if not descendant then return end
+    pcall(function()
+        local originalTransparency = descendant:GetAttribute("SnowXOriginalTransparency")
+        if originalTransparency ~= nil then
+            descendant.Transparency = originalTransparency
+            descendant:SetAttribute("SnowXOriginalTransparency", nil)
+        end
+        local saved = hiddenCharacterEffectStates[descendant]
+        if saved then
+            descendant.Enabled = saved.enabled
+            hiddenCharacterEffectStates[descendant] = nil
+        end
+    end)
+    hiddenCharacterTracked[descendant] = nil
+    for index = #hiddenCharacterInstances, 1, -1 do
+        if hiddenCharacterInstances[index] == descendant then
+            table.remove(hiddenCharacterInstances, index)
+            break
+        end
+    end
+end
+
 local function trackHiddenCharacterInstance(descendant)
     if not descendant or not descendant.Parent or hiddenCharacterTracked[descendant]
-        or descendant:FindFirstAncestorOfClass("Tool") then
-        return
-    end
-
+        or descendant:FindFirstAncestorOfClass("Tool") then return end
     local isBodyVisual = (descendant:IsA("BasePart") and descendant.Name ~= "HumanoidRootPart")
         or descendant:IsA("Decal")
     local isEffect = isNativeVisualEffect(descendant)
     if not isBodyVisual and not isEffect then return end
-
     hiddenCharacterTracked[descendant] = true
     table.insert(hiddenCharacterInstances, descendant)
-
     if isBodyVisual then
         if descendant:GetAttribute("SnowXOriginalTransparency") == nil then
             descendant:SetAttribute("SnowXOriginalTransparency", descendant.Transparency)
@@ -1086,11 +1104,13 @@ local function trackHiddenCharacterInstance(descendant)
 end
 
 local function enforceHiddenCharacter()
+    local character = hiddenCharacterModel
+    if not character then return end
     for index = #hiddenCharacterInstances, 1, -1 do
         local descendant = hiddenCharacterInstances[index]
-        if not descendant.Parent then
-            hiddenCharacterTracked[descendant] = nil
-            table.remove(hiddenCharacterInstances, index)
+        if not descendant.Parent or not descendant:IsDescendantOf(character)
+            or descendant:FindFirstAncestorOfClass("Tool") then
+            restoreHiddenCharacterInstance(descendant)
         elseif descendant:GetAttribute("SnowXOriginalTransparency") ~= nil then
             if descendant.Transparency < 1 then descendant.Transparency = 1 end
         else
@@ -1107,40 +1127,43 @@ local function fn28(arg, arg2)
             hiddenCharacterModel = arg
             table.clear(hiddenCharacterInstances)
             hiddenCharacterTracked = setmetatable({}, { __mode = "k" })
-            for _, descendant in ipairs(arg:GetDescendants()) do
-                trackHiddenCharacterInstance(descendant)
-            end
+            for _, descendant in ipairs(arg:GetDescendants()) do trackHiddenCharacterInstance(descendant) end
             if tbl17.connHideCharacter then
                 tbl17.connHideCharacter:Disconnect()
                 tbl17.connHideCharacter = nil
             end
+            if tbl17.connHideCharacterRemoving then
+                tbl17.connHideCharacterRemoving:Disconnect()
+                tbl17.connHideCharacterRemoving = nil
+            end
             tbl17.connHideCharacter = arg.DescendantAdded:Connect(trackHiddenCharacterInstance)
+            tbl17.connHideCharacterRemoving = arg.DescendantRemoving:Connect(function()
+                task.defer(function()
+                    if hiddenCharacterModel ~= arg then return end
+                    for index = #hiddenCharacterInstances, 1, -1 do
+                        local descendant = hiddenCharacterInstances[index]
+                        if not descendant:IsDescendantOf(arg)
+                            or descendant:FindFirstAncestorOfClass("Tool") then
+                            restoreHiddenCharacterInstance(descendant)
+                        end
+                    end
+                end)
+            end)
         end
         enforceHiddenCharacter()
         return
     end
-
     if hiddenCharacterModel ~= arg then return end
     if tbl17.connHideCharacter then
         tbl17.connHideCharacter:Disconnect()
         tbl17.connHideCharacter = nil
     end
-    for _, descendant in ipairs(hiddenCharacterInstances) do
-        if descendant.Parent then
-            pcall(function()
-                local original = descendant:GetAttribute("SnowXOriginalTransparency")
-                if original ~= nil then
-                    descendant.Transparency = original
-                    descendant:SetAttribute("SnowXOriginalTransparency", nil)
-                end
-                local saved = hiddenCharacterEffectStates[descendant]
-                if saved then
-                    descendant.Enabled = saved.enabled
-                    hiddenCharacterEffectStates[descendant] = nil
-                end
-            end)
-        end
-        hiddenCharacterTracked[descendant] = nil
+    if tbl17.connHideCharacterRemoving then
+        tbl17.connHideCharacterRemoving:Disconnect()
+        tbl17.connHideCharacterRemoving = nil
+    end
+    for index = #hiddenCharacterInstances, 1, -1 do
+        restoreHiddenCharacterInstance(hiddenCharacterInstances[index])
     end
     table.clear(hiddenCharacterInstances)
     hiddenCharacterModel = nil
@@ -1148,198 +1171,206 @@ end
 
 
 local function createNativeCameraTransparencyUpdater(char, modelo)
-
-	local visualEntries = {}
-	local trackedInstances = setmetatable({}, { __mode = "k" })
-	local lastTransparency = nil
-	local lastUpdate = os.clock()
+    local visualEntries = {}
+    local trackedInstances = setmetatable({}, { __mode = "k" })
+    local lastTransparency = nil
+    local lastUpdate = os.clock()
     local lastPrune = lastUpdate
-	local MAX_TWEEN_RATE = 2.8
+    local MAX_TWEEN_RATE = 2.8
 
-	local function isInsideTool(instance)
-		local ancestor = instance.Parent
-		while ancestor and ancestor ~= modelo do
-			if ancestor:IsA("Tool") then
-				return true
-			end
-			ancestor = ancestor.Parent
-		end
-		return false
-	end
+    local function isInsideTool(instance)
+        local ancestor = instance.Parent
+        while ancestor and ancestor ~= modelo do
+            if ancestor:IsA("Tool") then return true end
+            ancestor = ancestor.Parent
+        end
+        return false
+    end
 
-	local function trackVisual(instance)
-		if trackedInstances[instance] or isInsideTool(instance) then
-			return
-		end
+    local function restoreEntry(entry)
+        local instance = entry.instance
+        pcall(function()
+            if entry.kind == "nativeModifier" then
+                instance.LocalTransparencyModifier = entry.originalLocalTransparencyModifier or 0
+            elseif entry.kind == "decalTransparency" then
+                instance.Transparency = entry.originalTransparency or 0
+            elseif entry.kind == "sequenceEffect" then
+                instance.Transparency = entry.originalTransparency
+                instance.Enabled = entry.originalEnabled
+            elseif entry.kind == "enabledEffect" then
+                instance.Enabled = entry.originalEnabled
+            end
+        end)
+    end
+
+    local function untrack(instance)
+        if not trackedInstances[instance] then return end
+        for index = #visualEntries, 1, -1 do
+            if visualEntries[index].instance == instance then
+                restoreEntry(visualEntries[index])
+                table.remove(visualEntries, index)
+                break
+            end
+        end
+        trackedInstances[instance] = nil
+    end
+
+    local function trackVisual(instance)
+        if trackedInstances[instance] or isInsideTool(instance) then return end
         enableCopiedAppearanceEffect(modelo, instance)
+        local entry = { instance = instance }
+        if instance:IsA("BasePart") or instance:IsA("Decal") or instance:IsA("Texture") then
+            local ok, originalModifier = pcall(function() return instance.LocalTransparencyModifier end)
+            if ok then
+                entry.kind = "nativeModifier"
+                entry.originalLocalTransparencyModifier = originalModifier
+            elseif instance:IsA("Decal") or instance:IsA("Texture") then
+                entry.kind = "decalTransparency"
+                entry.originalTransparency = instance.Transparency
+            else
+                return
+            end
+        elseif instance:IsA("ParticleEmitter") or instance:IsA("Trail") or instance:IsA("Beam") then
+            entry.kind = "sequenceEffect"
+            entry.originalEnabled = instance.Enabled
+            entry.originalTransparency = instance.Transparency
+        elseif instance:IsA("Fire") or instance:IsA("Smoke") or instance:IsA("Sparkles")
+            or instance:IsA("Light") or instance:IsA("BillboardGui") or instance:IsA("SurfaceGui") then
+            local ok, enabled = pcall(function() return instance.Enabled end)
+            if not ok then return end
+            entry.kind = "enabledEffect"
+            entry.originalEnabled = enabled
+        else
+            return
+        end
+        trackedInstances[instance] = true
+        table.insert(visualEntries, entry)
+    end
 
-		local entry = { instance = instance }
-		if instance:IsA("BasePart") or instance:IsA("Decal") then
-			local ok, originalModifier = pcall(function()
-				return instance.LocalTransparencyModifier
-			end)
+    for _, descendant in ipairs(modelo:GetDescendants()) do trackVisual(descendant) end
 
-			if ok then
-				entry.kind = "nativeModifier"
-				entry.originalLocalTransparencyModifier = originalModifier
-			else
+    local function getTargetTransparency()
+        local camera = Workspace.CurrentCamera
+        local targetTransparency = 0
+        if camera then
+            if localPlayer.CameraMode == Enum.CameraMode.LockFirstPerson then
+                targetTransparency = 1
+            else
+                local distance = (camera.Focus.Position - camera.CFrame.Position).Magnitude
+                if distance >= 2 then
+                    local reference = modelo:FindFirstChild("Head")
+                        or char:FindFirstChild("Head")
+                        or modelo:FindFirstChild("HumanoidRootPart")
+                    if reference and reference:IsA("BasePart") then
+                        local lookVector = camera.CFrame.LookVector
+                        local toReference = reference.Position - camera.CFrame.Position
+                        local forwardDistance = toReference:Dot(lookVector)
+                        local lateralDistance = (toReference - lookVector * forwardDistance).Magnitude
+                        if forwardDistance > 0 and lateralDistance <= 2.5 then
+                            distance = math.min(distance, forwardDistance)
+                        end
+                    end
+                end
+                if distance < 2 then targetTransparency = 1 - (distance - 0.5) / 1.5 end
+                if targetTransparency < 0.5 then targetTransparency = 0 end
+            end
+        end
+        targetTransparency = math.clamp(targetTransparency, 0, 1)
+        local now = os.clock()
+        local deltaTime = math.max(0, now - lastUpdate)
+        lastUpdate = now
+        if lastTransparency ~= nil and targetTransparency < 1 and lastTransparency < 0.95 then
+            local maxDelta = MAX_TWEEN_RATE * deltaTime
+            local deltaTransparency = math.clamp(
+                targetTransparency - lastTransparency, -maxDelta, maxDelta
+            )
+            targetTransparency = lastTransparency + deltaTransparency
+        end
+        targetTransparency = math.clamp(math.floor(targetTransparency * 100 + 0.5) / 100, 0, 1)
+        lastTransparency = targetTransparency
+        return targetTransparency
+    end
 
-				entry.kind = "decalTransparency"
-				entry.originalTransparency = instance.Transparency
-			end
-		elseif instance:IsA("ParticleEmitter") or instance:IsA("Trail") or instance:IsA("Beam") then
-			entry.kind = "sequenceEffect"
-			entry.originalEnabled = instance.Enabled
-			entry.originalTransparency = instance.Transparency
-		elseif instance:IsA("Fire") or instance:IsA("Smoke") or instance:IsA("Sparkles")
-			or instance:IsA("Light")
-			or instance:IsA("BillboardGui") or instance:IsA("SurfaceGui") then
-			entry.kind = "enabledEffect"
-			entry.originalEnabled = instance.Enabled
-		else
-			return
-		end
+    local function applyVisual(entry, nativeTransparency)
+        local instance = entry.instance
+        if not instance.Parent or not instance:IsDescendantOf(modelo) or isInsideTool(instance) then return end
+        local fullyFirstPerson = nativeTransparency >= 0.995
+        if entry.kind == "nativeModifier" then
+            local desired = math.max(entry.originalLocalTransparencyModifier or 0, nativeTransparency)
+            if entry.lastAppliedModifier ~= desired then
+                local ok = pcall(function() instance.LocalTransparencyModifier = desired end)
+                if ok then entry.lastAppliedModifier = desired end
+            end
+        elseif entry.kind == "decalTransparency" then
+            local original = entry.originalTransparency or 0
+            local desired = 1 - ((1 - original) * (1 - nativeTransparency))
+            if entry.lastAppliedTransparency ~= desired then
+                pcall(function() instance.Transparency = desired end)
+                entry.lastAppliedTransparency = desired
+            end
+        elseif entry.kind == "sequenceEffect" then
+            if entry.appliedHidden ~= fullyFirstPerson then
+                if fullyFirstPerson then
+                    pcall(function()
+                        instance.Enabled = false
+                        instance.Transparency = NumberSequence.new(1)
+                    end)
+                    if instance:IsA("ParticleEmitter") or instance:IsA("Trail") then
+                        pcall(function() instance:Clear() end)
+                    end
+                else
+                    pcall(function()
+                        instance.Transparency = entry.originalTransparency
+                        instance.Enabled = entry.originalEnabled
+                    end)
+                end
+                entry.appliedHidden = fullyFirstPerson
+            end
+        elseif entry.kind == "enabledEffect" and entry.appliedHidden ~= fullyFirstPerson then
+            pcall(function()
+                if fullyFirstPerson then
+                    instance.Enabled = false
+                else
+                    instance.Enabled = entry.originalEnabled
+                end
+            end)
+            entry.appliedHidden = fullyFirstPerson
+        end
+    end
 
-		trackedInstances[instance] = true
-		table.insert(visualEntries, entry)
-	end
-
-	local function getNativeTransparency()
-		local camera = Workspace.CurrentCamera
-		local targetTransparency = 0
-
-		if localPlayer.CameraMode == Enum.CameraMode.LockFirstPerson then
-			targetTransparency = 1
-		elseif camera then
-			local reference = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
-			if reference and reference:IsA("BasePart") then
-				local distance = (camera.CFrame.Position - reference.Position).Magnitude
-				if distance < 1.55 then
-					targetTransparency = math.clamp((1.55 - distance) / 1.05, 0, 1)
-				end
-			end
-		end
-
-		targetTransparency = math.clamp(targetTransparency, 0, 1)
-
-		local now = os.clock()
-		local deltaTime = math.max(0, now - lastUpdate)
-		lastUpdate = now
-
-		if lastTransparency ~= nil and targetTransparency < 1 and lastTransparency < 0.95 then
-			local maxDelta = MAX_TWEEN_RATE * deltaTime
-			local difference = targetTransparency - lastTransparency
-			difference = math.clamp(difference, -maxDelta, maxDelta)
-			targetTransparency = lastTransparency + difference
-		end
-
-		targetTransparency = math.clamp(math.floor(targetTransparency * 100 + 0.5) / 100, 0, 1)
-		lastTransparency = targetTransparency
-		return targetTransparency
-	end
-
-	local function applyVisual(entry, nativeTransparency)
-		local instance = entry.instance
-		if not instance.Parent then
-			return
-		end
-
-		local fullyFirstPerson = nativeTransparency >= 0.995
-
-		if entry.kind == "nativeModifier" then
-
-			local original = entry.originalLocalTransparencyModifier or 0
-			local desired = math.max(original, nativeTransparency)
-			if entry.lastAppliedModifier ~= desired then
-				local ok = pcall(function()
-					instance.LocalTransparencyModifier = desired
-				end)
-				if ok then
-					entry.lastAppliedModifier = desired
-				end
-			end
-		elseif entry.kind == "decalTransparency" then
-			local original = entry.originalTransparency or 0
-			local desired = 1 - ((1 - original) * (1 - nativeTransparency))
-			if entry.lastAppliedTransparency ~= desired then
-				instance.Transparency = desired
-				entry.lastAppliedTransparency = desired
-			end
-		elseif entry.kind == "sequenceEffect" then
-
-			if entry.appliedHidden ~= fullyFirstPerson then
-				if fullyFirstPerson then
-					instance.Enabled = false
-					instance.Transparency = NumberSequence.new(1)
-					if instance:IsA("ParticleEmitter") then
-						pcall(function()
-							instance:Clear()
-						end)
-					end
-				else
-					instance.Transparency = entry.originalTransparency
-					instance.Enabled = entry.originalEnabled
-				end
-				entry.appliedHidden = fullyFirstPerson
-			end
-		elseif entry.kind == "enabledEffect" then
-			if entry.appliedHidden ~= fullyFirstPerson then
-				if fullyFirstPerson then
-					instance.Enabled = false
-				else
-					instance.Enabled = entry.originalEnabled
-				end
-				entry.appliedHidden = fullyFirstPerson
-			end
-		end
-	end
-
-	for _, descendant in ipairs(modelo:GetDescendants()) do
-		trackVisual(descendant)
-	end
-
-	local function update()
-		if not (char.Parent and modelo.Parent) then
-			return
-		end
-
-		local nativeTransparency = getNativeTransparency()
+    local function update()
+        if not (char.Parent and modelo.Parent) then return false end
+        local nativeTransparency = getTargetTransparency()
+        local fullyFirstPerson = nativeTransparency >= 0.995
         local now = os.clock()
         if now - lastPrune >= 2 then
             lastPrune = now
             for index = #visualEntries, 1, -1 do
-                local instance = visualEntries[index].instance
-                if not instance.Parent then
-                    local entry = visualEntries[index]
-                    pcall(function()
-                        if entry.kind == "nativeModifier" then
-                            instance.LocalTransparencyModifier = entry.originalLocalTransparencyModifier or 0
-                        elseif entry.kind == "decalTransparency" then
-                            instance.Transparency = entry.originalTransparency or 0
-                        elseif entry.kind == "sequenceEffect" then
-                            instance.Transparency = entry.originalTransparency
-                            instance.Enabled = entry.originalEnabled
-                        elseif entry.kind == "enabledEffect" then
-                            instance.Enabled = entry.originalEnabled
-                        end
-                    end)
+                local entry = visualEntries[index]
+                local instance = entry.instance
+                if not instance:IsDescendantOf(modelo) or isInsideTool(instance) then
+                    restoreEntry(entry)
                     trackedInstances[instance] = nil
                     table.remove(visualEntries, index)
                 end
             end
         end
-		for _, entry in ipairs(visualEntries) do
-			applyVisual(entry, nativeTransparency)
-		end
-        return nativeTransparency >= 0.995
-	end
+        for _, entry in ipairs(visualEntries) do applyVisual(entry, nativeTransparency) end
+        return fullyFirstPerson
+    end
 
-	local descendantConnection = modelo.DescendantAdded:Connect(function(descendant)
-		trackVisual(descendant)
-	end)
-
-	update()
-	return update, descendantConnection
+    local descendantConnection = modelo.DescendantAdded:Connect(trackVisual)
+    local descendantRemovingConnection = modelo.DescendantRemoving:Connect(function(descendant)
+        if not trackedInstances[descendant] then return end
+        task.defer(function()
+            if trackedInstances[descendant]
+                and (not descendant:IsDescendantOf(modelo) or isInsideTool(descendant)) then
+                untrack(descendant)
+            end
+        end)
+    end)
+    update()
+    return update, descendantConnection, descendantRemovingConnection
 end
 
 local function fn29()
@@ -1358,6 +1389,11 @@ local function fn29()
 		tbl17.connCamera = nil
 	end
 
+	if tbl17.connCameraRemoving then
+		tbl17.connCameraRemoving:Disconnect()
+		tbl17.connCameraRemoving = nil
+	end
+
 	if tbl17.connDescendant then
 		tbl17.connDescendant:Disconnect()
 		tbl17.connDescendant = nil
@@ -1368,10 +1404,19 @@ local function fn29()
 		tbl17.connHideCharacter = nil
 	end
 
+	if tbl17.connHideCharacterRemoving then
+		tbl17.connHideCharacterRemoving:Disconnect()
+		tbl17.connHideCharacterRemoving = nil
+	end
+
 	if tbl17.modelo then
 		tbl17.modelo:Destroy()
 		tbl17.modelo = nil
 	end
+	if tbl17.folder and tbl17.folder.Parent and #tbl17.folder:GetChildren() == 0 then
+		pcall(function() tbl17.folder:Destroy() end)
+	end
+	tbl17.folder = nil
 
 	tbl17.cadena = {}
 
@@ -1511,8 +1556,11 @@ local function fn32(char, modelo)
 	v5.cadena = cadena
 	fn28(char, true)
 
-	local updateCameraTransparency, cameraDescendantConnection = createNativeCameraTransparencyUpdater(char, modelo)
+	local updateCameraTransparency, cameraDescendantConnection, cameraDescendantRemovingConnection =
+		createNativeCameraTransparencyUpdater(char, modelo)
 	tbl17.connCamera = cameraDescendantConnection
+	tbl17.connCameraRemoving = cameraDescendantRemovingConnection
+	tbl17.folder = v2
 
 	local function fn35()
 		humanoidRootPart2.CFrame = humanoidRootPart.CFrame * cframe
@@ -1538,7 +1586,6 @@ local function fn32(char, modelo)
 	end)
 
 	local n3 = 0
-    local cameraAccumulator = 0
 
 	tbl17.conn = RunService.RenderStepped:Connect(function(deltaTime)
 		if tbl17.modelo ~= modelo then
@@ -1546,17 +1593,18 @@ local function fn32(char, modelo)
 		end
         local currentCamera = workspace.CurrentCamera
         if not v2 or v2.Parent ~= currentCamera then
+            local previousFolder = v2
             v2 = fn27()
+            if previousFolder and previousFolder ~= v2 and previousFolder.Parent
+                and #previousFolder:GetChildren() == 0 then
+                pcall(function() previousFolder:Destroy() end)
+            end
+            tbl17.folder = v2
         end
-        if v2 and modelo.Parent ~= v2 then
-            modelo.Parent = v2
-        end
+        if not currentCamera then return end
+        if v2 and modelo.Parent ~= v2 then modelo.Parent = v2 end
         fn35()
-        cameraAccumulator += deltaTime
-        if cameraAccumulator >= (1 / 30) then
-            cameraAccumulator %= (1 / 30)
-            updateCameraTransparency()
-        end
+        updateCameraTransparency()
 		n3 += deltaTime
 
 		if n3 >= 0.5 then
@@ -1671,8 +1719,11 @@ local function fn33(char, modelo)
 	v4.char = char
 	v5.cadena = v3
 	fn28(char, true)
-	local updateCameraTransparency, cameraDescendantConnection = createNativeCameraTransparencyUpdater(char, modelo)
+	local updateCameraTransparency, cameraDescendantConnection, cameraDescendantRemovingConnection =
+		createNativeCameraTransparencyUpdater(char, modelo)
 	tbl17.connCamera = cameraDescendantConnection
+	tbl17.connCameraRemoving = cameraDescendantRemovingConnection
+	tbl17.folder = v2
 
 	tbl17.connFisica = RunService.Stepped:Connect(function()
 		if tbl17.modelo ~= modelo then return end
@@ -1685,7 +1736,6 @@ local function fn33(char, modelo)
 	end)
 
 	local n4 = 0
-    local cameraAccumulator = 0
 
 	tbl17.conn = RunService.RenderStepped:Connect(function(deltaTime)
 		if tbl17.modelo ~= modelo then
@@ -1693,17 +1743,18 @@ local function fn33(char, modelo)
 		end
         local currentCamera = workspace.CurrentCamera
         if not v2 or v2.Parent ~= currentCamera then
+            local previousFolder = v2
             v2 = fn27()
+            if previousFolder and previousFolder ~= v2 and previousFolder.Parent
+                and #previousFolder:GetChildren() == 0 then
+                pcall(function() previousFolder:Destroy() end)
+            end
+            tbl17.folder = v2
         end
-        if v2 and modelo.Parent ~= v2 then
-            modelo.Parent = v2
-        end
+        if not currentCamera then return end
+        if v2 and modelo.Parent ~= v2 then modelo.Parent = v2 end
         fn31(humanoidRootPart, humanoidRootPart2, v3, cframe)
-        cameraAccumulator += deltaTime
-        if cameraAccumulator >= (1 / 30) then
-            cameraAccumulator %= (1 / 30)
-            updateCameraTransparency()
-        end
+        updateCameraTransparency()
 		n4 += deltaTime
 
 		if n4 >= 0.5 then
@@ -3294,19 +3345,44 @@ table.insert(tbl21, UserInputService.InputChanged:Connect(function(input)
 	Frame.Position = UDim2.new(v8.X.Scale, v8.X.Offset + n5.X, v8.Y.Scale, v8.Y.Offset + n5.Y)
 end))
 
-local currentCamera = Workspace.CurrentCamera
+local currentCameraViewportConnection = nil
 
-if currentCamera then
-	table.insert(tbl21, currentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fn44))
+local function connectCurrentCameraViewport()
+	if currentCameraViewportConnection then
+		currentCameraViewportConnection:Disconnect()
+		for index = #tbl21, 1, -1 do
+			if tbl21[index] == currentCameraViewportConnection then
+				table.remove(tbl21, index)
+				break
+			end
+		end
+		currentCameraViewportConnection = nil
+	end
+
+	local currentCamera = Workspace.CurrentCamera
+	if currentCamera then
+		currentCameraViewportConnection = currentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fn44)
+		table.insert(tbl21, currentCameraViewportConnection)
+	end
+	fn44()
 end
 
+connectCurrentCameraViewport()
 table.insert(tbl21, Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-	task.defer(function()
-		local savedUserId = tonumber(tbl3.aplicado)
-		if savedUserId and avatarBridge.skin.active == true and not flag3 then
-			fn58(savedUserId, tbl3.rig, true)
+	connectCurrentCameraViewport()
+	local currentCamera = Workspace.CurrentCamera
+	if currentCamera and tbl17.modelo then
+		local visualFolder = fn27()
+		if visualFolder then
+			local previousFolder = tbl17.folder
+			tbl17.modelo.Parent = visualFolder
+			tbl17.folder = visualFolder
+			if previousFolder and previousFolder ~= visualFolder and previousFolder.Parent
+				and #previousFolder:GetChildren() == 0 then
+				pcall(function() previousFolder:Destroy() end)
+			end
 		end
-	end)
+	end
 end))
 
 TextButton2.Activated:Connect(function()
