@@ -19,6 +19,7 @@ avatarBridge.skin = type(avatarBridge.skin) == "table" and avatarBridge.skin or 
 avatarBridge.accessory = type(avatarBridge.accessory) == "table" and avatarBridge.accessory or {}
 avatarBridge.uiPanels = type(avatarBridge.uiPanels) == "table" and avatarBridge.uiPanels or {}
 local uiPanels = avatarBridge.uiPanels
+uiPanels.activePanel = uiPanels.activePanel or "none"
 avatarBridge.skin.revision = tonumber(avatarBridge.skin.revision) or 0
 avatarBridge.accessory.revision = tonumber(avatarBridge.accessory.revision) or 0
 local accessoryBridgeToken = {}
@@ -3954,12 +3955,22 @@ local function buildUI()
         main.Visible = false
         minimizedButton.Visible = true
     end
+        releaseAccessoriesPanelState()
+
+    local function releaseAccessoriesPanelState()
+        if uiPanels.activePanel == "accessories" then
+            uiPanels.activePanel = "none"
+        end
+    end
 
     local function closePanelForOtherModule()
         if not main.Visible then return end
         initializeReopenPosition()
         main.Visible = false
         minimizedButton.Visible = true
+    end
+
+    state.closePanelCallback = closePanelForOtherModule        releaseAccessoriesPanelState()
     end
 
     state.closePanelCallback = closePanelForOtherModule
@@ -3975,6 +3986,7 @@ local function buildUI()
         minimizedButton.Visible = false
         updateScale()
         centerGuiObject(main)
+        uiPanels.activePanel = "accessories"
     end
 
     state.openPanel = showWindow
@@ -4391,7 +4403,10 @@ accessoryApi = {
         end
         return true
     end,
-    Open = function()
+    Open = function()        
+            if uiPanels.activePanel == "accessories" then
+                uiPanels.activePanel = "none"
+            end
         if not state.gui then return false end
         state.gui.Enabled = true
         if state.openPanel then
