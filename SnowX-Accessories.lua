@@ -1139,6 +1139,7 @@ local function createNativeCameraTransparencyUpdater(model, beforeTrack)
     local tracked = setmetatable({}, { __mode = "k" })
     local lastTransparency = nil
     local lastUpdate = os.clock()
+    local lastPrune = lastUpdate
     local maxTweenRate = 2.8
 
     local function track(instance)
@@ -1202,6 +1203,17 @@ local function createNativeCameraTransparencyUpdater(model, beforeTrack)
         if not model.Parent then return end
         local transparency = getTargetTransparency()
         local firstPerson = transparency >= 0.995
+        local now = os.clock()
+        if now - lastPrune >= 2 then
+            lastPrune = now
+            for index = #entries, 1, -1 do
+                local instance = entries[index].instance
+                if not instance.Parent then
+                    tracked[instance] = nil
+                    table.remove(entries, index)
+                end
+            end
+        end
         for _, entry in ipairs(entries) do
             local instance = entry.instance
             if instance.Parent then
