@@ -2275,6 +2275,8 @@ local openClick = fn3("TextButton", {
     Size = UDim2.fromScale(1, 1),
     BackgroundTransparency = 1,
     AutoButtonColor = false,
+    Active = true,
+    Selectable = false,
     Text = "",
     ZIndex = 54,
 }, TextButton5)
