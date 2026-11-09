@@ -12,17 +12,10 @@ if not localPlayer then
     error("Fallo")
 end
 
-local sharedEnv
-pcall(function()
-    sharedEnv = type(getgenv) == "function" and getgenv() or _G
-end)
-local avatarBridge = sharedEnv and sharedEnv.SnowXAvatarSync
-if type(avatarBridge) ~= "table" then
-    avatarBridge = {}
-    if sharedEnv then sharedEnv.SnowXAvatarSync = avatarBridge end
-end
--- v2 adds a shared, revisioned equipped-accessory snapshot. Keep existing
--- v1 skin/accessory state so either module can be reloaded independently.
+-- The main loader passes a private bridge as the chunk argument.
+-- Running this file directly creates an isolated bridge without executor globals.
+local avatarBridge = ...
+if type(avatarBridge) ~= "table" then avatarBridge = {} end
 avatarBridge.version = 2
 avatarBridge.skin = type(avatarBridge.skin) == "table" and avatarBridge.skin or {}
 avatarBridge.accessory = type(avatarBridge.accessory) == "table" and avatarBridge.accessory or {}
@@ -40,20 +33,20 @@ local KORBLOX_DEATHSPEAKER_RIGHT_LEG_ID = 139607718
 local KORBLOX_DEATHWALKER_HEAD_ID = 16580493236
 
 local COLORS = {
-    Background = Color3.fromRGB(7, 14, 30),
-    BackgroundAlt = Color3.fromRGB(11, 23, 48),
-    Surface = Color3.fromRGB(14, 27, 52),
-    SurfaceUp = Color3.fromRGB(18, 36, 68),
-    Soft = Color3.fromRGB(99, 170, 255),
-    Line = Color3.fromRGB(40, 66, 112),
-    Border = Color3.fromRGB(96, 146, 236),
-    Text = Color3.fromRGB(236, 245, 255),
-    Muted = Color3.fromRGB(176, 200, 236),
-    Good = Color3.fromRGB(114, 218, 165),
-    Danger = Color3.fromRGB(255, 130, 130),
-    DangerFill = Color3.fromRGB(141, 58, 58),
-    AccentFill = Color3.fromRGB(31, 76, 164),
-    ActiveFill = Color3.fromRGB(40, 123, 75),
+    Background = Color3.fromRGB(12, 12, 14),
+    BackgroundAlt = Color3.fromRGB(18, 18, 22),
+    Surface = Color3.fromRGB(26, 26, 32),
+    SurfaceUp = Color3.fromRGB(36, 36, 44),
+    Soft = Color3.fromRGB(190, 190, 198),
+    Line = Color3.fromRGB(54, 54, 62),
+    Border = Color3.fromRGB(74, 74, 84),
+    Text = Color3.fromRGB(245, 245, 245),
+    Muted = Color3.fromRGB(170, 170, 178),
+    Good = Color3.fromRGB(160, 210, 175),
+    Danger = Color3.fromRGB(230, 130, 130),
+    DangerFill = Color3.fromRGB(95, 45, 45),
+    AccentFill = Color3.fromRGB(42, 42, 48),
+    ActiveFill = Color3.fromRGB(75, 75, 82),
 }
 
 local PRESETS = {
@@ -2195,6 +2188,7 @@ avatarBridge.accessory.refreshInventory = function()
 end
 
 
+local cleanup
 local function buildUI()
 
     pcall(function()
@@ -2242,7 +2236,32 @@ local function buildUI()
     end
     state.gui = screen
 
+    local function loadBackgroundAsset()
+        local url = "https://raw.githubusercontent.com/Styx-ui/w/refs/heads/main/Slow2.jpg"
+        local path = "avatar-visual/Slow2.jpg"
+        pcall(function()
+            if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder("avatar-visual") then
+                makefolder("avatar-visual")
+            end
+        end)
+        local exists = false
+        pcall(function()
+            if type(isfile) == "function" then exists = isfile(path) end
+        end)
+        if not exists and type(writefile) == "function" then
+            local ok, data = pcall(function() return game:HttpGet(url) end)
+            if ok and type(data) == "string" and #data > 0 then
+                pcall(function() writefile(path, data) end)
+            end
+        end
+        if type(getcustomasset) == "function" then
+            local ok, asset = pcall(getcustomasset, path)
+            if ok and type(asset) == "string" then return asset end
+        end
+        return nil
+    end
 
+    local bgAsset = loadBackgroundAsset()
     local baseWidth, baseHeight = 590, 274
     local main = create("Frame", {
         Name = "Window",
@@ -2261,6 +2280,25 @@ local function buildUI()
     local gradient = create("UIGradient", {
         Color = ColorSequence.new(COLORS.BackgroundAlt, COLORS.Background),
         Rotation = 90,
+    }, main)
+
+    local backgroundImage = create("ImageLabel", {
+        Name = "ReferenceBackground",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        Image = bgAsset or "",
+        ImageTransparency = bgAsset and 0.38 or 1,
+        ScaleType = Enum.ScaleType.Crop,
+        ZIndex = 1,
+    }, main)
+    round(backgroundImage, 16)
+    create("Frame", {
+        Name = "ReferenceBackgroundOverlay",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+        BackgroundTransparency = bgAsset and 0.58 or 1,
+        BorderSizePixel = 0,
+        ZIndex = 1,
     }, main)
 
     local uiScale = create("UIScale", {}, main)
@@ -2292,7 +2330,7 @@ local function buildUI()
         Size = UDim2.new(1, 0, 0, 52),
         Active = true,
     }, main)
-    create("TextLabel", {
+    local titleLabel = create("TextLabel", {
         Position = UDim2.fromOffset(18, 15),
         Size = UDim2.fromOffset(166, 22),
         BackgroundTransparency = 1,
@@ -2303,6 +2341,23 @@ local function buildUI()
         TextXAlignment = Enum.TextXAlignment.Left,
         TextTruncate = Enum.TextTruncate.AtEnd,
     }, header)
+    local titleGradient = Instance.new("UIGradient")
+    titleGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(145, 145, 145)),
+        ColorSequenceKeypoint.new(0.25, Color3.fromRGB(255, 255, 255)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(210, 210, 210)),
+        ColorSequenceKeypoint.new(0.75, Color3.fromRGB(255, 255, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(135, 135, 135)),
+    })
+    titleGradient.Rotation = 90
+    titleGradient.Parent = titleLabel
+    task.spawn(function()
+        local offset = 0
+        while titleLabel.Parent do
+            offset = (offset + task.wait(0.04) * 0.35) % 1
+            titleGradient.Offset = Vector2.new(offset * 2 - 1, 0)
+        end
+    end)
     create("TextLabel", {
         Position = UDim2.fromOffset(19, 32),
         Size = UDim2.fromOffset(150, 12),
@@ -2638,21 +2693,72 @@ local function buildUI()
     }, main)
     round(bodyFilter, 8)
 
-    local minimizedButton = create("TextButton", {
+    local minimizedButton = create("Frame", {
+        Name = "FloatingReopen",
         AnchorPoint = Vector2.new(0.5, 0.5),
         Position = UDim2.fromScale(0.15, 0.5),
-        Size = UDim2.fromOffset(46, 46),
-        BackgroundColor3 = COLORS.Background,
+        Size = UDim2.fromOffset(150, 46),
+        BackgroundColor3 = COLORS.BackgroundAlt,
+        BackgroundTransparency = 0.05,
         BorderSizePixel = 0,
-        AutoButtonColor = true,
-        Font = Enum.Font.GothamBold,
-        Text = "S",
-        TextSize = 20,
-        TextColor3 = COLORS.Text,
+        ClipsDescendants = true,
         Visible = false,
+        ZIndex = 50,
     }, screen)
-    round(minimizedButton, 23)
-    stroke(minimizedButton, COLORS.Border, 0.1)
+    round(minimizedButton, 12)
+    stroke(minimizedButton, COLORS.Text, 0.45)
+    local reopenBackground = create("ImageLabel", {
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        Image = bgAsset or "",
+        ImageTransparency = bgAsset and 0.5 or 1,
+        ScaleType = Enum.ScaleType.Crop,
+        ZIndex = 50,
+    }, minimizedButton)
+    round(reopenBackground, 12)
+    create("Frame", {
+        Size = UDim2.fromScale(1, 1),
+        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+        BackgroundTransparency = bgAsset and 0.55 or 0.82,
+        BorderSizePixel = 0,
+        ZIndex = 51,
+    }, minimizedButton)
+    local reopenDot = create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(1, -12, 0, 10),
+        Size = UDim2.fromOffset(8, 8),
+        BackgroundColor3 = COLORS.Text,
+        BorderSizePixel = 0,
+        ZIndex = 53,
+    }, minimizedButton)
+    round(reopenDot, 4)
+    create("TextLabel", {
+        BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(14, 0),
+        Size = UDim2.new(1, -24, 1, 0),
+        Font = Enum.Font.GothamBold,
+        Text = "Open SnowX",
+        TextSize = 13,
+        TextColor3 = COLORS.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 53,
+    }, minimizedButton)
+    local minimizedClick = create("TextButton", {
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        AutoButtonColor = false,
+        Text = "",
+        ZIndex = 54,
+    }, minimizedButton)
+    task.spawn(function()
+        while reopenDot.Parent do
+            reopenDot.BackgroundTransparency = 0.65
+            task.wait(0.8)
+            if not reopenDot.Parent then break end
+            reopenDot.BackgroundTransparency = 0
+            task.wait(0.8)
+        end
+    end)
     state.reopen = minimizedButton
 
     local closeOverlay = create("Frame", {
@@ -2951,41 +3057,14 @@ local function buildUI()
             local focusRoot = nil
             local previewAvatar = nil
             if accessory then
+                -- Show only the catalog asset. The camera fit changes the view
+                -- distance, never the accessory geometry or native scale.
                 if accessory.Parent then
                     pcall(function() accessory.Parent = nil end)
                 end
-                local previewHumanoid
-                previewAvatar, previewHumanoid = createPreviewAvatar()
-                if previewAvatar and previewHumanoid then
-                    previewAvatar.Parent = stage
-                    local attached = attachPreviewAccessory(previewHumanoid, accessory)
-                    if attached then
-                        for _, descendant in ipairs(accessory:GetDescendants()) do
-                            if descendant:IsA("BasePart") then
-                                pcall(function()
-                                    descendant.Anchored = true
-                                    descendant.CanCollide = false
-                                    descendant.CanTouch = false
-                                    descendant.CanQuery = false
-                                    descendant.Massless = true
-                                end)
-                            end
-                        end
-                        accessory.Parent = previewAvatar
-                        enablePreviewEffects(accessory)
-                        -- Fit the complete reference avatar, not only the item.
-                        -- This preserves the accessory's real relative scale.
-                        focusRoot = previewAvatar
-                    else
-                        accessory.Parent = stage
-                        enablePreviewEffects(accessory)
-                        focusRoot = accessory
-                    end
-                else
-                    accessory.Parent = stage
-                    enablePreviewEffects(accessory)
-                    focusRoot = accessory
-                end
+                accessory.Parent = stage
+                enablePreviewEffects(accessory)
+                focusRoot = accessory
             end
 
             for _, root in ipairs(roots) do
@@ -3732,15 +3811,13 @@ local function buildUI()
         updateScale()
     end
     minimize.Activated:Connect(hideWindow)
-    minimizedButton.Activated:Connect(showWindow)
+    minimizedClick.Activated:Connect(showWindow)
     closeButton.Activated:Connect(function() closeOverlay.Visible = true end)
     cancelClose.Activated:Connect(function() closeOverlay.Visible = false end)
     confirmClose.Activated:Connect(function()
         closeOverlay.Visible = false
-        local env
-        pcall(function() env = type(getgenv) == "function" and getgenv() or _G end)
-        if env and type(env.__SnowXAccessoryCleanup) == "function" then
-            pcall(env.__SnowXAccessoryCleanup)
+        if cleanup then
+            pcall(cleanup)
         else
             screen:Destroy()
         end
@@ -3944,21 +4021,9 @@ local function onCharacterAdded(character)
     end)
 end
 
-local env
-pcall(function()
-    env = type(getgenv) == "function" and getgenv() or _G
-end)
-if env then
-    pcall(function()
-        if type(env.__SnowXAccessoryCleanup) == "function" then
-            env.__SnowXAccessoryCleanup()
-        end
-    end)
-end
-
 local accessoryApi = nil
 
-local function cleanup()
+cleanup = function()
     state.generation += 1
     state.applying = false
     disconnectBucket(state.connections)
@@ -3968,12 +4033,6 @@ local function cleanup()
     disconnectBucket(state.favoriteConnections)
     disconnectBucket(state.equippedConnections)
     local skinActive = isSkinRendererActive()
-    if env and accessoryApi and env.SnowXAccessory == accessoryApi then
-        env.SnowXAccessory = nil
-    end
-    if env and env.__SnowXAccessoryCleanup == cleanup then
-        env.__SnowXAccessoryCleanup = nil
-    end
     disposeVisualOverlay(true)
     clearVisualTemplate()
     if avatarBridge.accessory.owner == accessoryBridgeToken then
@@ -4001,10 +4060,6 @@ local function cleanup()
             pcall(avatarBridge.skin.refresh)
         end)
     end
-end
-
-if env then
-    env.__SnowXAccessoryCleanup = cleanup
 end
 
 if isSkinRendererActive() and type(avatarBridge.skin.refresh) == "function" then
@@ -4076,6 +4131,4 @@ accessoryApi = {
     ToggleDeathwalkerEyes = toggleDeathwalkerEyes,
     Clear = clearAllOverrides,
 }
-if env then env.SnowXAccessory = accessoryApi end
-
 return accessoryApi
