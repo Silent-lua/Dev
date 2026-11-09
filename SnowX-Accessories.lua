@@ -2408,6 +2408,16 @@ local function buildUI()
     local uiScale = create("UIScale", {}, main)
     local isTouchOnly = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
+    local function getGuiCenter(guiObject)
+        local camera = Workspace.CurrentCamera
+        local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+        local position = guiObject.Position
+        return Vector2.new(
+            position.X.Scale * viewport.X + position.X.Offset,
+            position.Y.Scale * viewport.Y + position.Y.Offset
+        )
+    end
+
     local function clampMainCenter(position)
         local camera = Workspace.CurrentCamera
         local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
@@ -2422,12 +2432,7 @@ local function buildUI()
 
     local function keepMainInsideViewport()
         if not main.Parent then return end
-        local absolute = main.AbsolutePosition
-        local center = Vector2.new(
-            absolute.X + main.AbsoluteSize.X * 0.5,
-            absolute.Y + main.AbsoluteSize.Y * 0.5
-        )
-        local target = clampMainCenter(center)
+        local target = clampMainCenter(getGuiCenter(main))
         main.Position = UDim2.fromOffset(target.X, target.Y)
     end
 
@@ -2536,28 +2541,6 @@ local function buildUI()
         TextColor3 = COLORS.Muted,
     }, header)
     round(closeButton, 8)
-
-    local headerDragHandle = create("TextButton", {
-        Name = "DragHeader",
-        Position = UDim2.fromOffset(0, 0),
-        Size = UDim2.new(1, -82, 1, 0),
-        BackgroundTransparency = 1,
-        AutoButtonColor = false,
-        Active = true,
-        Selectable = false,
-        Text = "",
-        ZIndex = 10,
-    }, header)
-    for index = 0, 2 do
-        create("Frame", {
-            Position = UDim2.fromOffset(258, 7 + index * 4),
-            Size = UDim2.fromOffset(14, 2),
-            BackgroundColor3 = COLORS.Muted,
-            BackgroundTransparency = 0.25,
-            BorderSizePixel = 0,
-            ZIndex = 11,
-        }, header)
-    end
 
     create("Frame", {
         Position = UDim2.fromOffset(0, 52),
@@ -2850,79 +2833,55 @@ local function buildUI()
     local minimizedButton = create("Frame", {
         Name = "FloatingReopen",
         AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromOffset(84, 24),
-        Size = UDim2.fromOffset(168, 48),
-        BackgroundColor3 = COLORS.Surface,
-        BackgroundTransparency = 0.03,
+        Position = UDim2.fromOffset(75, 23),
+        Size = UDim2.fromOffset(150, 46),
+        BackgroundColor3 = COLORS.BackgroundAlt,
+        BackgroundTransparency = 0.05,
         BorderSizePixel = 0,
         ClipsDescendants = true,
         Visible = false,
         ZIndex = 50,
     }, screen)
-    round(minimizedButton, 14)
-    stroke(minimizedButton, COLORS.Border, 0.12)
-
-    local reopenAccent = create("Frame", {
-        Position = UDim2.fromOffset(0, 8),
-        Size = UDim2.fromOffset(3, 32),
-        BackgroundColor3 = COLORS.AccentFill,
+    round(minimizedButton, 12)
+    stroke(minimizedButton, COLORS.Text, 0.45)
+    local reopenBackground = create("ImageLabel", {
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        Image = bgAsset or "",
+        ImageTransparency = bgAsset and 0.5 or 1,
+        ScaleType = Enum.ScaleType.Crop,
+        ZIndex = 50,
+    }, minimizedButton)
+    round(reopenBackground, 12)
+    local reopenOverlay = create("Frame", {
+        Size = UDim2.fromScale(1, 1),
+        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+        BackgroundTransparency = bgAsset and 0.55 or 0.82,
         BorderSizePixel = 0,
         ZIndex = 51,
     }, minimizedButton)
-    round(reopenAccent, 2)
-
-    for row = 0, 2 do
-        for column = 0, 1 do
-            local gripDot = create("Frame", {
-                Position = UDim2.fromOffset(13 + column * 5, 17 + row * 5),
-                Size = UDim2.fromOffset(3, 3),
-                BackgroundColor3 = COLORS.Muted,
-                BorderSizePixel = 0,
-                ZIndex = 52,
-            }, minimizedButton)
-            round(gripDot, 2)
-        end
-    end
-
+    round(reopenOverlay, 12)
+    local reopenDot = create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(1, -12, 0, 10),
+        Size = UDim2.fromOffset(8, 8),
+        BackgroundColor3 = COLORS.Text,
+        BorderSizePixel = 0,
+        ZIndex = 53,
+    }, minimizedButton)
+    round(reopenDot, 4)
     create("TextLabel", {
         BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(31, 7),
-        Size = UDim2.new(1, -54, 0, 16),
+        Position = UDim2.fromOffset(14, 0),
+        Size = UDim2.new(1, -24, 1, 0),
         Font = Enum.Font.GothamBold,
-        Text = "ACCESSORIES",
-        TextSize = 10,
+        Text = "Open Accessories",
+        TextSize = 13,
         TextColor3 = COLORS.Text,
         TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 52,
+        ZIndex = 53,
     }, minimizedButton)
-
-    create("TextLabel", {
-        BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(31, 23),
-        Size = UDim2.new(1, -54, 0, 13),
-        Font = Enum.Font.Gotham,
-        Text = "DRAG TO MOVE  /  TAP TO OPEN",
-        TextSize = 7,
-        TextColor3 = COLORS.Muted,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 52,
-    }, minimizedButton)
-
-    create("TextLabel", {
-        BackgroundTransparency = 1,
-        AnchorPoint = Vector2.new(1, 0.5),
-        Position = UDim2.new(1, -10, 0.5, 0),
-        Size = UDim2.fromOffset(14, 24),
-        Font = Enum.Font.GothamBold,
-        Text = "›",
-        TextSize = 22,
-        TextColor3 = COLORS.AccentFill,
-        TextXAlignment = Enum.TextXAlignment.Center,
-        ZIndex = 52,
-    }, minimizedButton)
-
     local minimizedClick = create("TextButton", {
-        Name = "DragAndOpen",
         Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1,
         AutoButtonColor = false,
@@ -2931,7 +2890,16 @@ local function buildUI()
         Text = "",
         ZIndex = 54,
     }, minimizedButton)
-
+    task.spawn(function()
+        while reopenDot.Parent do
+            reopenDot.BackgroundTransparency = 0.65
+            task.wait(0.8)
+            if not reopenDot.Parent then break end
+            reopenDot.BackgroundTransparency = 0
+            task.wait(0.8)
+        end
+    end)
+    state.reopen = minimizedButton
 
     local closeOverlay = create("Frame", {
         Name = "CloseConfirmationOverlay",
@@ -3933,11 +3901,7 @@ local function buildUI()
     end
 
     local function getReopenCenter()
-        local absolute = minimizedButton.AbsolutePosition
-        return Vector2.new(
-            absolute.X + minimizedButton.AbsoluteSize.X * 0.5,
-            absolute.Y + minimizedButton.AbsoluteSize.Y * 0.5
-        )
+        return getGuiCenter(minimizedButton)
     end
 
     local function setReopenCenter(position)
@@ -3947,8 +3911,7 @@ local function buildUI()
 
     local function initializeReopenPosition()
         if floatingPositionInitialized then return end
-        local absolutePosition = main.AbsolutePosition
-        setReopenCenter(Vector2.new(absolutePosition.X + 26, absolutePosition.Y + 26))
+        setReopenCenter(getGuiCenter(main) + Vector2.new(26, 26))
         floatingPositionInitialized = true
     end
 
@@ -3956,7 +3919,6 @@ local function buildUI()
         initializeReopenPosition()
         main.Visible = false
         minimizedButton.Visible = true
-        setReopenCenter(getReopenCenter())
     end
     local function showWindow()
         main.Visible = true
@@ -3990,7 +3952,7 @@ local function buildUI()
         end
         local pointer = Vector2.new(input.Position.X, input.Position.Y)
         local delta = pointer - drag.start
-        if delta.Magnitude > 8 then drag.moved = true end
+        if delta.Magnitude > 6 then drag.moved = true end
         if drag.moved then setReopenCenter(drag.origin + delta) end
     end
 
@@ -4032,15 +3994,11 @@ local function buildUI()
     local function beginMainDrag(input)
         if input.UserInputType ~= Enum.UserInputType.MouseButton1
             and input.UserInputType ~= Enum.UserInputType.Touch then return end
-        local absolute = main.AbsolutePosition
         mainDrag = {
             input = input,
             inputType = input.UserInputType,
             start = Vector2.new(input.Position.X, input.Position.Y),
-            origin = Vector2.new(
-                absolute.X + main.AbsoluteSize.X * 0.5,
-                absolute.Y + main.AbsoluteSize.Y * 0.5
-            ),
+            origin = getGuiCenter(main),
         }
     end
 
@@ -4068,7 +4026,7 @@ local function buildUI()
         if ended then mainDrag = nil end
     end
 
-    addConnection(state.uiConnections, headerDragHandle.InputBegan:Connect(beginMainDrag))
+    addConnection(state.uiConnections, header.InputBegan:Connect(beginMainDrag))
     addConnection(state.uiConnections, UserInputService.InputChanged:Connect(function(input)
         moveMainDrag(input, false)
     end))
