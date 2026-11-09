@@ -1492,7 +1492,8 @@ local function fn32(char, modelo)
 			or arg:IsA("RopeConstraint") or arg:IsA("SpringConstraint")
 			or arg:IsA("RodConstraint") or arg:IsA("HingeConstraint")
 			or arg:IsA("PrismaticConstraint") or arg:IsA("CylindricalConstraint")
-			or arg:IsA("PlaneConstraint") then
+			or arg:IsA("PlaneConstraint") or arg:IsA("LineForce")
+			or arg:IsA("TorsionSpringConstraint") then
 			pcall(function() arg.Enabled = false end)
 		end
 	end
