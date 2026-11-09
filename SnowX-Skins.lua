@@ -2457,26 +2457,29 @@ end
 
 local function fn47(visible)
 	flag2 = visible
-
-	if visible then
-		if not floatingPositionInitialized then
-			setFloatingCenter(getStackedLauncherCenter(TextButton5, 2))
-			floatingPositionInitialized = true
-		end
-		Frame.Visible = false
-		TextButton5.Visible = true
-	else
-		local closeAccessoriesPanel = uiPanels.closeAccessoriesPanel
-		if type(closeAccessoriesPanel) == "function" then
-			pcall(closeAccessoriesPanel)
-		end
-
-		Frame.Visible = true
-		TextButton5.Visible = false
-		centerGuiObject(Frame)
+	if visible and not floatingPositionInitialized then
+		setFloatingCenter(getStackedLauncherCenter(TextButton5, 2))
+		floatingPositionInitialized = true
 	end
 
+	Frame.Visible = not visible
+	TextButton5.Visible = visible
 	task.defer(keepFrameInsideViewport)
+	if visible and floatingPositionInitialized then
+		task.defer(function()
+			setFloatingCenter(getFloatingCenter())
+		end)
+	end
+end
+
+local function openSkinsPanel()
+	local closeAccessoriesPanel = uiPanels.closeAccessoriesPanel
+	if type(closeAccessoriesPanel) == "function" then
+		pcall(closeAccessoriesPanel)
+	end
+
+	fn47(false)
+	centerGuiObject(Frame)
 end
 
 local function closePanelForOtherModule()
@@ -2540,7 +2543,7 @@ local function finishFloatingDrag(input, isTouch)
 	if not ended then return end
 
 	tbl20 = nil
-	if not drag.movio then fn47(false) end
+	if not drag.movio then openSkinsPanel() end
 end
 
 table.insert(tbl21, openClick.InputBegan:Connect(beginFloatingDrag))
@@ -3552,7 +3555,7 @@ end))
 
 TextButton2.Activated:Connect(function()
 	if flag2 then
-		fn47(false)
+		openSkinsPanel()
 	end
 
 	Frame5.Visible = true
@@ -3605,7 +3608,7 @@ local skinApi = {
 	open = function()
 		if not screenGui.Parent then return false end
 		screenGui.Enabled = true
-		fn47(false)
+		openSkinsPanel()
 		return true
 	end,
 	aplicar = fn58,
