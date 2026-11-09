@@ -1036,7 +1036,6 @@ local function isNativeVisualEffect(instance)
 		or instance:IsA("Smoke")
 		or instance:IsA("Sparkles")
 		or instance:IsA("Light")
-		or instance:IsA("Highlight")
 		or instance:IsA("BillboardGui")
 		or instance:IsA("SurfaceGui")
 end
@@ -1049,14 +1048,6 @@ local function enableCopiedAppearanceEffect(model, instance)
         return false
     end
 
-    if instance:IsA("Highlight") then
-        pcall(function()
-            local adornee = instance.Adornee
-            if not adornee or (adornee ~= model and not adornee:IsDescendantOf(model)) then
-                instance.Adornee = model
-            end
-        end)
-    end
 
     local ok, enabled = pcall(function() return instance.Enabled end)
     if not ok or enabled then
@@ -1211,7 +1202,7 @@ local function createNativeCameraTransparencyUpdater(char, modelo)
 			entry.originalEnabled = instance.Enabled
 			entry.originalTransparency = instance.Transparency
 		elseif instance:IsA("Fire") or instance:IsA("Smoke") or instance:IsA("Sparkles")
-			or instance:IsA("Light") or instance:IsA("Highlight")
+			or instance:IsA("Light")
 			or instance:IsA("BillboardGui") or instance:IsA("SurfaceGui") then
 			entry.kind = "enabledEffect"
 			entry.originalEnabled = instance.Enabled
