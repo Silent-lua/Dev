@@ -13,9 +13,6 @@ if type(avatarBridge) ~= "table" then avatarBridge = {} end
 avatarBridge.version = 2
 avatarBridge.skin = type(avatarBridge.skin) == "table" and avatarBridge.skin or {}
 avatarBridge.accessory = type(avatarBridge.accessory) == "table" and avatarBridge.accessory or {}
-avatarBridge.uiPanels = type(avatarBridge.uiPanels) == "table" and avatarBridge.uiPanels or {}
-local uiPanels = avatarBridge.uiPanels
-uiPanels.activePanel = uiPanels.activePanel or "none"
 avatarBridge.skin.revision = tonumber(avatarBridge.skin.revision) or 0
 avatarBridge.accessory.revision = tonumber(avatarBridge.accessory.revision) or 0
 local skinBridgeToken = {}
@@ -2057,28 +2054,6 @@ local function keepFrameInsideViewport()
 	setGuiCenter(Frame, getGuiCenter(Frame))
 end
 
-local function getStackedLauncherCenter(guiObject, order)
-	local viewport = getViewportSize()
-	local absoluteSize = guiObject.AbsoluteSize
-	local width = absoluteSize.X > 0 and absoluteSize.X or 150
-	local height = absoluteSize.Y > 0 and absoluteSize.Y or 46
-	local halfWidth, halfHeight = width * 0.5, height * 0.5
-	local gap = 10
-	local stackHeight = height * 2 + gap
-	local stackTop = math.max(0, (viewport.Y - stackHeight) * 0.5)
-	local centerY = stackTop + halfHeight
-	if order > 1 then
-		centerY += height + gap
-	end
-
-	return Vector2.new(halfWidth + 12, centerY)
-end
-
-local function centerGuiObject(guiObject)
-	local viewport = getViewportSize()
-	setGuiCenter(guiObject, Vector2.new(viewport.X * 0.5, viewport.Y * 0.5))
-end
-
 local function fn44()
 	local currentCamera = workspace.CurrentCamera
 	currentCamera = currentCamera and currentCamera.ViewportSize or Vector2.new(1280, 720)
@@ -2447,7 +2422,6 @@ task.spawn(function()
 end)
 
 local floatingPositionInitialized = false
-local stackedFloatingPositionInitialized = false
 
 local function getFloatingCenter()
 	return getGuiCenter(TextButton5)
@@ -2471,23 +2445,6 @@ local function fn47(visible)
 		task.defer(function()
 			setFloatingCenter(getFloatingCenter())
 		end)
-	end
-
-	if visible and not stackedFloatingPositionInitialized then
-		setFloatingCenter(getStackedLauncherCenter(TextButton5, 2))
-		stackedFloatingPositionInitialized = true
-	end
-
-	if not visible then
-		centerGuiObject(Frame)
-	end
-
-	if visible then
-		if uiPanels.activePanel == "skins" then
-			uiPanels.activePanel = "none"
-		end
-	else
-		uiPanels.activePanel = "skins"
 	end
 end
 
@@ -3564,9 +3521,6 @@ end)
 
 TextButton6.Activated:Connect(function()
 	Frame5.Visible = false
-	if uiPanels.activePanel == "skins" then
-		uiPanels.activePanel = "none"
-	end
 	tbl20 = nil
 	panelDrag = nil
     disconnectCharacterLifecycleConnections()
@@ -3604,16 +3558,12 @@ local skinApi = {
         else
             screenGui.Enabled = false
         end
-        if enabled ~= true and uiPanels.activePanel == "skins" then
-            uiPanels.activePanel = "none"
-        end
         return true
     end,
 	open = function()
 		screenGui.Enabled = true
 		Frame.Visible = true
 		TextButton5.Visible = false
-		fn47(false)
 		return screenGui.Parent ~= nil
 	end,
 	aplicar = fn58,
@@ -3624,9 +3574,6 @@ local skinApi = {
 	destroy = function()
 		tbl20 = nil
 		panelDrag = nil
-		if uiPanels.activePanel == "skins" then
-			uiPanels.activePanel = "none"
-		end
 		disconnectCharacterLifecycleConnections()
 		fn59()
 		if avatarBridge.skin.owner == skinBridgeToken then
