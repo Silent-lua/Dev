@@ -169,10 +169,12 @@ local state = {
     overlayFolder = nil,
     syncConnection = nil,
     cameraDescendantConnection = nil,
+    cameraDescendantRemovingConnection = nil,
     hiddenCharacter = nil,
     hiddenStates = {},
     hiddenList = {},
     hiddenDescendantConnection = nil,
+    hiddenDescendantRemovingConnection = nil,
     hiddenRenderStepName = "SnowXAccessoryVisibility_" .. tostring({}):gsub("[^%w]", ""),
     hiddenRenderStepBound = false,
     hiddenRenderConnection = nil,
@@ -1014,6 +1016,30 @@ local function syncVisualPose(rootPart, syncPlan, sourceRoot, footOffset)
     end
 end
 
+local function restoreHiddenDescendant(instance)
+    local saved = state.hiddenStates[instance]
+    if saved then
+        if instance then
+            pcall(function()
+                if saved.kind == "part" then
+                    instance.LocalTransparencyModifier = saved.value
+                elseif saved.kind == "texture" then
+                    instance.Transparency = saved.value
+                elseif saved.kind == "effect" then
+                    instance.Enabled = saved.value
+                end
+            end)
+        end
+        state.hiddenStates[instance] = nil
+    end
+    for index = #state.hiddenList, 1, -1 do
+        if state.hiddenList[index] == instance then
+            table.remove(state.hiddenList, index)
+            break
+        end
+    end
+end
+
 local function hideOriginalDescendant(character, descendant)
     if not descendant or not descendant.Parent or isToolDescendant(descendant) then return end
     if descendant:IsA("BasePart") then
@@ -1077,14 +1103,19 @@ local function enforceOriginalCharacterHidden()
 end
 
 local function bindOriginalCharacterVisibility()
-    if state.hiddenRenderConnection then return end
-    local accumulator = 0
-    state.hiddenRenderConnection = RunService.Heartbeat:Connect(function(deltaTime)
-        accumulator += deltaTime
-        if accumulator < 0.05 then return end
-        accumulator %= 0.05
-        enforceOriginalCharacterHidden()
+    if state.hiddenRenderStepBound or state.hiddenRenderConnection then return end
+    local ok = pcall(function()
+        RunService:BindToRenderStep(
+            state.hiddenRenderStepName,
+            Enum.RenderPriority.Last.Value,
+            enforceOriginalCharacterHidden
+        )
     end)
+    if ok then
+        state.hiddenRenderStepBound = true
+    else
+        state.hiddenRenderConnection = RunService.RenderStepped:Connect(enforceOriginalCharacterHidden)
+    end
 end
 
 local function restoreOriginalCharacter()
@@ -1100,20 +1131,12 @@ local function restoreOriginalCharacter()
         pcall(function() state.hiddenDescendantConnection:Disconnect() end)
         state.hiddenDescendantConnection = nil
     end
-    for _, instance in ipairs(state.hiddenList) do
-        local saved = state.hiddenStates[instance]
-        if saved and instance.Parent then
-            pcall(function()
-                if saved.kind == "part" then
-                    instance.LocalTransparencyModifier = saved.value
-                elseif saved.kind == "texture" then
-                    instance.Transparency = saved.value
-                elseif saved.kind == "effect" then
-                    instance.Enabled = saved.value
-                end
-            end)
-        end
-        state.hiddenStates[instance] = nil
+    if state.hiddenDescendantRemovingConnection then
+        pcall(function() state.hiddenDescendantRemovingConnection:Disconnect() end)
+        state.hiddenDescendantRemovingConnection = nil
+    end
+    for index = #state.hiddenList, 1, -1 do
+        restoreHiddenDescendant(state.hiddenList[index])
     end
     table.clear(state.hiddenList)
     state.hiddenCharacter = nil
@@ -1125,6 +1148,17 @@ local function hideOriginalCharacter(character)
         state.hiddenCharacter = character
         state.hiddenDescendantConnection = character.DescendantAdded:Connect(function(descendant)
             hideOriginalDescendant(character, descendant)
+        end)
+        state.hiddenDescendantRemovingConnection = character.DescendantRemoving:Connect(function()
+            task.defer(function()
+                if state.hiddenCharacter ~= character then return end
+                for index = #state.hiddenList, 1, -1 do
+                    local instance = state.hiddenList[index]
+                    if not instance:IsDescendantOf(character) or isToolDescendant(instance) then
+                        restoreHiddenDescendant(instance)
+                    end
+                end
+            end)
         end)
         for _, descendant in ipairs(character:GetDescendants()) do
             hideOriginalDescendant(character, descendant)
@@ -1140,17 +1174,52 @@ local function createNativeCameraTransparencyUpdater(model, beforeTrack)
     local lastTransparency = nil
     local lastUpdate = os.clock()
     local lastPrune = lastUpdate
-    local maxTweenRate = 2.8
+    local MAX_TWEEN_RATE = 2.8
+
+    local function restoreEntry(entry)
+        local instance = entry.instance
+        pcall(function()
+            if entry.kind == "modifier" then
+                instance.LocalTransparencyModifier = entry.originalModifier or 0
+            elseif entry.kind == "textureTransparency" then
+                instance.Transparency = entry.originalTransparency or 0
+            elseif entry.kind == "sequence" then
+                instance.Transparency = entry.originalTransparency
+                instance.Enabled = entry.originalEnabled
+            elseif entry.kind == "enabled" then
+                instance.Enabled = entry.originalEnabled
+            end
+        end)
+    end
+
+    local function untrack(instance)
+        if not tracked[instance] then return end
+        for index = #entries, 1, -1 do
+            if entries[index].instance == instance then
+                restoreEntry(entries[index])
+                table.remove(entries, index)
+                break
+            end
+        end
+        tracked[instance] = nil
+    end
 
     local function track(instance)
         if tracked[instance] or isToolDescendant(instance) then return end
         local entry = { instance = instance }
-        if instance:IsA("BasePart") then
-            entry.kind = "part"
-            entry.originalModifier = instance.LocalTransparencyModifier
-        elseif instance:IsA("Decal") or instance:IsA("Texture") then
-            entry.kind = "texture"
-            entry.originalTransparency = instance.Transparency
+        if instance:IsA("BasePart") or instance:IsA("Decal") or instance:IsA("Texture") then
+            local ok, originalModifier = pcall(function()
+                return instance.LocalTransparencyModifier
+            end)
+            if ok then
+                entry.kind = "modifier"
+                entry.originalModifier = originalModifier
+            elseif instance:IsA("Decal") or instance:IsA("Texture") then
+                entry.kind = "textureTransparency"
+                entry.originalTransparency = instance.Transparency
+            else
+                return
+            end
         elseif instance:IsA("ParticleEmitter") or instance:IsA("Trail") or instance:IsA("Beam") then
             entry.kind = "sequence"
             entry.originalEnabled = instance.Enabled
@@ -1170,109 +1239,122 @@ local function createNativeCameraTransparencyUpdater(model, beforeTrack)
     if type(beforeTrack) == "function" then
         pcall(beforeTrack)
     end
-    for _, descendant in ipairs(model:GetDescendants()) do track(descendant) end
+    for _, descendant in ipairs(model:GetDescendants()) do
+        track(descendant)
+    end
 
     local function getTargetTransparency()
         local camera = Workspace.CurrentCamera
         local target = 0
-        if localPlayer.CameraMode == Enum.CameraMode.LockFirstPerson then
-            target = 1
-        elseif camera then
-            local reference = model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart")
-            if reference and reference:IsA("BasePart") then
-                local distance = (camera.CFrame.Position - reference.Position).Magnitude
-                if distance < 1.55 then
-                    target = math.clamp((1.55 - distance) / 1.05, 0, 1)
+        if camera then
+            if localPlayer.CameraMode == Enum.CameraMode.LockFirstPerson then
+                target = 1
+            else
+                local distance = (camera.Focus.Position - camera.CFrame.Position).Magnitude
+                if distance >= 2 then
+                    local reference = model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart")
+                    if reference and reference:IsA("BasePart") then
+                        local lookVector = camera.CFrame.LookVector
+                        local toReference = reference.Position - camera.CFrame.Position
+                        local forwardDistance = toReference:Dot(lookVector)
+                        local lateralDistance = (toReference - lookVector * forwardDistance).Magnitude
+                        if forwardDistance > 0 and lateralDistance <= 2.5 then
+                            distance = math.min(distance, forwardDistance)
+                        end
+                    end
                 end
+                if distance < 2 then
+                    target = 1 - (distance - 0.5) / 1.5
+                end
+                if target < 0.5 then target = 0 end
             end
         end
+
         target = math.clamp(target, 0, 1)
         local now = os.clock()
-        local dt = math.max(0, now - lastUpdate)
+        local deltaTime = math.max(0, now - lastUpdate)
         lastUpdate = now
 
-        if lastTransparency ~= nil and target > lastTransparency and target < 1 then
-            target = lastTransparency + math.clamp(target - lastTransparency, 0, maxTweenRate * dt)
+        if lastTransparency ~= nil and target < 1 and lastTransparency < 0.95 then
+            local maxDelta = MAX_TWEEN_RATE * deltaTime
+            local deltaTransparency = math.clamp(target - lastTransparency, -maxDelta, maxDelta)
+            target = lastTransparency + deltaTransparency
         end
+
         target = math.clamp(math.floor(target * 100 + 0.5) / 100, 0, 1)
         lastTransparency = target
         return target
     end
 
+    local function applyVisual(entry, transparency)
+        local instance = entry.instance
+        if not instance.Parent or not instance:IsDescendantOf(model) or isToolDescendant(instance) then
+            return
+        end
+
+        local firstPerson = transparency >= 0.995
+        if entry.kind == "modifier" then
+            local desired = math.max(entry.originalModifier or 0, transparency)
+            if entry.lastApplied ~= desired then
+                local ok = pcall(function()
+                    instance.LocalTransparencyModifier = desired
+                end)
+                if ok then entry.lastApplied = desired end
+            end
+        elseif entry.kind == "textureTransparency" then
+            local originalTransparency = entry.originalTransparency or 0
+            local desired = 1 - ((1 - originalTransparency) * (1 - transparency))
+            if entry.lastApplied ~= desired then
+                pcall(function() instance.Transparency = desired end)
+                entry.lastApplied = desired
+            end
+        elseif entry.kind == "sequence" then
+            if entry.hidden ~= firstPerson then
+                if firstPerson then
+                    pcall(function()
+                        instance.Enabled = false
+                        instance.Transparency = NumberSequence.new(1)
+                    end)
+                    if instance:IsA("ParticleEmitter") or instance:IsA("Trail") then
+                        pcall(function() instance:Clear() end)
+                    end
+                else
+                    pcall(function()
+                        instance.Transparency = entry.originalTransparency
+                        instance.Enabled = entry.originalEnabled
+                    end)
+                end
+                entry.hidden = firstPerson
+            end
+        elseif entry.kind == "enabled" then
+            if entry.hidden ~= firstPerson then
+                pcall(function()
+                    instance.Enabled = firstPerson and false or entry.originalEnabled
+                end)
+                entry.hidden = firstPerson
+            end
+        end
+    end
+
     local function update()
-        if not model.Parent then return end
+        if not model.Parent then return false end
         local transparency = getTargetTransparency()
         local firstPerson = transparency >= 0.995
         local now = os.clock()
         if now - lastPrune >= 2 then
             lastPrune = now
             for index = #entries, 1, -1 do
-                local instance = entries[index].instance
-                if not instance.Parent then
-                    pcall(function()
-                        if entries[index].kind == "part" then
-                            instance.LocalTransparencyModifier = entries[index].originalModifier or 0
-                        elseif entries[index].kind == "texture" then
-                            instance.Transparency = entries[index].originalTransparency or 0
-                        elseif entries[index].kind == "sequence" then
-                            instance.Transparency = entries[index].originalTransparency
-                            instance.Enabled = entries[index].originalEnabled
-                        elseif entries[index].kind == "enabled" then
-                            instance.Enabled = entries[index].originalEnabled
-                        end
-                    end)
+                local entry = entries[index]
+                local instance = entry.instance
+                if not instance:IsDescendantOf(model) or isToolDescendant(instance) then
+                    restoreEntry(entry)
                     tracked[instance] = nil
                     table.remove(entries, index)
                 end
             end
         end
         for _, entry in ipairs(entries) do
-            local instance = entry.instance
-            if instance.Parent then
-                if entry.kind == "part" then
-                    local desired = math.max(entry.originalModifier or 0, transparency)
-                    if entry.lastApplied ~= desired then
-                        pcall(function() instance.LocalTransparencyModifier = desired end)
-                        entry.lastApplied = desired
-                    end
-                elseif entry.kind == "texture" then
-                    local original = entry.originalTransparency or 0
-                    local desired = 1 - ((1 - original) * (1 - transparency))
-                    if entry.lastApplied ~= desired then
-                        pcall(function() instance.Transparency = desired end)
-                        entry.lastApplied = desired
-                    end
-                elseif entry.kind == "sequence" then
-                    if entry.hidden ~= firstPerson then
-                        if firstPerson then
-                            pcall(function()
-                                instance.Enabled = false
-                                instance.Transparency = NumberSequence.new(1)
-                            end)
-                            if instance:IsA("ParticleEmitter") or instance:IsA("Trail") then
-                                pcall(function() instance:Clear() end)
-                            end
-                        else
-                            pcall(function()
-                                instance.Transparency = entry.originalTransparency
-                                instance.Enabled = entry.originalEnabled
-                            end)
-                        end
-                        entry.hidden = firstPerson
-                    end
-                elseif entry.kind == "enabled" then
-                    if entry.hidden ~= firstPerson then
-                        pcall(function()
-                            if firstPerson then
-                                instance.Enabled = false
-                            else
-                                instance.Enabled = entry.originalEnabled
-                            end
-                        end)
-                        entry.hidden = firstPerson
-                    end
-                end
-            end
+            applyVisual(entry, transparency)
         end
         return firstPerson
     end
@@ -1283,7 +1365,18 @@ local function createNativeCameraTransparencyUpdater(model, beforeTrack)
         end
         track(descendant)
     end)
-    return update, descendantConnection
+    local descendantRemovingConnection = model.DescendantRemoving:Connect(function(descendant)
+        if not tracked[descendant] then return end
+        task.defer(function()
+            if tracked[descendant]
+                and (not descendant:IsDescendantOf(model) or isToolDescendant(descendant)) then
+                untrack(descendant)
+            end
+        end)
+    end)
+
+    update()
+    return update, descendantConnection, descendantRemovingConnection
 end
 
 local function disposeVisualOverlay(restoreOriginal)
@@ -1294,6 +1387,10 @@ local function disposeVisualOverlay(restoreOriginal)
     if state.cameraDescendantConnection then
         pcall(function() state.cameraDescendantConnection:Disconnect() end)
         state.cameraDescendantConnection = nil
+    end
+    if state.cameraDescendantRemovingConnection then
+        pcall(function() state.cameraDescendantRemovingConnection:Disconnect() end)
+        state.cameraDescendantRemovingConnection = nil
     end
     if state.overlayModel then
         pcall(function() state.overlayModel:Destroy() end)
@@ -1480,24 +1577,28 @@ local function applyCurrentAppearance()
     syncVisualPose(visualRoot, visualJoints, originalRoot, footOffset)
     visualModel.Parent = folder
     local activatedNativeEffects = activateSelectedNativeEffects(visualModel)
-    local cameraUpdate, cameraDescendantConnection = createNativeCameraTransparencyUpdater(
-        visualModel,
-        function(descendant)
-            enableNativeEffect(descendant)
-        end
-    )
+    local cameraUpdate, cameraDescendantConnection, cameraDescendantRemovingConnection =
+        createNativeCameraTransparencyUpdater(
+            visualModel,
+            function(descendant)
+                enableNativeEffect(descendant)
+            end
+        )
 
     local oldModel = state.overlayModel
     if state.syncConnection then pcall(function() state.syncConnection:Disconnect() end) end
     if state.cameraDescendantConnection then pcall(function() state.cameraDescendantConnection:Disconnect() end) end
+    if state.cameraDescendantRemovingConnection then
+        pcall(function() state.cameraDescendantRemovingConnection:Disconnect() end)
+    end
 
     state.overlayModel = visualModel
     state.overlayRoot = visualRoot
     state.overlayJointMap = visualJoints
     state.overlayOffsetY = footOffset
     state.cameraDescendantConnection = cameraDescendantConnection
+    state.cameraDescendantRemovingConnection = cameraDescendantRemovingConnection
     hideOriginalCharacter(character)
-    local cameraUpdateAccumulator = 0
     local currentOriginalRoot = originalRoot
     local cachedCamera = Workspace.CurrentCamera
     local cachedFolder = folder
@@ -1510,6 +1611,7 @@ local function applyCurrentAppearance()
         if not currentOriginalRoot or not currentOriginalRoot.Parent then return end
 
         local currentCamera = Workspace.CurrentCamera
+        if not currentCamera then return end
         if currentCamera ~= cachedCamera or not cachedFolder or cachedFolder.Parent ~= currentCamera then
             cachedCamera = currentCamera
             cachedFolder = getCameraFolder()
@@ -1519,11 +1621,7 @@ local function applyCurrentAppearance()
         end
 
         syncVisualPose(visualRoot, visualJoints, currentOriginalRoot, footOffset)
-        cameraUpdateAccumulator += deltaTime
-        if cameraUpdateAccumulator >= (1 / 30) then
-            cameraUpdateAccumulator %= (1 / 30)
-            cameraUpdate()
-        end
+        cameraUpdate()
     end)
 
     if oldModel and oldModel ~= visualModel then pcall(function() oldModel:Destroy() end) end
@@ -4105,15 +4203,6 @@ if isSkinRendererActive() and type(avatarBridge.skin.refresh) == "function" then
     end)
 end
 
-addConnection(state.connections, Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-    task.defer(function()
-
-        if not isSkinRendererActive() and hasVisualChanges()
-            and state.character == localPlayer.Character then
-            applyCurrentAppearance()
-        end
-    end)
-end))
 addConnection(state.connections, localPlayer.CharacterAdded:Connect(onCharacterAdded))
 addConnection(state.connections, localPlayer.CharacterRemoving:Connect(function(character)
     if state.character == character then
