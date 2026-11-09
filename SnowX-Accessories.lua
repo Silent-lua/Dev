@@ -3872,6 +3872,8 @@ local function buildUI()
         floatingPositionInitialized = true
     end
 
+    state.initializeReopenPosition = initializeReopenPosition
+
     local function hideWindow()
         initializeReopenPosition()
         main.Visible = false
@@ -4207,6 +4209,7 @@ cleanup = function()
     disconnectBucket(state.connections)
     disconnectBucket(state.characterConnections)
     disconnectBucket(state.uiConnections)
+    state.initializeReopenPosition = nil
     disconnectBucket(state.resultConnections)
     disconnectBucket(state.favoriteConnections)
     local skinActive = isSkinRendererActive()
@@ -4279,6 +4282,9 @@ accessoryApi = {
         if not state.gui then return false end
         if enabled == true then
             state.gui.Enabled = true
+            if state.initializeReopenPosition then
+                state.initializeReopenPosition()
+            end
             if state.main then state.main.Visible = false end
             if state.reopen then state.reopen.Visible = true end
         else
