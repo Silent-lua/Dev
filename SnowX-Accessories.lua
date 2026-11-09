@@ -12,8 +12,8 @@ if not localPlayer then
     error("Fallo")
 end
 
--- The main loader passes a private bridge as the chunk argument.
--- Running this file directly creates an isolated bridge without executor globals.
+
+
 local avatarBridge = ...
 if type(avatarBridge) ~= "table" then avatarBridge = {} end
 avatarBridge.version = 2
@@ -1330,8 +1330,8 @@ local function enableNativeEffectsIn(container)
 end
 
 local function activateSelectedNativeEffects(model)
-    -- Scan the complete generated appearance: some avatar FX are attached to
-    -- body parts rather than an Accessory instance. Tool effects are excluded.
+    
+    
     return enableNativeEffectsIn(model)
 end
 
@@ -1429,8 +1429,8 @@ local function applyCurrentAppearance()
             return false, "Roblox no pudo generar el modelo visual: " .. tostring(modelError)
         end
 
-        -- Keep an untouched template in memory. Respawns clone this model
-        -- instead of asking Roblox to rebuild the avatar from its description.
+        
+        
         local templateOk, templateClone = pcall(function()
             return visualModel:Clone()
         end)
@@ -1503,9 +1503,9 @@ local function applyCurrentAppearance()
         syncVisualPose(visualRoot, visualJoints, currentOriginalRoot, footOffset)
         local firstPerson = cameraUpdate()
         local now = os.clock()
-        -- Some avatar assets instantiate their native emitters after the
-        -- accessory itself. Re-enable them in third person without fighting
-        -- the camera updater when the local player is in first person.
+        
+        
+        
         if not firstPerson and now - lastEffectRecovery >= 0.5 then
             lastEffectRecovery = now
             activateSelectedNativeEffects(visualModel)
@@ -2120,8 +2120,8 @@ local function collectCurrentItems(forceRefresh)
         end
     end
 
-    -- Local additions are merged with the active avatar/skin baseline. A
-    -- removal override only removes its own ID; every other equipped ID stays.
+    
+    
     for rawId, enabled in pairs(state.accessoryOverrides) do
         local assetId = math.floor(tonumber(rawId) or 0)
         if enabled == true and assetId > 0 and not seen[assetId] then
@@ -2739,7 +2739,7 @@ local function buildUI()
         Position = UDim2.fromOffset(14, 0),
         Size = UDim2.new(1, -24, 1, 0),
         Font = Enum.Font.GothamBold,
-        Text = "Open SnowX",
+        Text = "Open Accessory",
         TextSize = 13,
         TextColor3 = COLORS.Text,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -3062,8 +3062,8 @@ local function buildUI()
             local focusRoot = nil
             local previewAvatar = nil
             if accessory then
-                -- Show only the catalog asset. The camera fit changes the view
-                -- distance, never the accessory geometry or native scale.
+                
+                
                 if accessory.Parent then
                     pcall(function() accessory.Parent = nil end)
                 end
@@ -3111,7 +3111,7 @@ local function buildUI()
             local horizontalFov = 2 * math.atan(math.tan(verticalFov * 0.5) * math.max(aspect, 0.1))
             local limitingHalfFov = math.min(verticalFov, horizontalFov) * 0.5
             local boundingRadius = math.max(boundsSize.Magnitude * 0.5, 0.12)
-            -- Give the accessory more breathing room without changing its native scale.
+            
             local distance = math.max((boundingRadius / math.max(math.sin(limitingHalfFov), 0.05)) * 1.48, 0.45)
             local cameraSide = -1
             if previewAvatar then
@@ -3127,7 +3127,7 @@ local function buildUI()
             previewImage.Visible = false
             previewViewport.Visible = true
 
-            -- Slow rotation makes the object and its native visual effects inspectable.
+            
             local rotation = 0
             local stagePivot = stage:GetPivot()
             previewSpinConnection = RunService.RenderStepped:Connect(function(deltaTime)
@@ -3435,8 +3435,8 @@ local function buildUI()
             table.insert(state.favoriteRows, emptyFavorites)
         end
 
-        -- Recommendations are intentionally independent of both favourites
-        -- and equipped state, so applying an item never removes its catalog row.
+        
+        
         addSidebarSection("Recomendados")
         local recommendedCount = 0
         local recommendedSeen = {}
@@ -3465,8 +3465,8 @@ local function buildUI()
             table.insert(state.favoriteRows, noRecommendations)
         end
 
-        -- Removal stays below Recommendations, uses the same standard row
-        -- height as the other entries, and acts on the selected equipped item.
+        
+        
         removeSelectedEquippedButton = nil
         if sideCategory == "accessory" then
             addSidebarSection("Gestión de equipados")
@@ -3560,9 +3560,9 @@ local function buildUI()
             end
         end
 
-        -- AutomaticCanvasSize.Y owns the scroll extent. Keep the same visible
-        -- row anchored across refreshes; a raw old CanvasPosition can otherwise
-        -- land near the bottom after the list grows and hide Favorites/Recommends.
+        
+        
+        
         task.spawn(function()
             RunService.Heartbeat:Wait()
             RunService.Heartbeat:Wait()
@@ -3969,8 +3969,8 @@ local function onCharacterAdded(character)
             end)
         end))
 
-        -- Some games rebuild the avatar on the same Character between rounds.
-        -- Recompose the overlay as soon as Roblox finishes applying that description.
+        
+        
         local appearanceSignalOk, appearanceSignal = pcall(function()
             return humanoid.ApplyDescriptionFinished
         end)
@@ -3979,7 +3979,7 @@ local function onCharacterAdded(character)
                 if generation ~= state.generation or character ~= localPlayer.Character then return end
                 if isSkinRendererActive() then
                     if state.refreshFavoritesPage then pcall(state.refreshFavoritesPage) end
-                    return -- Skins owns the visual rebuild while its renderer is active.
+                    return 
                 end
 
                 local clonedDescription = nil
@@ -4053,8 +4053,8 @@ local function onCharacterAdded(character)
             clearVisualTemplate()
         end
 
-        -- If an older build is still completing, wait only for that operation;
-        -- there is no fixed post-respawn delay.
+        
+        
         while state.applying and generation == state.generation and character == localPlayer.Character do
             RunService.Heartbeat:Wait()
         end
@@ -4122,8 +4122,8 @@ end
 
 addConnection(state.connections, Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
     task.defer(function()
-        -- The skin module owns camera replacement while its renderer is active.
-        -- Avoid asking both modules to rebuild the same appearance at once.
+        
+        
         if not isSkinRendererActive() and hasVisualChanges()
             and state.character == localPlayer.Character then
             applyCurrentAppearance()

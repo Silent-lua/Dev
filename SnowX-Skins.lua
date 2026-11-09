@@ -8,8 +8,8 @@ local UserService = game:GetService("UserService")
 local CONFIG_PATH = "snowx/skins.json"
 local localPlayer = Players.LocalPlayer
 
--- The main loader passes a private bridge as the chunk argument.
--- Running this file directly creates an isolated bridge without executor globals.
+
+
 local avatarBridge = ...
 if type(avatarBridge) ~= "table" then avatarBridge = {} end
 avatarBridge.version = 2
@@ -65,7 +65,7 @@ local tbl3 = {
 	aplicado = nil,
 	favoritos = {},
 	rig = "R15",
-	feMode = "ON", -- Fixed mode; no longer user-toggleable.
+	feMode = "ON", 
 	animationsEnabled = true,
 }
 
@@ -111,7 +111,7 @@ local function fn()
 		tbl3.rig = result2.rig
 	end
 
-	-- FE remains fixed. Ignore legacy feMode=OFF values from older builds.
+	
 	tbl3.feMode = "ON"
 	if type(result2.animationsEnabled) == "boolean" then
 		tbl3.animationsEnabled = result2.animationsEnabled
@@ -259,8 +259,8 @@ local function isCharacterRigComplete(character, humanoid, visualRigName)
         end
     end
 
-    -- The R15-to-R6 converter reads these source joints. Wait for their real
-    -- instances instead of starting with an incomplete map and freezing limbs.
+    
+    
     if humanoid.RigType == Enum.HumanoidRigType.R15 and visualRigName == "R6" then
         for _, jointName in ipairs({ "Root", "Waist", "Neck", "RightShoulder", "LeftShoulder", "RightHip", "LeftHip" }) do
             if not foundJoints[jointName] then
@@ -609,8 +609,8 @@ local function fn14(arg)
 end
 
 local function fn15(arg, arg2)
-    -- The copied avatar is a visual overlay only. Never change the live
-    -- character's HipHeight; that property participates in the real rig physics.
+    
+    
     return
 end
 
@@ -692,8 +692,8 @@ local function fn18(arg, arg2)
 	end
 end
 
--- Copied-skin animation data is applied only when the user enables it.
--- The live character keeps Roblox's normal Animator/FE replication path intact.
+
+
 local copiedSkinAnimationData = nil
 local function applyCopiedSkinAnimations(character, enabled)
 	if not character or not character.Parent then return false end
@@ -1060,8 +1060,8 @@ local function enableCopiedAppearanceEffect(model, instance)
         return false
     end
 
-    -- The generated visual rig is the copied appearance itself; native
-    -- emitters on any body part/accessory belong to that appearance.
+    
+    
     local ok, enabled = pcall(function() return instance.Enabled end)
     if not ok or enabled then
         return false
@@ -1435,8 +1435,8 @@ local function fn32(char, modelo)
 	modelo:PivotTo(humanoidRootPart.CFrame * cframe)
 	modelo.Parent = v2
     activateCopiedAppearanceEffects(modelo)
-	-- CreateHumanoidModelFromDescription returns a complete rig. Do not block
-	-- respawn on an arbitrary 1.5-second joint polling window.
+	
+	
 	local v3 = fn23(char)
 	local cadena = {}
 
@@ -2265,7 +2265,7 @@ fn3("TextLabel", {
     Position = UDim2.fromOffset(14, 0),
     Size = UDim2.new(1, -24, 1, 0),
     Font = Enum.Font.GothamBold,
-    Text = "Open SnowX",
+    Text = "Open Skins",
     TextSize = 13,
     TextColor3 = tbl.Text,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -2727,8 +2727,8 @@ local function fn56(arg, arg2)
         modelDescription = composed
     end
 
-    -- Animation assets are fetched only while building the first template.
-    -- Later respawns clone the prepared avatar instead of waiting on asset I/O.
+    
+    
     fn11(modelDescription)
     local model = fn6(arg, modelDescription, rigName)
     pcall(function() modelDescription:Destroy() end)
@@ -2796,8 +2796,8 @@ local function fn57(arg, arg2, requestedRig, requestGeneration)
 		animationData = getRigAnimationSet(v8)
 	end
 
-	-- Keep the copied avatar's emotes, but leave the user's Animate script
-	-- untouched until the dedicated Animaciones toggle is enabled.
+	
+	
 	fn20(arg, fn13(v7))
     local result = fn34(arg, v8, nil, rig)
     if requestGeneration and requestGeneration ~= applicationGeneration then
@@ -3014,7 +3014,7 @@ r6.Activated:Connect(function()
 end)
 
 v5.Activated:Connect(function()
-	-- Animations can only be toggled while a copied skin is actually equipped.
+	
 	if avatarBridge.skin.active ~= true or not tonumber(tbl3.aplicado) then
 		fn46()
 		return
@@ -3219,8 +3219,8 @@ table.insert(tbl21, localPlayer.CharacterAdded:Connect(function(character)
             fn58(savedUserId, tbl3.rig, true)
         end)
 
-        -- A round can replace the live HumanoidDescription without respawning.
-        -- Rebuild the copied visual from its cached template in that case too.
+        
+        
         local appearanceSignalOk, appearanceSignal = pcall(function()
             return humanoid.ApplyDescriptionFinished
         end)
@@ -3384,7 +3384,7 @@ local skinApi = {
 		table.clear(skinModelTemplateOrder)
 			if screenGui.Parent then screenGui:Destroy() end
 	end,
-	-- FE is intentionally fixed ON. Legacy OFF requests are rejected.
+	
 	setFEMode = function(mode)
 		tbl3.feMode = "ON"
 		fn2()
@@ -3426,6 +3426,6 @@ task.spawn(function()
 	end
 end)
 
--- FE mode is applied only while a copied skin is active.
+
 
 return skinApi

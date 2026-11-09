@@ -2005,151 +2005,61 @@ local function loadModule(fileName)
     end)
 
     if not ok then
-        warn("[SnowX] Error cargando " .. fileName .. ": " .. tostring(api))
-        Window:Notify({
-            Title = "SnowX",
-            Text = "No se pudo cargar " .. fileName .. ". Revisa tu conexión o executor.",
-            Duration = 5,
-        })
         return nil
     end
 
     return api
 end
 
+Window:Notify({Title = "SnowX", Text = "Cargando Accesorios / Skins", Duration = 3})
+
 local accessoryApi = loadModule("SnowX-Accessories.lua")
 local skinApi = loadModule("SnowX-Skins.lua")
+
+if not accessoryApi or not skinApi then
+    Window:Notify({Title = "SnowX", Text = "Error de Accesorios / Skins", Duration = 4})
+end
 
 local function getAccessoryApi()
     return type(accessoryApi) == "table" and accessoryApi or nil
 end
+
+local function getSkinApi()
+    return type(skinApi) == "table" and skinApi or nil
+end
+
 local function setAccessoryLauncherEnabled(enabled)
     local api = getAccessoryApi()
-    if not api or type(api.SetEnabled) ~= "function" then
-        Window:Notify({Title = "SnowX", Text = "No se pudo habilitar el botón flotante de accesorios.", Duration = 4})
-        return false
-    end
+    if not api or type(api.SetEnabled) ~= "function" then return false end
     local ok, result = pcall(api.SetEnabled, enabled == true)
-    if not ok or result == false then
-        Window:Notify({Title = "SnowX", Text = "No se pudo cambiar el estado de accesorios.", Duration = 3})
-        return false
-    end
-    return true
+    return ok and result ~= false
 end
 
-local function openSnowXAccessory()
-    local api = getAccessoryApi()
-    if not api then
-        Window:Notify({Title = "SnowX", Text = "Ejecuta SnowX-Accessories.lua para cargar el sistema de accesorios.", Duration = 4})
-        return false
-    end
-    local ok, opened = pcall(function()
-        return api.Open and api.Open()
-    end)
-    if not ok or opened == false then
-        Window:Notify({Title = "SnowX", Text = "No se pudo abrir el panel de accesorios.", Duration = 3})
-        return false
-    end
-    return true
+local function setAvatarEnabled(enabled)
+    local api = getSkinApi()
+    if not api or type(api.setEnabled) ~= "function" then return false end
+    local ok, result = pcall(api.setEnabled, enabled == true)
+    return ok and result ~= false
 end
 
-local function applySnowXAsset(assetId, successText)
-    local api = getAccessoryApi()
-    if not api or type(api.ApplyAsset) ~= "function" then
-        Window:Notify({Title = "Avatar", Text = "Ejecuta SnowX-Accessories.lua primero.", Duration = 4})
-        return false
-    end
-    local callOk, applied, message = pcall(api.ApplyAsset, assetId)
-    if not callOk or applied == false then
-        Window:Notify({Title = "Avatar", Text = tostring(message or applied or "No se pudo aplicar el objeto."), Duration = 4})
-        return false
-    end
-    Window:Notify({Title = "Avatar", Text = successText or tostring(message or "Apariencia actualizada."), Duration = 3})
-    return true
-end
+Tabs.Performance:CreateSection("Avatar")
 
-local function applyHeadless()
-    local api = getAccessoryApi()
-    if not api or type(api.ToggleBodyPart) ~= "function" then
-        Window:Notify({Title = "Avatar", Text = "Ejecuta SnowX-Accessories.lua primero.", Duration = 4})
-        return
-    end
-    local ok, applied, message = pcall(api.ToggleBodyPart, "headless")
-    Window:Notify({Title = "Avatar", Text = ok and applied ~= false and tostring(message or "Headless actualizado.") or tostring(message or applied or "Fallo al aplicar Headless."), Duration = 3})
-end
-
-local function applyKorblox()
-    local api = getAccessoryApi()
-    if not api or type(api.ToggleBodyPart) ~= "function" then
-        Window:Notify({Title = "Avatar", Text = "Ejecuta SnowX-Accessories.lua primero.", Duration = 4})
-        return
-    end
-    local ok, applied, message = pcall(api.ToggleBodyPart, "korbloxLeg")
-    Window:Notify({Title = "Avatar", Text = ok and applied ~= false and tostring(message or "Korblox actualizado.") or tostring(message or applied or "Fallo al aplicar Korblox."), Duration = 3})
-end
-
-local function equipLocalAccessory(assetId)
-    return applySnowXAsset(assetId)
-end
-
-Tabs.Performance:CreateSection("Avatar Modifiers")
-
-Tabs.Performance:CreateButton({
-    Name = "Headless",
-    Callback = function() applyHeadless() end
+Tabs.Performance:CreateToggle({
+    Name = "Accesorios",
+    CurrentValue = false,
+    Flag = "AccessoriesToggle",
+    Callback = function(state)
+        setAccessoryLauncherEnabled(state)
+    end,
 })
 
-Tabs.Performance:CreateButton({
-    Name = "Korblox",
-    Callback = function() applyKorblox() end
-})
-
-Tabs.Performance:CreateButton({
-    Name = "Eye Red",
-    Callback = function()
-        equipLocalAccessory("17826440571")
-        Window:Notify({Title = "Extra", Text = "Ojos Ninja Activados", Duration = 2})
-    end
-})
-
-Tabs.Performance:CreateButton({
-    Name = "Fiery Horns",
-    Callback = function()
-        equipLocalAccessory("215718515")
-        Window:Notify({Title = "Avatar", Text = "Cuernos Equipados", Duration = 2})
-    end
-})
-
-Tabs.Performance:CreateButton({
-    Name = "Rc Crown",
-    Callback = function()
-        equipLocalAccessory("10159600649")
-        Window:Notify({Title = "Avatar", Text = "Corona Equipada", Duration = 2})
-    end
-})
-
-Tabs.Performance:CreateButton({
-    Name = "Orange Fairy",
-    Callback = function()
-        equipLocalAccessory("128217885")
-        Window:Notify({Title = "Avatar", Text = "Orange Fairy Equipped", Duration = 2})
-    end
-})
-
-Tabs.Performance:CreateButton({
-    Name = "Silver Crown",
-    Callback = function()
-        equipLocalAccessory("12922571644")
-        Window:Notify({Title = "Avatar", Text = "Silver Crown Equipped", Duration = 2})
-    end
-})
-
-Tabs.Performance:CreateButton({
-    Name = "8-Bit Heart Bar",
-    Callback = function()
-        equipLocalAccessory("10159610478")
-        Window:Notify({Title = "Avatar", Text = "Heart Bar Equipped", Duration = 2})
-    end
+Tabs.Performance:CreateToggle({
+    Name = "Avatar",
+    CurrentValue = false,
+    Flag = "AvatarToggle",
+    Callback = function(state)
+        setAvatarEnabled(state)
+    end,
 })
 
 local originalTextsOrby = {}
@@ -2946,46 +2856,6 @@ TabTools:CreateButton({
         Busy = false
     end
 })
-
-
-TabTools:CreateSection("Avatar")
-
-local function getSkinApi()
-    return type(skinApi) == "table" and skinApi or nil
-end
-
-local function setAvatarEnabled(enabled)
-    local api = getSkinApi()
-    if not api or type(api.setEnabled) ~= "function" then
-        Window:Notify({Title = "SnowX", Text = "No se pudo habilitar el botón flotante de Avatar.", Duration = 4})
-        return false
-    end
-    local ok, result = pcall(api.setEnabled, enabled == true)
-    if not ok or result == false then
-        Window:Notify({Title = "SnowX", Text = "No se pudo cambiar el estado de Avatar.", Duration = 3})
-        return false
-    end
-    return true
-end
-
-TabTools:CreateToggle({
-    Name = "Avatar",
-    CurrentValue = false,
-    Flag = "AvatarToggle",
-    Callback = function(state)
-        setAvatarEnabled(state)
-    end,
-})
-
-TabTools:CreateToggle({
-    Name = "Accesorios",
-    CurrentValue = false,
-    Flag = "AccessoriesToggle",
-    Callback = function(state)
-        setAccessoryLauncherEnabled(state)
-    end,
-})
-
 
 
 local KillSounds = {
