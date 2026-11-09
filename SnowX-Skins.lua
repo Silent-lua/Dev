@@ -2234,14 +2234,18 @@ local function fn46()
 	end
 
 	local skinEquipped = avatarBridge.skin.active == true and tonumber(tbl3.aplicado) ~= nil
+	local useRobloxAnimations = tbl3.rig == "R6"
 	local animationsEnabled = tbl3.animationsEnabled == true
-	v5.Text = animationsEnabled and "Animaciones: On" or "Animaciones: Off"
-	v5.BackgroundColor3 = not skinEquipped and tbl.BackgroundAlt or (animationsEnabled and tbl.AccentFill or tbl.Surface)
-	v5.TextColor3 = skinEquipped and (animationsEnabled and tbl.Accent or tbl.Faint) or tbl.Faint
-	v5.TextTransparency = skinEquipped and 0 or 0.45
-	v5.Active = skinEquipped
-	v5.Selectable = skinEquipped
-	v5.AutoButtonColor = skinEquipped
+	v5.Text = useRobloxAnimations and "Animaciones: Roblox"
+		or (animationsEnabled and "Animaciones: On" or "Animaciones: Off")
+	local animationControlEnabled = skinEquipped and not useRobloxAnimations
+	v5.BackgroundColor3 = not animationControlEnabled and tbl.BackgroundAlt
+		or (animationsEnabled and tbl.AccentFill or tbl.Surface)
+	v5.TextColor3 = animationControlEnabled and (animationsEnabled and tbl.Accent or tbl.Faint) or tbl.Faint
+	v5.TextTransparency = animationControlEnabled and 0 or 0.35
+	v5.Active = animationControlEnabled
+	v5.Selectable = animationControlEnabled
+	v5.AutoButtonColor = animationControlEnabled
 	if v6 then v6.ImageColor3 = v5.TextColor3 end
 end
 
@@ -2760,29 +2764,6 @@ local function fn56(arg, arg2)
     return baseDescription, model
 end
 
-local function getRigAnimationSet(model)
-	local animate = model and model:FindFirstChild("Animate")
-	if not animate then return nil end
-	local animationSet = {}
-	for key in pairs(tbl2) do
-		local folder = animate:FindFirstChild(key)
-		if folder then
-			local animations = {}
-			for _, child in ipairs(folder:GetChildren()) do
-				if child:IsA("Animation") then
-					local clone = child:Clone()
-					clone.Parent = nil
-					table.insert(animations, clone)
-				end
-			end
-			if #animations > 0 then
-				animationSet[key] = animations
-			end
-		end
-	end
-	return next(animationSet) and animationSet or nil
-end
-
 local function fn57(arg, arg2, requestedRig, requestGeneration)
 	local rig = requestedRig or tbl3.rig
 	local v7, v8 = fn56(arg2, rig)
@@ -2814,8 +2795,6 @@ local function fn57(arg, arg2, requestedRig, requestGeneration)
 	local animationData
 	if rig == "R15" then
 		animationData = fn12(v7)
-	else
-		animationData = getRigAnimationSet(v8)
 	end
 
 	fn20(arg, fn13(v7))
@@ -2831,7 +2810,7 @@ local function fn57(arg, arg2, requestedRig, requestGeneration)
         return nil
     end
 	copiedSkinAnimationData = animationData
-	if tbl3.animationsEnabled then
+	if rig == "R15" and tbl3.animationsEnabled then
 		applyCopiedSkinAnimations(arg, true)
 	else
 		applyCopiedSkinAnimations(arg, false)
@@ -3034,6 +3013,10 @@ r6.Activated:Connect(function()
 end)
 
 v5.Activated:Connect(function()
+	if tbl3.rig == "R6" then
+		fn46()
+		return
+	end
 
 	if avatarBridge.skin.active ~= true or not tonumber(tbl3.aplicado) then
 		fn46()
@@ -3409,6 +3392,10 @@ local skinApi = {
 		return mode == "ON"
 	end,
 	setAnimations = function(enabled)
+		if tbl3.rig == "R6" then
+			fn46()
+			return false
+		end
 		if avatarBridge.skin.active ~= true or not tonumber(tbl3.aplicado) then return false end
 		local character = fn5()
 		if not character then return false end
