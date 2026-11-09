@@ -3377,6 +3377,13 @@ local function buildUI()
 
     local refreshSidebar
     local setCurrentSelectionActive
+    local removeSelectedEquippedButton = nil
+
+    local function isItemCurrentlyEquipped(item)
+        if not item or item.kind ~= "accessory" then return false end
+        return isAccessoryDesired(item.id, getActiveAppearanceBaseDescription())
+    end
+
     local function cleanSidebarRows()
         disconnectBucket(state.favoriteConnections)
         disconnectBucket(state.equippedConnections)
@@ -3584,6 +3591,69 @@ local function buildUI()
             table.insert(state.favoriteRows, noRecommendations)
         end
 
+        removeSelectedEquippedButton = nil
+        if sideCategory == "accessory" then
+            local selectedIsEquipped = isItemCurrentlyEquipped(selectedItem)
+            local removeButton = create("TextButton", {
+                Name = "RemoveSelectedEquipped",
+                Size = UDim2.new(1, -6, 0, 34),
+                BackgroundColor3 = selectedIsEquipped and COLORS.DangerFill or COLORS.Surface,
+                BorderSizePixel = 0,
+                AutoButtonColor = selectedIsEquipped and not state.busy,
+                Font = Enum.Font.GothamBold,
+                Text = "RETIRAR SELECCIONADO",
+                TextSize = 9,
+                TextColor3 = selectedIsEquipped and Color3.new(1, 1, 1) or COLORS.Muted,
+                TextTransparency = selectedIsEquipped and 0 or 0.25,
+                Active = selectedIsEquipped and not state.busy,
+                Selectable = selectedIsEquipped and not state.busy,
+                LayoutOrder = #currentSideRows + 1,
+            }, sideList)
+            round(removeButton, 7)
+            removeButton:SetAttribute("SnowXSidebarAnchor", "ACTION:REMOVE_SELECTED")
+            addConnection(state.equippedConnections, removeButton.Activated:Connect(function()
+                local item = selectedItem
+                if state.busy or not isItemCurrentlyEquipped(item) then return end
+                runAction(function()
+                    return setCurrentSelectionActive(item, false)
+                end, "Retirado")
+            end))
+            removeSelectedEquippedButton = removeButton
+            table.insert(currentSideRows, removeButton)
+            table.insert(state.equippedRows, removeButton)
+
+            addSidebarSection("Equipados")
+            local equippedItems = {}
+            for _, item in ipairs(collectCurrentItems(false)) do
+                if item.kind == "accessory" then
+                    local key = sidebarItemKey(item)
+                    if key then
+                        table.insert(equippedItems, item)
+                    end
+                end
+            end
+            if #equippedItems > 0 then
+                for _, item in ipairs(equippedItems) do
+                    makeSidebarRow(item, "EQUIPADO")
+                end
+            else
+                local emptyEquipped = create("TextLabel", {
+                    Size = UDim2.new(1, -8, 0, 28),
+                    BackgroundTransparency = 1,
+                    Font = Enum.Font.Gotham,
+                    Text = "No hay accesorios equipados",
+                    TextColor3 = COLORS.Muted,
+                    TextSize = 9,
+                    TextWrapped = true,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    LayoutOrder = #currentSideRows + 1,
+                }, sideList)
+                emptyEquipped:SetAttribute("SnowXSidebarAnchor", "EMPTY:EQUIPPED")
+                table.insert(currentSideRows, emptyEquipped)
+                table.insert(state.equippedRows, emptyEquipped)
+            end
+        end
+
         if sideMode == "results" then
             addSidebarSection("Resultados")
             local resultCount = 0
@@ -3632,6 +3702,15 @@ local function buildUI()
             end
             local maxY = math.max(0, sideList.AbsoluteCanvasSize.Y - sideList.AbsoluteSize.Y)
             sideList.CanvasPosition = Vector2.new(0, math.clamp(targetCanvasY, 0, maxY))
+            if removeSelectedEquippedButton and removeSelectedEquippedButton.Parent then
+                local active = isItemCurrentlyEquipped(selectedItem)
+                removeSelectedEquippedButton.Active = active and not state.busy
+                removeSelectedEquippedButton.Selectable = active and not state.busy
+                removeSelectedEquippedButton.AutoButtonColor = active and not state.busy
+                removeSelectedEquippedButton.BackgroundColor3 = active and COLORS.DangerFill or COLORS.Surface
+                removeSelectedEquippedButton.TextColor3 = active and Color3.new(1, 1, 1) or COLORS.Muted
+                removeSelectedEquippedButton.TextTransparency = active and 0 or 0.25
+            end
         end)
     end
 
