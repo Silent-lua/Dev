@@ -2003,6 +2003,16 @@ local uiScale = Instance.new("UIScale")
 uiScale.Parent = Frame
 local flag = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
+local function getGuiCenter(guiObject)
+	local camera = Workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	local position = guiObject.Position
+	return Vector2.new(
+		position.X.Scale * viewport.X + position.X.Offset,
+		position.Y.Scale * viewport.Y + position.Y.Offset
+	)
+end
+
 local function clampFrameCenter(position)
 	local camera = Workspace.CurrentCamera
 	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
@@ -2019,12 +2029,7 @@ end
 
 local function keepFrameInsideViewport()
 	if not Frame.Parent then return end
-	local absolute = Frame.AbsolutePosition
-	local center = Vector2.new(
-		absolute.X + Frame.AbsoluteSize.X * 0.5,
-		absolute.Y + Frame.AbsoluteSize.Y * 0.5
-	)
-	local target = clampFrameCenter(center)
+	local target = clampFrameCenter(getGuiCenter(Frame))
 	Frame.Position = UDim2.fromOffset(target.X, target.Y)
 end
 
@@ -2110,29 +2115,6 @@ local TextButton2 = fn3("TextButton", {
 	TextSize = 16,
 	TextColor3 = tbl.Icon,
 }, Frame, 8)
-
-local headerDragHandle = fn3("TextButton", {
-    Name = "DragHeader",
-    Position = UDim2.fromOffset(0, 0),
-    Size = UDim2.new(1, -82, 1, 0),
-    BackgroundTransparency = 1,
-    AutoButtonColor = false,
-    Active = true,
-    Selectable = false,
-    Text = "",
-    ZIndex = 10,
-}, Frame)
-
-for index = 0, 2 do
-    fn3("Frame", {
-        Position = UDim2.fromOffset(258, 7 + index * 4),
-        Size = UDim2.fromOffset(14, 2),
-        BackgroundColor3 = tbl.Faint,
-        BackgroundTransparency = 0.25,
-        BorderSizePixel = 0,
-        ZIndex = 11,
-    }, Frame)
-end
 
 fn3("Frame", {
 	Position = UDim2.fromOffset(0, 52),
@@ -2352,78 +2334,54 @@ end
 local flag2 = false
 
 local TextButton5 = fn3("Frame", {
-    Name = "FloatingReopen",
-    AnchorPoint = Vector2.new(0.5, 0.5),
-    Position = UDim2.fromOffset(84, 24),
-    Size = UDim2.fromOffset(168, 48),
-    BackgroundColor3 = tbl.Surface,
-    BackgroundTransparency = 0.03,
-    BorderSizePixel = 0,
-    ClipsDescendants = true,
-    Visible = false,
-    ZIndex = 50,
-}, screenGui, 14)
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Size = UDim2.fromOffset(150, 46),
+	BackgroundColor3 = tbl.BackgroundAlt,
+	BackgroundTransparency = 0.05,
+	BorderSizePixel = 0,
+	ClipsDescendants = true,
+	Visible = false,
+	ZIndex = 50,
+}, screenGui, 12)
 
-fn3("UIStroke", { Color = tbl.Border, Thickness = 1, Transparency = 0.12 }, TextButton5)
-local reopenAccent = fn3("Frame", {
-    Position = UDim2.fromOffset(0, 8),
-    Size = UDim2.fromOffset(3, 32),
-    BackgroundColor3 = tbl.Accent,
+fn3("UIStroke", { Color = tbl.Text, Thickness = 1.5, Transparency = 0.45 }, TextButton5)
+local reopenBackground = Instance.new("ImageLabel")
+reopenBackground.Size = UDim2.fromScale(1, 1)
+reopenBackground.BackgroundTransparency = 1
+reopenBackground.Image = bgAsset or ""
+reopenBackground.ImageTransparency = bgAsset and 0.5 or 1
+reopenBackground.ScaleType = Enum.ScaleType.Crop
+reopenBackground.ZIndex = 50
+reopenBackground.Parent = TextButton5
+fn3("UICorner", { CornerRadius = UDim.new(0, 12) }, reopenBackground)
+local reopenOverlay = fn3("Frame", {
+    Size = UDim2.fromScale(1, 1),
+    BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+    BackgroundTransparency = bgAsset and 0.55 or 0.82,
     BorderSizePixel = 0,
     ZIndex = 51,
-}, TextButton5, 2)
-
-for row = 0, 2 do
-    for column = 0, 1 do
-        fn3("Frame", {
-            Position = UDim2.fromOffset(13 + column * 5, 17 + row * 5),
-            Size = UDim2.fromOffset(3, 3),
-            BackgroundColor3 = tbl.Faint,
-            BorderSizePixel = 0,
-            ZIndex = 52,
-        }, TextButton5, 2)
-    end
-end
-
+}, TextButton5)
+fn3("UICorner", { CornerRadius = UDim.new(0, 12) }, reopenOverlay)
+local reopenDot = fn3("Frame", {
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(1, -12, 0, 10),
+    Size = UDim2.fromOffset(8, 8),
+    BackgroundColor3 = tbl.Text,
+    BorderSizePixel = 0,
+    ZIndex = 53,
+}, TextButton5, 4)
 fn3("TextLabel", {
     BackgroundTransparency = 1,
-    Position = UDim2.fromOffset(31, 7),
-    Size = UDim2.new(1, -54, 0, 16),
+    Position = UDim2.fromOffset(14, 0),
+    Size = UDim2.new(1, -24, 1, 0),
     Font = Enum.Font.GothamBold,
-    Text = "SKINS",
-    TextSize = 10,
+    Text = "Open Skins",
+    TextSize = 13,
     TextColor3 = tbl.Text,
     TextXAlignment = Enum.TextXAlignment.Left,
-    ZIndex = 52,
+    ZIndex = 53,
 }, TextButton5)
-
-fn3("TextLabel", {
-    BackgroundTransparency = 1,
-    Position = UDim2.fromOffset(31, 23),
-    Size = UDim2.new(1, -54, 0, 13),
-    Font = Enum.Font.Gotham,
-    Text = "DRAG TO MOVE  /  TAP TO OPEN",
-    TextSize = 7,
-    TextColor3 = tbl.Faint,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    ZIndex = 52,
-}, TextButton5)
-
-fn3("TextLabel", {
-    BackgroundTransparency = 1,
-    AnchorPoint = Vector2.new(1, 0.5),
-    Position = UDim2.new(1, -10, 0.5, 0),
-    Size = UDim2.fromOffset(14, 24),
-    Font = Enum.Font.GothamBold,
-    Text = "›",
-    TextSize = 22,
-    TextColor3 = tbl.Accent,
-    TextXAlignment = Enum.TextXAlignment.Center,
-    ZIndex = 52,
-}, TextButton5)
-
 local openClick = fn3("TextButton", {
-    Name = "DragAndOpen",
     Size = UDim2.fromScale(1, 1),
     BackgroundTransparency = 1,
     AutoButtonColor = false,
@@ -2431,7 +2389,16 @@ local openClick = fn3("TextButton", {
     Selectable = false,
     Text = "",
     ZIndex = 54,
-}, TextButton5, 12)
+}, TextButton5)
+task.spawn(function()
+    while reopenDot.Parent do
+        reopenDot.BackgroundTransparency = 0.65
+        task.wait(0.8)
+        if not reopenDot.Parent then break end
+        reopenDot.BackgroundTransparency = 0
+        task.wait(0.8)
+    end
+end)
 
 local floatingPositionInitialized = false
 
@@ -2453,11 +2420,7 @@ local function clampFloatingPosition(position)
 end
 
 local function getFloatingCenter()
-    local absolute = TextButton5.AbsolutePosition
-    return Vector2.new(
-        absolute.X + TextButton5.AbsoluteSize.X * 0.5,
-        absolute.Y + TextButton5.AbsoluteSize.Y * 0.5
-    )
+    return getGuiCenter(TextButton5)
 end
 
 local function setFloatingCenter(position)
@@ -2468,8 +2431,7 @@ end
 local function fn47(visible)
     flag2 = visible
     if visible and not floatingPositionInitialized then
-        local absolutePosition = Frame.AbsolutePosition
-        setFloatingCenter(Vector2.new(absolutePosition.X + 26, absolutePosition.Y + 26))
+        setFloatingCenter(getGuiCenter(Frame) + Vector2.new(26, 26))
         floatingPositionInitialized = true
     end
     Frame.Visible = not visible
@@ -2509,7 +2471,7 @@ local function moveFloatingDrag(input, isTouch)
     end
     local pointer = Vector2.new(input.Position.X, input.Position.Y)
     local delta = pointer - drag.desde
-    if delta.Magnitude > 8 then drag.movio = true end
+    if delta.Magnitude > 6 then drag.movio = true end
     if drag.movio then setFloatingCenter(drag.origen + delta) end
 end
 
@@ -3418,15 +3380,11 @@ local panelDrag = nil
 local function beginPanelDrag(input)
     if input.UserInputType ~= Enum.UserInputType.MouseButton1
         and input.UserInputType ~= Enum.UserInputType.Touch then return end
-    local absolute = Frame.AbsolutePosition
     panelDrag = {
         input = input,
         inputType = input.UserInputType,
         start = Vector2.new(input.Position.X, input.Position.Y),
-        origin = Vector2.new(
-            absolute.X + Frame.AbsoluteSize.X * 0.5,
-            absolute.Y + Frame.AbsoluteSize.Y * 0.5
-        ),
+        origin = getGuiCenter(Frame),
     }
 end
 
@@ -3454,7 +3412,7 @@ local function finishPanelDrag(input)
     if ended then panelDrag = nil end
 end
 
-headerDragHandle.InputBegan:Connect(beginPanelDrag)
+Frame2.InputBegan:Connect(beginPanelDrag)
 table.insert(tbl21, UserInputService.InputChanged:Connect(function(input)
     movePanelDrag(input, false)
 end))
