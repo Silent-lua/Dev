@@ -1589,59 +1589,26 @@ local CONFIG_ESP2 = {
     BoxThickness = 1,
 }
 
-local drawGui = Instance.new("ScreenGui")
-drawGui.Name = "PatataESPDraw"
-drawGui.ResetOnSpawn = false
-drawGui.IgnoreGuiInset = true
-drawGui.DisplayOrder = 999998
-pcall(function() drawGui.Parent = CoreGui end)
-if not drawGui.Parent then
-    drawGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-end
-
 local useDrawing = (typeof(Drawing) == "table" and Drawing.new) and true or false
 local espData2 = {}
 
 local function CreatePlayerESP2(player)
-    if player == LocalPlayer then return end
+    if player == LocalPlayer or not useDrawing then return end
     if espData2[player] then return end
     local data = { player = player, lines = {}, box = nil }
-    if useDrawing then
-        data.box = Drawing.new("Square")
-        data.box.Visible = false
-        data.box.Color = espColor
-        data.box.Thickness = CONFIG_ESP2.BoxThickness
-        data.box.Filled = false
-        data.box.Transparency = 1
-        for i = 1, 13 do
-            local line = Drawing.new("Line")
-            line.Visible = false
-            line.Color = espColor
-            line.Thickness = CONFIG_ESP2.SkeletonThickness
-            line.Transparency = 1
-            table.insert(data.lines, line)
-        end
-    else
-        local box = Instance.new("Frame")
-        box.BackgroundTransparency = 1
-        box.BorderSizePixel = 0
-        box.Visible = false
-        box.Parent = drawGui
-        local boxStroke = Instance.new("UIStroke")
-        boxStroke.Color = espColor
-        boxStroke.Thickness = CONFIG_ESP2.BoxThickness
-        boxStroke.Parent = box
-        data.box = box
-        data.boxStroke = boxStroke
-        for i = 1, 13 do
-            local line = Instance.new("Frame")
-            line.BackgroundColor3 = espColor
-            line.BorderSizePixel = 0
-            line.AnchorPoint = Vector2.new(0.5, 0.5)
-            line.Visible = false
-            line.Parent = drawGui
-            table.insert(data.lines, line)
-        end
+    data.box = Drawing.new("Square")
+    data.box.Visible = false
+    data.box.Color = espColor
+    data.box.Thickness = CONFIG_ESP2.BoxThickness
+    data.box.Filled = false
+    data.box.Transparency = 1
+    for i = 1, 13 do
+        local line = Drawing.new("Line")
+        line.Visible = false
+        line.Color = espColor
+        line.Thickness = CONFIG_ESP2.SkeletonThickness
+        line.Transparency = 1
+        table.insert(data.lines, line)
     end
     espData2[player] = data
 end
@@ -1651,11 +1618,9 @@ local function RemovePlayerESP2(player)
     if not data then return end
     if data.box then
         pcall(function() data.box:Remove() end)
-        if data.box.Destroy then pcall(function() data.box:Destroy() end) end
     end
     for _, line in ipairs(data.lines) do
         pcall(function() line:Remove() end)
-        if line.Destroy then pcall(function() line:Destroy() end) end
     end
     espData2[player] = nil
 end
@@ -1751,22 +1716,13 @@ RunService.Heartbeat:Connect(function(deltaTime)
                 data.skeletonPairs = hum and GetSkeletonPairs(model, hum) or {}
             end
 
-            if useDrawing then
-                if data.box then data.box.Color = espColor end
-            elseif data.boxStroke then
-                data.boxStroke.Color = espColor
-            end
+            if data.box then data.box.Color = espColor end
 
             if CONFIG_ESP2.Box then
                 local bx, by, bw, bh = GetBoxFromCharacter(model, camera)
                 if bx then
-                    if useDrawing then
-                        data.box.Position = Vector2.new(bx, by)
-                        data.box.Size = Vector2.new(bw, bh)
-                    else
-                        data.box.Position = UDim2.new(0, bx, 0, by)
-                        data.box.Size = UDim2.new(0, bw, 0, bh)
-                    end
+                    data.box.Position = Vector2.new(bx, by)
+                    data.box.Size = Vector2.new(bw, bh)
                     data.box.Visible = true
                 elseif data.box then
                     data.box.Visible = false
@@ -1782,23 +1738,10 @@ RunService.Heartbeat:Connect(function(deltaTime)
                         local sp1, on1 = camera:WorldToViewportPoint(bonePair[1].Position)
                         local sp2, on2 = camera:WorldToViewportPoint(bonePair[2].Position)
                         if on1 and on2 and sp1.Z > 0 and sp2.Z > 0 then
-                            if useDrawing then
-                                line.From = Vector2.new(sp1.X, sp1.Y)
-                                line.To = Vector2.new(sp2.X, sp2.Y)
-                                line.Color = espColor
-                                line.Visible = true
-                            else
-                                local v1 = Vector2.new(sp1.X, sp1.Y)
-                                local v2 = Vector2.new(sp2.X, sp2.Y)
-                                local delta = v2 - v1
-                                local length = delta.Magnitude
-                                local center = (v1 + v2) / 2
-                                line.Position = UDim2.new(0, center.X, 0, center.Y)
-                                line.Size = UDim2.new(0, length, 0, CONFIG_ESP2.SkeletonThickness)
-                                line.Rotation = math.deg(math.atan2(delta.Y, delta.X))
-                                line.BackgroundColor3 = espColor
-                                line.Visible = true
-                            end
+                            line.From = Vector2.new(sp1.X, sp1.Y)
+                            line.To = Vector2.new(sp2.X, sp2.Y)
+                            line.Color = espColor
+                            line.Visible = true
                         else
                             line.Visible = false
                         end
@@ -1918,7 +1861,6 @@ end)
 Players.PlayerRemoving:Connect(function(p)
     if tracerLines2[p] then
         pcall(function() tracerLines2[p]:Remove() end)
-        if tracerLines2[p].Destroy then pcall(function() tracerLines2[p]:Destroy() end) end
         tracerLines2[p] = nil
     end
 end)
@@ -1926,7 +1868,7 @@ end)
 Tabs.Visual:CreateToggle({
     Name = "ESP Líneas",
     CurrentValue = false,
-    Callback = function(Value) espLinesEnabled = Value end
+    Callback = function(Value) espLinesEnabled = useDrawing and Value end
 })
 
 local function getEnvironment()
