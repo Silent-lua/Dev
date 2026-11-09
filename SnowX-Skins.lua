@@ -2244,13 +2244,14 @@ reopenBackground.ScaleType = Enum.ScaleType.Crop
 reopenBackground.ZIndex = 50
 reopenBackground.Parent = TextButton5
 fn3("UICorner", { CornerRadius = UDim.new(0, 12) }, reopenBackground)
-fn3("Frame", {
+local reopenOverlay = fn3("Frame", {
     Size = UDim2.fromScale(1, 1),
     BackgroundColor3 = Color3.fromRGB(0, 0, 0),
     BackgroundTransparency = bgAsset and 0.55 or 0.82,
     BorderSizePixel = 0,
     ZIndex = 51,
 }, TextButton5)
+fn3("UICorner", { CornerRadius = UDim.new(0, 12) }, reopenOverlay)
 local reopenDot = fn3("Frame", {
     AnchorPoint = Vector2.new(0.5, 0.5),
     Position = UDim2.new(1, -12, 0, 10),
@@ -2287,14 +2288,25 @@ task.spawn(function()
     end
 end)
 
+local floatingPositionInitialized = false
+
+local function clampFloatingPosition(position)
+    local camera = workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+    local halfSize = Vector2.new(75, 23)
+    local x = math.clamp(position.X, halfSize.X, math.max(halfSize.X, viewport.X - halfSize.X))
+    local y = math.clamp(position.Y, halfSize.Y, math.max(halfSize.Y, viewport.Y - halfSize.Y))
+    return Vector2.new(x, y)
+end
+
 local function fn47(visible)
 	flag2 = visible
-
-	if visible then
+	if visible and not floatingPositionInitialized then
 		local absolutePosition = Frame.AbsolutePosition
-		TextButton5.Position = UDim2.fromOffset(absolutePosition.X + 26, absolutePosition.Y + 26)
+        local target = clampFloatingPosition(Vector2.new(absolutePosition.X + 26, absolutePosition.Y + 26))
+		TextButton5.Position = UDim2.fromOffset(target.X, target.Y)
+        floatingPositionInitialized = true
 	end
-
 	Frame.Visible = not visible
 	TextButton5.Visible = visible
 end
@@ -2307,39 +2319,39 @@ local tbl20 = nil
 
 openClick.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		tbl20 = { desde = input.Position, origen = TextButton5.Position, movio = false }
-	end
-end)
-
-openClick.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		local v7 = tbl20
-		tbl20 = nil
-
-		if v7 and not v7.movio then
-			fn47(false)
-		end
+        tbl20 = {
+            input = input,
+            desde = Vector2.new(input.Position.X, input.Position.Y),
+            origen = Vector2.new(TextButton5.Position.X.Offset, TextButton5.Position.Y.Offset),
+            movio = false,
+        }
 	end
 end)
 
 local connection3 = UserInputService.InputChanged:Connect(function(input)
-	local v7 = tbl20
-	if not v7 then
-		return
+	local drag = tbl20
+	if not drag then return end
+    local isMouseMove = drag.input.UserInputType == Enum.UserInputType.MouseButton1
+        and input.UserInputType == Enum.UserInputType.MouseMovement
+    if not isMouseMove and input ~= drag.input then return end
+    local pointer = Vector2.new(input.Position.X, input.Position.Y)
+    local delta = pointer - drag.desde
+	if delta.Magnitude > 6 then drag.movio = true end
+	if drag.movio then
+        local target = clampFloatingPosition(drag.origen + delta)
+		TextButton5.Position = UDim2.fromOffset(target.X, target.Y)
 	end
+end)
 
-	if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
-		return
-	end
-	local n5 = input.Position - v7.desde
-
-	if n5.Magnitude > 6 then
-		v7.movio = true
-	end
-
-	if v7.movio then
-		TextButton5.Position = UDim2.new(v7.origen.X.Scale, v7.origen.X.Offset + n5.X, v7.origen.Y.Scale, v7.origen.Y.Offset + n5.Y)
-	end
+local connection4 = UserInputService.InputEnded:Connect(function(input)
+    local drag = tbl20
+    if not drag then return end
+    local ended = input == drag.input
+        or (drag.input.UserInputType == Enum.UserInputType.MouseButton1
+            and input.UserInputType == Enum.UserInputType.MouseButton1)
+    if not ended then return end
+    tbl20 = nil
+    if not drag.movio then fn47(false) end
 end)
 
 local Frame5 = fn3("Frame", {
@@ -3307,6 +3319,7 @@ TextButton6.Activated:Connect(function()
 	Frame5.Visible = false
     disconnectCharacterLifecycleConnections()
 	connection3:Disconnect()
+	connection4:Disconnect()
     fn59()
     if avatarBridge.skin.owner == skinBridgeToken then
         avatarBridge.skin.owner = nil
@@ -3328,8 +3341,20 @@ TextButton6.Activated:Connect(function()
 	screenGui:Destroy()
 end)
 
+screenGui.Enabled = false
+
 local skinApi = {
 	gui = screenGui,
+	setEnabled = function(enabled)
+        if not screenGui.Parent then return false end
+        if enabled == true then
+            screenGui.Enabled = true
+            fn47(true)
+        else
+            screenGui.Enabled = false
+        end
+        return true
+    end,
 	open = function()
 		screenGui.Enabled = true
 		Frame.Visible = true
@@ -3344,6 +3369,7 @@ local skinApi = {
 	destroy = function()
 		disconnectCharacterLifecycleConnections()
 		pcall(function() connection3:Disconnect() end)
+        pcall(function() connection4:Disconnect() end)
 		fn59()
 		if avatarBridge.skin.owner == skinBridgeToken then
 			avatarBridge.skin.owner = nil

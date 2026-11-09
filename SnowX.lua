@@ -2023,6 +2023,20 @@ local skinApi = loadModule("SnowX-Skins.lua")
 local function getAccessoryApi()
     return type(accessoryApi) == "table" and accessoryApi or nil
 end
+local function setAccessoryLauncherEnabled(enabled)
+    local api = getAccessoryApi()
+    if not api or type(api.SetEnabled) ~= "function" then
+        Window:Notify({Title = "SnowX", Text = "No se pudo habilitar el botón flotante de accesorios.", Duration = 4})
+        return false
+    end
+    local ok, result = pcall(api.SetEnabled, enabled == true)
+    if not ok or result == false then
+        Window:Notify({Title = "SnowX", Text = "No se pudo cambiar el estado de accesorios.", Duration = 3})
+        return false
+    end
+    return true
+end
+
 local function openSnowXAccessory()
     local api = getAccessoryApi()
     if not api then
@@ -2079,13 +2093,6 @@ local function equipLocalAccessory(assetId)
 end
 
 Tabs.Performance:CreateSection("Avatar Modifiers")
-
-Tabs.Performance:CreateButton({
-    Name = "Accesorios",
-    Callback = function()
-        openSnowXAccessory()
-    end
-})
 
 Tabs.Performance:CreateButton({
     Name = "Headless",
@@ -2947,33 +2954,18 @@ local function getSkinApi()
     return type(skinApi) == "table" and skinApi or nil
 end
 
-local function openAvatar()
+local function setAvatarEnabled(enabled)
     local api = getSkinApi()
-    if not api then
-        Window:Notify({Title = "SnowX", Text = "Ejecuta SnowX-Skins.lua para cargar el sistema de skins.", Duration = 4})
+    if not api or type(api.setEnabled) ~= "function" then
+        Window:Notify({Title = "SnowX", Text = "No se pudo habilitar el botón flotante de Avatar.", Duration = 4})
         return false
     end
-    local ok, opened = pcall(function()
-        if type(api.open) == "function" then
-            return api.open()
-        elseif api.gui then
-            api.gui.Enabled = true
-            return true
-        end
-        return false
-    end)
-    if not ok or opened == false then
-        Window:Notify({Title = "SnowX", Text = "No se pudo abrir el panel de skins.", Duration = 3})
+    local ok, result = pcall(api.setEnabled, enabled == true)
+    if not ok or result == false then
+        Window:Notify({Title = "SnowX", Text = "No se pudo cambiar el estado de Avatar.", Duration = 3})
         return false
     end
     return true
-end
-
-local function closeAvatar()
-    local api = getSkinApi()
-    if api and api.gui then
-        pcall(function() api.gui.Enabled = false end)
-    end
 end
 
 TabTools:CreateToggle({
@@ -2981,18 +2973,16 @@ TabTools:CreateToggle({
     CurrentValue = false,
     Flag = "AvatarToggle",
     Callback = function(state)
-        if state then
-            openAvatar()
-        else
-            closeAvatar()
-        end
+        setAvatarEnabled(state)
     end,
 })
 
-TabTools:CreateButton({
+TabTools:CreateToggle({
     Name = "Accesorios",
-    Callback = function()
-        openSnowXAccessory()
+    CurrentValue = false,
+    Flag = "AccessoriesToggle",
+    Callback = function(state)
+        setAccessoryLauncherEnabled(state)
     end,
 })
 

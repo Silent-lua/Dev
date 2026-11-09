@@ -2292,7 +2292,7 @@ local function buildUI()
         ZIndex = 1,
     }, main)
     round(backgroundImage, 16)
-    create("Frame", {
+    local mainBackgroundOverlay = create("Frame", {
         Name = "ReferenceBackgroundOverlay",
         Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = Color3.fromRGB(0, 0, 0),
@@ -2300,6 +2300,7 @@ local function buildUI()
         BorderSizePixel = 0,
         ZIndex = 1,
     }, main)
+    round(mainBackgroundOverlay, 16)
 
     local uiScale = create("UIScale", {}, main)
     local isTouchOnly = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
@@ -2716,13 +2717,14 @@ local function buildUI()
         ZIndex = 50,
     }, minimizedButton)
     round(reopenBackground, 12)
-    create("Frame", {
+    local reopenOverlay = create("Frame", {
         Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = Color3.fromRGB(0, 0, 0),
         BackgroundTransparency = bgAsset and 0.55 or 0.82,
         BorderSizePixel = 0,
         ZIndex = 51,
     }, minimizedButton)
+    round(reopenOverlay, 12)
     local reopenDot = create("Frame", {
         AnchorPoint = Vector2.new(0.5, 0.5),
         Position = UDim2.new(1, -12, 0, 10),
@@ -2747,6 +2749,8 @@ local function buildUI()
         Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1,
         AutoButtonColor = false,
+        Active = true,
+        Selectable = false,
         Text = "",
         ZIndex = 54,
     }, minimizedButton)
@@ -2909,7 +2913,8 @@ local function buildUI()
             or instance:IsA("Fire")
             or instance:IsA("Smoke")
             or instance:IsA("Sparkles")
-            or instance:IsA("Light") then
+            or instance:IsA("Light")
+            or instance:IsA("Highlight") then
             pcall(function() instance.Enabled = true end)
         elseif instance:IsA("BaseScript") or instance:IsA("ModuleScript") then
             pcall(function() instance:Destroy() end)
@@ -3106,7 +3111,8 @@ local function buildUI()
             local horizontalFov = 2 * math.atan(math.tan(verticalFov * 0.5) * math.max(aspect, 0.1))
             local limitingHalfFov = math.min(verticalFov, horizontalFov) * 0.5
             local boundingRadius = math.max(boundsSize.Magnitude * 0.5, 0.12)
-            local distance = math.max((boundingRadius / math.max(math.sin(limitingHalfFov), 0.05)) * 1.08, 0.45)
+            -- Give the accessory more breathing room without changing its native scale.
+            local distance = math.max((boundingRadius / math.max(math.sin(limitingHalfFov), 0.05)) * 1.48, 0.45)
             local cameraSide = -1
             if previewAvatar then
                 local previewRoot = previewAvatar:FindFirstChild("HumanoidRootPart")
@@ -3800,7 +3806,6 @@ local function buildUI()
 
     state.refreshEquipped = nil
 
-    local reopenDragging = nil
     local function hideWindow()
         main.Visible = false
         minimizedButton.Visible = true
@@ -3811,7 +3816,54 @@ local function buildUI()
         updateScale()
     end
     minimize.Activated:Connect(hideWindow)
-    minimizedClick.Activated:Connect(showWindow)
+
+    local reopenDrag = nil
+    local function clampReopenPosition(position)
+        local camera = Workspace.CurrentCamera
+        local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+        local halfSize = Vector2.new(minimizedButton.AbsoluteSize.X * 0.5, minimizedButton.AbsoluteSize.Y * 0.5)
+        local x = math.clamp(position.X, halfSize.X, math.max(halfSize.X, viewport.X - halfSize.X))
+        local y = math.clamp(position.Y, halfSize.Y, math.max(halfSize.Y, viewport.Y - halfSize.Y))
+        return Vector2.new(x, y)
+    end
+
+    minimizedClick.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            reopenDrag = {
+                input = input,
+                start = Vector2.new(input.Position.X, input.Position.Y),
+                origin = Vector2.new(minimizedButton.Position.X.Offset, minimizedButton.Position.Y.Offset),
+                moved = false,
+            }
+        end
+    end)
+
+    addConnection(state.uiConnections, UserInputService.InputChanged:Connect(function(input)
+        local drag = reopenDrag
+        if not drag then return end
+        local isMouseMove = drag.input.UserInputType == Enum.UserInputType.MouseButton1
+            and input.UserInputType == Enum.UserInputType.MouseMovement
+        if not isMouseMove and input ~= drag.input then return end
+        local pointer = Vector2.new(input.Position.X, input.Position.Y)
+        local delta = pointer - drag.start
+        if delta.Magnitude > 6 then drag.moved = true end
+        if drag.moved then
+            local target = clampReopenPosition(drag.origin + delta)
+            minimizedButton.Position = UDim2.fromOffset(target.X, target.Y)
+        end
+    end))
+
+    addConnection(state.uiConnections, UserInputService.InputEnded:Connect(function(input)
+        local drag = reopenDrag
+        if not drag then return end
+        local ended = input == drag.input
+            or (drag.input.UserInputType == Enum.UserInputType.MouseButton1
+                and input.UserInputType == Enum.UserInputType.MouseButton1)
+        if not ended then return end
+        reopenDrag = nil
+        if not drag.moved then showWindow() end
+    end))
+
     closeButton.Activated:Connect(function() closeOverlay.Visible = true end)
     cancelClose.Activated:Connect(function() closeOverlay.Visible = false end)
     confirmClose.Activated:Connect(function()
@@ -4098,6 +4150,9 @@ end
 
 loadFavoriteItems()
 buildUI()
+if state.gui then
+    state.gui.Enabled = false
+end
 
 accessoryApi = {
     gui = state.gui,
@@ -4105,6 +4160,17 @@ accessoryApi = {
     Presets = PRESETS,
     BodyPresets = BODY_PRESETS,
     Cleanup = cleanup,
+    SetEnabled = function(enabled)
+        if not state.gui then return false end
+        if enabled == true then
+            state.gui.Enabled = true
+            if state.main then state.main.Visible = false end
+            if state.reopen then state.reopen.Visible = true end
+        else
+            state.gui.Enabled = false
+        end
+        return true
+    end,
     Open = function()
         if state.gui then state.gui.Enabled = true end
         if state.main then state.main.Visible = true end
