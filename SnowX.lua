@@ -1987,16 +1987,7 @@ Tabs.Visual:CreateToggle({
     end
 })
 
-Tabs.Visual:CreateToggle({
-    Name = "Off-screen Arrows",
-    CurrentValue = false,
-    Callback = function(Value)
-        CONFIG_ESP2.OffscreenArrows = Value
-        if not Value and not CONFIG_ESP2.Box and not CONFIG_ESP2.Skeleton then
-            hideESP2()
-        end
-    end
-})
+
 
 local tracerLines2 = {}
 local tracersLimpios2 = true
@@ -2076,6 +2067,17 @@ Tabs.Visual:CreateToggle({
     Name = "ESP Líneas",
     CurrentValue = false,
     Callback = function(Value) espLinesEnabled = useDrawing and Value end
+})
+
+Tabs.Visual:CreateToggle({
+    Name = "Off-screen Arrows",
+    CurrentValue = false,
+    Callback = function(Value)
+        CONFIG_ESP2.OffscreenArrows = Value
+        if not Value and not CONFIG_ESP2.Box and not CONFIG_ESP2.Skeleton then
+            hideESP2()
+        end
+    end
 })
 
 local function getEnvironment()
