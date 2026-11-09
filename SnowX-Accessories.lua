@@ -4400,7 +4400,7 @@ accessoryApi = {
         else
             state.gui.Enabled = false
         end
-        if enabled ~= true and uiPanels.activePanel == "accessories" then
+        if uiPanels.activePanel == "accessories" then
             uiPanels.activePanel = "none"
         end
         return true
