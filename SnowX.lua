@@ -1973,16 +1973,25 @@ local function getEnvironment()
 end
 
 local environment = getEnvironment()
-local moduleBaseUrl = "https://raw.githubusercontent.com/Silent-lua/Dev/main/"
+
+local ACCESSORY_BASE_URL = "https://raw.githubusercontent.com/Silent-lua/Dev/main/"
+local ACCESSORY_URL = ACCESSORY_BASE_URL .. "SnowX-Accessories.lua"
+
+local SKINS_BASE_URL = "https://raw.githubusercontent.com/Silent-lua/Dev/main/"
+local SKINS_URL = SKINS_BASE_URL .. "SnowX-Skins.lua"
+
 local avatarBridge = {
     version = 2,
     skin = { revision = 0 },
     accessory = { revision = 0 },
 }
 
-local function loadModule(fileName)
+local accessoryApi = nil
+local skinApi = nil
+
+local function loadModule(moduleUrl, moduleName)
     local ok, api = pcall(function()
-        local source = game:HttpGet(moduleBaseUrl .. fileName)
+        local source = game:HttpGet(moduleUrl)
         if type(source) ~= "string" or source == "" then
             error("GitHub devolvió un módulo vacío.")
         end
@@ -2005,19 +2014,11 @@ local function loadModule(fileName)
     end)
 
     if not ok then
+        warn("[SnowX] Error cargando " .. moduleName .. ": " .. tostring(api))
         return nil
     end
 
     return api
-end
-
-Window:Notify({Title = "SnowX", Text = "Cargando Accesorios / Skins", Duration = 3})
-
-local accessoryApi = loadModule("SnowX-Accessories.lua")
-local skinApi = loadModule("SnowX-Skins.lua")
-
-if not accessoryApi or not skinApi then
-    Window:Notify({Title = "SnowX", Text = "Error de Accesorios / Skins", Duration = 4})
 end
 
 local function getAccessoryApi()
@@ -2029,17 +2030,65 @@ local function getSkinApi()
 end
 
 local function setAccessoryLauncherEnabled(enabled)
+    if enabled ~= true then
+        local api = getAccessoryApi()
+        if not api then return true end
+        local ok, result = pcall(api.SetEnabled, false)
+        if not ok or result == false then
+            Window:Notify({Title = "SnowX", Text = "Error de Accesorios", Duration = 4})
+            return false
+        end
+        return true
+    end
+
+    Window:Notify({Title = "SnowX", Text = "Cargando Accesorios", Duration = 3})
+    if not accessoryApi then
+        accessoryApi = loadModule(ACCESSORY_URL, "Accesorios")
+    end
+
     local api = getAccessoryApi()
-    if not api or type(api.SetEnabled) ~= "function" then return false end
-    local ok, result = pcall(api.SetEnabled, enabled == true)
-    return ok and result ~= false
+    if not api or type(api.SetEnabled) ~= "function" then
+        Window:Notify({Title = "SnowX", Text = "Error de Accesorios", Duration = 4})
+        return false
+    end
+
+    local ok, result = pcall(api.SetEnabled, true)
+    if not ok or result == false then
+        Window:Notify({Title = "SnowX", Text = "Error de Accesorios", Duration = 4})
+        return false
+    end
+    return true
 end
 
 local function setAvatarEnabled(enabled)
+    if enabled ~= true then
+        local api = getSkinApi()
+        if not api then return true end
+        local ok, result = pcall(api.setEnabled, false)
+        if not ok or result == false then
+            Window:Notify({Title = "SnowX", Text = "Error de Skins", Duration = 4})
+            return false
+        end
+        return true
+    end
+
+    Window:Notify({Title = "SnowX", Text = "Cargando Skins", Duration = 3})
+    if not skinApi then
+        skinApi = loadModule(SKINS_URL, "Skins")
+    end
+
     local api = getSkinApi()
-    if not api or type(api.setEnabled) ~= "function" then return false end
-    local ok, result = pcall(api.setEnabled, enabled == true)
-    return ok and result ~= false
+    if not api or type(api.setEnabled) ~= "function" then
+        Window:Notify({Title = "SnowX", Text = "Error de Skins", Duration = 4})
+        return false
+    end
+
+    local ok, result = pcall(api.setEnabled, true)
+    if not ok or result == false then
+        Window:Notify({Title = "SnowX", Text = "Error de Skins", Duration = 4})
+        return false
+    end
+    return true
 end
 
 Tabs.Performance:CreateSection("Avatar")
