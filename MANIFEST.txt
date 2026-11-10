@@ -1,0 +1,5 @@
+Snapshot of Silent-lua/Dev main before UI changes.
+Captured from main at commit 433b4c39def0ff52df3cbc46186036375bb8ff7d.
+SnowX.lua blob 833ce3f4f1aabc8c57509cddb1eca1560774052b
+SnowX-Accessories.lua blob 2973952b811813c44e787b588f63fa03363226b5
+SnowX-Skins.lua blob 425b79384a777b8caed97bad6f40730766f53d77
