@@ -3953,18 +3953,24 @@ local function buildUI()
         floatingPositionInitialized = true
     end
 
+    local reopenDrag = nil
+    local mainDrag = nil
+
     local function hideWindow()
         keepMainInsideViewport()
         initializeReopenPosition()
         main.Visible = false
         minimizedButton.Visible = true
+        if avatarBridge.uiPanels.activePanel == "accessories" then
+            avatarBridge.uiPanels.activePanel = "none"
+        end
     end
 
     local function closePanelForSwitch()
-        if state.disconnectDragConnections then state.disconnectDragConnections() end
-        screen.Enabled = false
+        reopenDrag = nil
+        mainDrag = nil
         main.Visible = false
-        minimizedButton.Visible = false
+        minimizedButton.Visible = true
         if avatarBridge.uiPanels.activePanel == "accessories" then
             avatarBridge.uiPanels.activePanel = "none"
         end
@@ -3987,8 +3993,6 @@ local function buildUI()
     state.closePanelForSwitch = closePanelForSwitch
 
     minimize.Activated:Connect(hideWindow)
-
-    local reopenDrag = nil
 
     local function beginReopenDrag(input)
         local inputType = input.UserInputType
@@ -4032,8 +4036,6 @@ local function buildUI()
         reopenDrag = nil
         if not drag.moved then showWindow() end
     end
-
-    local mainDrag = nil
 
     local function beginMainDrag(input)
         local inputType = input.UserInputType
@@ -4380,9 +4382,6 @@ accessoryApi = {
     SetEnabled = function(enabled)
         if not state.gui then return false end
         if enabled == true then
-            local closeSkinsPanel = avatarBridge.uiPanels.closeSkinsPanel
-            if type(closeSkinsPanel) == "function" then pcall(closeSkinsPanel) end
-            avatarBridge.uiPanels.activePanel = "accessories"
             if state.initializeReopenPosition then state.initializeReopenPosition() end
             state.gui.Enabled = true
             if state.main then state.main.Visible = false end
