@@ -1717,7 +1717,7 @@ local function buildSkinVisual(character, visualModel)
     local jointMappingsVisualStateRef = visualModelState
     visualModelState.model = visualModel
     characterVisualStateRef.character = character
-    jointMappingsVisualStateRef.cadena = jointMappings
+    jointMappingsVisualStateRef.jointMappings = jointMappings
     setOriginalCharacterHidden(character, true)
     local updateCameraTransparency, cameraDescendantConnection, cameraDescendantRemovingConnection =
         createNativeCameraTransparencyUpdater(character, visualModel)
