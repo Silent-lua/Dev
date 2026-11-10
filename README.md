@@ -6,7 +6,7 @@ Módulo independiente de Luau para explorar y aplicar visuales de armas y efecto
 
 - `SnowX-Armas.lua` — interfaz y sistema visual de armas.
 
-Este módulo se ejecuta de forma independiente. Actualmente no necesita ni carga `SnowX.lua`, `SnowX-Accessories.lua` o `SnowX-Skins.lua`.
+Este módulo se ejecuta de forma independiente y no depende de otros módulos del repositorio.
 
 ## Funciones
 
