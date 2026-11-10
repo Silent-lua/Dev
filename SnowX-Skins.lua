@@ -2476,7 +2476,7 @@ local function showWindow()
     screenGui.Enabled = true
     isWindowMinimized = false
     mainFrame.Visible = true
-    floatingButtonFrame.Visible = false
+    floatingButtonFrame.Visible = true
     setMainFrameCenter(mainFrameCenter)
     if connectDragConnections then connectDragConnections() end
     updateUiScale()
