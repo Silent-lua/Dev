@@ -24,7 +24,7 @@ local function bumpSkinRevision()
     avatarBridge.skin.revision = (tonumber(avatarBridge.skin.revision) or 0) + 1
 end
 
-local theme = {
+local COLORS = {
     Background = Color3.fromRGB(12, 12, 14),
     BackgroundAlt = Color3.fromRGB(18, 18, 22),
     Surface = Color3.fromRGB(26, 26, 32),
@@ -47,175 +47,175 @@ local PANEL_WIDTH = 590
 local PANEL_HEIGHT = 274
 
 local animationScriptNames = {
-	idle = "IdleAnimation",
-	walk = "WalkAnimation",
-	run = "RunAnimation",
-	jump = "JumpAnimation",
-	fall = "FallAnimation",
-	climb = "ClimbAnimation",
-	swim = "SwimAnimation",
+    idle = "IdleAnimation",
+    walk = "WalkAnimation",
+    run = "RunAnimation",
+    jump = "JumpAnimation",
+    fall = "FallAnimation",
+    climb = "ClimbAnimation",
+    swim = "SwimAnimation",
 }
 
 local skinState = {
-	userId = nil,
-	nombre = nil,
-	usuario = nil,
-	aplicado = nil,
-	favoritos = {},
-	rig = "R15",
-	feMode = "ON",
-	animationsEnabled = true,
+    userId = nil,
+    nombre = nil,
+    usuario = nil,
+    aplicado = nil,
+    favoritos = {},
+    rig = "R15",
+    feMode = "ON",
+    animationsEnabled = true,
 }
 
 local function loadConfiguration()
-	if typeof(readfile) ~= "function" or typeof(isfile) ~= "function" then
-		return
-	end
+    if typeof(readfile) ~= "function" or typeof(isfile) ~= "function" then
+        return
+    end
 
-	local ok, result = pcall(function()
-		if isfile(CONFIG_PATH) then
-			return readfile(CONFIG_PATH)
-		end
-		return nil
-	end)
+    local ok, result = pcall(function()
+        if isfile(CONFIG_PATH) then
+            return readfile(CONFIG_PATH)
+        end
+        return nil
+    end)
 
-	if not ok or type(result) ~= "string" then
-		return
-	end
-	local ok2, result2 = pcall(HttpService.JSONDecode, HttpService, result)
-	if not (ok2 and type(result2) == "table") then
-		return
-	end
+    if not ok or type(result) ~= "string" then
+        return
+    end
+    local ok2, result2 = pcall(HttpService.JSONDecode, HttpService, result)
+    if not (ok2 and type(result2) == "table") then
+        return
+    end
 
-	if type(result2.favoritos) == "table" then
-		for _, favorito in ipairs(result2.favoritos) do
-			if type(favorito) == "table" and tonumber(favorito.userId) then
-				table.insert(skinState.favoritos, {
-					userId = tonumber(favorito.userId),
-					nombre = tostring(favorito.nombre or favorito.userId),
-					usuario = type(favorito.usuario) == "string" and favorito.usuario or nil,
-				})
-			end
-		end
-	end
+    if type(result2.favoritos) == "table" then
+        for _, favorito in ipairs(result2.favoritos) do
+            if type(favorito) == "table" and tonumber(favorito.userId) then
+                table.insert(skinState.favoritos, {
+                    userId = tonumber(favorito.userId),
+                    nombre = tostring(favorito.nombre or favorito.userId),
+                    usuario = type(favorito.usuario) == "string" and favorito.usuario or nil,
+                })
+            end
+        end
+    end
 
-	if tonumber(result2.userId) then
-		skinState.userId = tonumber(result2.userId)
-		skinState.nombre = tostring(result2.nombre or result2.userId)
-		skinState.usuario = type(result2.usuario) == "string" and result2.usuario or nil
-	end
+    if tonumber(result2.userId) then
+        skinState.userId = tonumber(result2.userId)
+        skinState.nombre = tostring(result2.nombre or result2.userId)
+        skinState.usuario = type(result2.usuario) == "string" and result2.usuario or nil
+    end
 
-	if result2.rig == "R6" or result2.rig == "R15" then
-		skinState.rig = result2.rig
-	end
+    if result2.rig == "R6" or result2.rig == "R15" then
+        skinState.rig = result2.rig
+    end
 
-	skinState.feMode = "ON"
-	if type(result2.animationsEnabled) == "boolean" then
-		skinState.animationsEnabled = result2.animationsEnabled
-	end
+    skinState.feMode = "ON"
+    if type(result2.animationsEnabled) == "boolean" then
+        skinState.animationsEnabled = result2.animationsEnabled
+    end
 end
 
 local function saveConfiguration()
-	if typeof(writefile) ~= "function" then
-		return
-	end
+    if typeof(writefile) ~= "function" then
+        return
+    end
 
-	pcall(function()
-		if typeof(isfolder) == "function" and typeof(makefolder) == "function" and not isfolder("snowx") then
-			makefolder("snowx")
-		end
-	end)
+    pcall(function()
+        if typeof(isfolder) == "function" and typeof(makefolder) == "function" and not isfolder("snowx") then
+            makefolder("snowx")
+        end
+    end)
 
-	pcall(writefile, CONFIG_PATH, HttpService:JSONEncode({
-		userId = skinState.userId,
-		nombre = skinState.nombre,
-		usuario = skinState.usuario,
-		favoritos = skinState.favoritos,
-		rig = skinState.rig,
-		feMode = "ON",
-		animationsEnabled = skinState.animationsEnabled == true,
-	}))
+    pcall(writefile, CONFIG_PATH, HttpService:JSONEncode({
+        userId = skinState.userId,
+        nombre = skinState.nombre,
+        usuario = skinState.usuario,
+        favoritos = skinState.favoritos,
+        rig = skinState.rig,
+        feMode = "ON",
+        animationsEnabled = skinState.animationsEnabled == true,
+    }))
 end
 
 local function createGuiInstance(className, properties, parent, cornerRadius)
-	local instance = Instance.new(className)
+    local instance = Instance.new(className)
 
-	for k, v in pairs(properties) do
-		instance[k] = v
-	end
+    for k, v in pairs(properties) do
+        instance[k] = v
+    end
 
-	if instance:IsA("TextButton") and properties.Text and properties.Text ~= "" then
-		instance.TextStrokeColor3 = Color3.new(0, 0, 0)
-		instance.TextStrokeTransparency = 0.75
-	end
+    if instance:IsA("TextButton") and properties.Text and properties.Text ~= "" then
+        instance.TextStrokeColor3 = Color3.new(0, 0, 0)
+        instance.TextStrokeTransparency = 0.75
+    end
 
-	if cornerRadius then
-		local uiCorner = Instance.new("UICorner")
-		uiCorner.CornerRadius = UDim.new(0, cornerRadius)
-		uiCorner.Parent = instance
-	end
+    if cornerRadius then
+        local uiCorner = Instance.new("UICorner")
+        uiCorner.CornerRadius = UDim.new(0, cornerRadius)
+        uiCorner.Parent = instance
+    end
 
-	instance.Parent = parent
-	return instance
+    instance.Parent = parent
+    return instance
 end
 
 local lucideLibrary = nil
 local pendingIconRequests = {}
 
 local function setLucideImage(imageLabel, iconName)
-	if not lucideLibrary then
-		table.insert(pendingIconRequests, { imageLabel, iconName })
-		return
-	end
-	local ok, result = pcall(lucideLibrary.GetAsset, iconName)
+    if not lucideLibrary then
+        table.insert(pendingIconRequests, { imageLabel, iconName })
+        return
+    end
+    local ok, result = pcall(lucideLibrary.GetAsset, iconName)
 
-	if ok and result then
-		imageLabel.Image = result.Url
-		imageLabel.ImageRectOffset = result.ImageRectOffset
-		imageLabel.ImageRectSize = result.ImageRectSize
-	end
+    if ok and result then
+        imageLabel.Image = result.Url
+        imageLabel.ImageRectOffset = result.ImageRectOffset
+        imageLabel.ImageRectSize = result.ImageRectSize
+    end
 end
 
 task.spawn(function()
-	local ok, result = pcall(function()
-		return loadstring(game:HttpGet("https://raw.githubusercontent.com/mstudio45/lucide-roblox-direct/refs/heads/main/source.lua"))()
-	end)
+    local ok, result = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/mstudio45/lucide-roblox-direct/refs/heads/main/source.lua"))()
+    end)
 
-	if ok and type(result) == "table" and result.GetAsset then
-		lucideLibrary = result
+    if ok and type(result) == "table" and result.GetAsset then
+        lucideLibrary = result
 
-		for _, v2 in ipairs(pendingIconRequests) do
-			setLucideImage(v2[1], v2[2])
-		end
+        for _, pendingIconRequest in ipairs(pendingIconRequests) do
+            setLucideImage(pendingIconRequest[1], pendingIconRequest[2])
+        end
 
-		table.clear(pendingIconRequests)
-	end
+        table.clear(pendingIconRequests)
+    end
 end)
 
 local function createImageLabel(parent, iconName, iconSize, imageColor3, position)
-	local imageLabel = Instance.new("ImageLabel")
-	imageLabel.BackgroundTransparency = 1
-	imageLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-	imageLabel.Position = position or UDim2.fromScale(0.5, 0.5)
-	imageLabel.Size = UDim2.fromOffset(iconSize, iconSize)
-	imageLabel.ImageColor3 = imageColor3
-	imageLabel.Image = ""
-	imageLabel.Active = false
-	imageLabel.Parent = parent
-	setLucideImage(imageLabel, iconName)
-	return imageLabel
+    local imageLabel = Instance.new("ImageLabel")
+    imageLabel.BackgroundTransparency = 1
+    imageLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+    imageLabel.Position = position or UDim2.fromScale(0.5, 0.5)
+    imageLabel.Size = UDim2.fromOffset(iconSize, iconSize)
+    imageLabel.ImageColor3 = imageColor3
+    imageLabel.Image = ""
+    imageLabel.Active = false
+    imageLabel.Parent = parent
+    setLucideImage(imageLabel, iconName)
+    return imageLabel
 end
 
 local function getLocalCharacter()
-	local character = localPlayer.Character
-	if not character then
-		return nil
-	end
+    local character = localPlayer.Character
+    if not character then
+        return nil
+    end
 
-	if character.Name:find("d55076dde45f5d1c5267", 1, true) then
-		return nil
-	end
-	return character
+    if character.Name:find("d55076dde45f5d1c5267", 1, true) then
+        return nil
+    end
+    return character
 end
 
 local function isCharacterRigComplete(character, humanoid, visualRigName)
@@ -362,245 +362,245 @@ local function storeSkinTemplate(key, model)
 end
 
 local function getUserNames(userId)
-	if userInfoCache[userId] then
-		return userInfoCache[userId].nombre, userInfoCache[userId].usuario
-	end
-	local playerByUserId = Players:GetPlayerByUserId(userId)
-	local displayName, name
+    if userInfoCache[userId] then
+        return userInfoCache[userId].nombre, userInfoCache[userId].usuario
+    end
+    local playerByUserId = Players:GetPlayerByUserId(userId)
+    local displayName, name
 
-	if playerByUserId then
-		displayName = playerByUserId.DisplayName
-		name = playerByUserId.Name
-	else
-		local ok, result = pcall(UserService.GetUserInfosByUserIdsAsync, UserService, { userId })
-		ok = ok and type(result) == "table" and result[1]
-		displayName = nil
-		name = nil
+    if playerByUserId then
+        displayName = playerByUserId.DisplayName
+        name = playerByUserId.Name
+    else
+        local ok, result = pcall(UserService.GetUserInfosByUserIdsAsync, UserService, { userId })
+        ok = ok and type(result) == "table" and result[1]
+        displayName = nil
+        name = nil
 
-		if ok then
-			displayName = result[1].DisplayName
-			name = result[1].Username
-		end
+        if ok then
+            displayName = result[1].DisplayName
+            name = result[1].Username
+        end
 
-		if not name then
-			local ok2, result2 = pcall(Players.GetNameFromUserIdAsync, Players, userId)
+        if not name then
+            local ok2, result2 = pcall(Players.GetNameFromUserIdAsync, Players, userId)
 
-			if ok2 and result2 then
-				if displayName then
-					name = result2
-				else
-					displayName = result2
-					name = result2
-				end
-			end
-		end
-	end
+            if ok2 and result2 then
+                if displayName then
+                    name = result2
+                else
+                    displayName = result2
+                    name = result2
+                end
+            end
+        end
+    end
 
-	if name then
-		userInfoCache[userId] = { nombre = displayName or name, usuario = name }
-	end
+    if name then
+        userInfoCache[userId] = { nombre = displayName or name, usuario = name }
+    end
 
-	return displayName, name
+    return displayName, name
 end
 
 local avatarRigTypeCache = {}
 
 local function getUserRigType(userId)
-	if avatarRigTypeCache[userId] then
-		return avatarRigTypeCache[userId]
-	end
-	local ok, result = pcall(Players.GetCharacterAppearanceInfoAsync, Players, userId)
-	ok = ok and type(result) == "table" and result.playerAvatarType
-	if ok == "R6" or ok == "R15" then
-		avatarRigTypeCache[userId] = ok
-		return ok
-	end
-	return nil
+    if avatarRigTypeCache[userId] then
+        return avatarRigTypeCache[userId]
+    end
+    local ok, result = pcall(Players.GetCharacterAppearanceInfoAsync, Players, userId)
+    ok = ok and type(result) == "table" and result.playerAvatarType
+    if ok == "R6" or ok == "R15" then
+        avatarRigTypeCache[userId] = ok
+        return ok
+    end
+    return nil
 end
 
 local humanoidDescriptionCache = {}
 
 local function getUserHumanoidDescription(userId)
-	if humanoidDescriptionCache[userId] then
-		return humanoidDescriptionCache[userId]
-	end
-	local playerByUserId = Players:GetPlayerByUserId(userId)
-	local humanoid = playerByUserId and playerByUserId.Character and playerByUserId.Character:FindFirstChildOfClass("Humanoid")
-	local currentEmoteTrack = nil
+    if humanoidDescriptionCache[userId] then
+        return humanoidDescriptionCache[userId]
+    end
+    local playerByUserId = Players:GetPlayerByUserId(userId)
+    local humanoid = playerByUserId and playerByUserId.Character and playerByUserId.Character:FindFirstChildOfClass("Humanoid")
+    local humanoidDescription = nil
 
-	if humanoid then
-		local ok, result = pcall(humanoid.GetAppliedDescription, humanoid)
-		ok = ok and result
-		currentEmoteTrack = nil
+    if humanoid then
+        local ok, result = pcall(humanoid.GetAppliedDescription, humanoid)
+        ok = ok and result
+        humanoidDescription = nil
 
-		if ok then
-			currentEmoteTrack = result
-		end
-	end
+        if ok then
+            humanoidDescription = result
+        end
+    end
 
-	if not currentEmoteTrack then
-		local ok, result = pcall(function()
-			return Players:GetHumanoidDescriptionFromUserIdAsync(userId)
-		end)
+    if not humanoidDescription then
+        local ok, result = pcall(function()
+            return Players:GetHumanoidDescriptionFromUserIdAsync(userId)
+        end)
 
-		if not (ok and result) then
-			ok, result = pcall(Players.GetHumanoidDescriptionFromUserId, Players, userId)
-		end
+        if not (ok and result) then
+            ok, result = pcall(Players.GetHumanoidDescriptionFromUserId, Players, userId)
+        end
 
-		if ok and result then
-			currentEmoteTrack = result
-		end
-	end
+        if ok and result then
+            humanoidDescription = result
+        end
+    end
 
-	if currentEmoteTrack then
-		humanoidDescriptionCache[userId] = currentEmoteTrack
-	end
+    if humanoidDescription then
+        humanoidDescriptionCache[userId] = humanoidDescription
+    end
 
-	return currentEmoteTrack
+    return humanoidDescription
 end
 
 local loadedAssetObjectsCache = {}
 
 local function loadAssetObjects(assetId)
-	local str2 = tostring(assetId)
-	if loadedAssetObjectsCache[str2] ~= nil then
-		return loadedAssetObjectsCache[str2] or nil
-	end
-	local ok, result = pcall(game.GetObjects, game, "rbxassetid://" .. str2)
-	if not (ok and type(result) == "table") then
-		loadedAssetObjectsCache[str2] = false
-		return nil
-	end
+    local assetIdString = tostring(assetId)
+    if loadedAssetObjectsCache[assetIdString] ~= nil then
+        return loadedAssetObjectsCache[assetIdString] or nil
+    end
+    local ok, result = pcall(game.GetObjects, game, "rbxassetid://" .. assetIdString)
+    if not (ok and type(result) == "table") then
+        loadedAssetObjectsCache[assetIdString] = false
+        return nil
+    end
 
-	for _, currentEmoteTrack in ipairs(result) do
-		currentEmoteTrack.Parent = nil
-	end
+    for _, assetObject in ipairs(result) do
+        assetObject.Parent = nil
+    end
 
-	loadedAssetObjectsCache[str2] = result
-	return result
+    loadedAssetObjectsCache[assetIdString] = result
+    return result
 end
 
 local function preloadAnimationAssets(humanoidDescription)
-	local n3 = 0
+    local pendingAssetCount = 0
 
-	for _, currentEmoteTrack in pairs(animationScriptNames) do
-		local v3 = humanoidDescription[currentEmoteTrack]
+    for _, animationScriptName in pairs(animationScriptNames) do
+        local animationAssetId = humanoidDescription[animationScriptName]
 
-		if type(v3) == "number" and v3 > 0 and loadedAssetObjectsCache[tostring(v3)] == nil then
-			n3 += 1
+        if type(animationAssetId) == "number" and animationAssetId > 0 and loadedAssetObjectsCache[tostring(animationAssetId)] == nil then
+            pendingAssetCount += 1
 
-			task.spawn(function()
-				loadAssetObjects(v3)
-				n3 -= 1
-			end)
-		end
-	end
+            task.spawn(function()
+                loadAssetObjects(animationAssetId)
+                pendingAssetCount -= 1
+            end)
+        end
+    end
 
-	local now = os.clock()
+    local now = os.clock()
 
-	while n3 > 0 and os.clock() - now < 15 do
-		task.wait(0.05)
-	end
+    while pendingAssetCount > 0 and os.clock() - now < 15 do
+        task.wait(0.05)
+    end
 end
 
 local function extractAnimationSets(humanoidDescription)
-	local tbl9 = {}
-	preloadAnimationAssets(humanoidDescription)
+    local animationSets = {}
+    preloadAnimationAssets(humanoidDescription)
 
-	for k, currentEmoteTrack in pairs(animationScriptNames) do
-		local v3 = humanoidDescription[currentEmoteTrack]
+    for k, animationScriptName in pairs(animationScriptNames) do
+        local animationAssetId = humanoidDescription[animationScriptName]
 
-		if type(v3) == "number" and v3 > 0 then
-			local v4 = loadAssetObjects(v3)
-			local v5 = ipairs
-			local tbl10 = v4 or {}
+        if type(animationAssetId) == "number" and animationAssetId > 0 then
+            local assetObjects = loadAssetObjects(animationAssetId)
+            local iterateAssetObjects = ipairs
+            local assetObjectList = assetObjects or {}
 
-			for _, v6 in v5(tbl10) do
-				for _, descendant in ipairs(v6:GetDescendants()) do
-					if descendant:IsA("Animation") and descendant.Parent and descendant.Parent ~= v6 then
-						local name = descendant.Parent.Name
-						tbl9[name] = tbl9[name] or {}
-						table.insert(tbl9[name], descendant)
-					elseif descendant:IsA("Animation") then
-						tbl9[k] = tbl9[k] or {}
-						table.insert(tbl9[k], descendant)
-					end
-				end
-			end
-		end
-	end
+            for _, assetObject in iterateAssetObjects(assetObjectList) do
+                for _, descendant in ipairs(assetObject:GetDescendants()) do
+                    if descendant:IsA("Animation") and descendant.Parent and descendant.Parent ~= assetObject then
+                        local name = descendant.Parent.Name
+                        animationSets[name] = animationSets[name] or {}
+                        table.insert(animationSets[name], descendant)
+                    elseif descendant:IsA("Animation") then
+                        animationSets[k] = animationSets[k] or {}
+                        table.insert(animationSets[k], descendant)
+                    end
+                end
+            end
+        end
+    end
 
-	return tbl9
+    return animationSets
 end
 
 local function getDescriptionEmotes(humanoidDescription)
-	local tbl9 = {}
-	local ok, result = pcall(humanoidDescription.GetEmotes, humanoidDescription)
-	if not (ok and type(result) == "table") then
-		return tbl9
-	end
-	local r6ToR15JointMappings = {}
-	local ok2, result2 = pcall(humanoidDescription.GetEquippedEmotes, humanoidDescription)
+    local emotes = {}
+    local ok, result = pcall(humanoidDescription.GetEmotes, humanoidDescription)
+    if not (ok and type(result) == "table") then
+        return emotes
+    end
+    local equippedSlotsByName = {}
+    local ok2, result2 = pcall(humanoidDescription.GetEquippedEmotes, humanoidDescription)
 
-	if ok2 and type(result2) == "table" then
-		for _, currentEmoteTrack in ipairs(result2) do
-			r6ToR15JointMappings[currentEmoteTrack.Name] = currentEmoteTrack.Slot
-		end
-	end
+    if ok2 and type(result2) == "table" then
+        for _, emoteEntry in ipairs(result2) do
+            equippedSlotsByName[emoteEntry.Name] = emoteEntry.Slot
+        end
+    end
 
-	for k, currentEmoteTrack in pairs(result) do
-		local num = type(currentEmoteTrack) == "table" and tonumber(currentEmoteTrack[1]) or tonumber(currentEmoteTrack)
+    for k, emoteEntry in pairs(result) do
+        local emoteAssetId = type(emoteEntry) == "table" and tonumber(emoteEntry[1]) or tonumber(emoteEntry)
 
-		if num then
-			table.insert(tbl9, { nombre = k, id = num, slot = r6ToR15JointMappings[k] or 99 })
-		end
-	end
+        if emoteAssetId then
+            table.insert(emotes, { nombre = k, id = emoteAssetId, slot = equippedSlotsByName[k] or 99 })
+        end
+    end
 
-	table.sort(tbl9, function(arg2, arg3)
-		if arg2.slot ~= arg3.slot then
-			return arg2.slot < arg3.slot
-		end
-		return arg2.nombre < arg3.nombre
-	end)
+    table.sort(emotes, function(leftEmote, rightEmote)
+        if leftEmote.slot ~= rightEmote.slot then
+            return leftEmote.slot < rightEmote.slot
+        end
+        return leftEmote.nombre < rightEmote.nombre
+    end)
 
-	return tbl9
+    return emotes
 end
 
 local originalCharacterStateCache = setmetatable({}, { __mode = "k" })
 
 local function captureCharacterState(character)
-	if originalCharacterStateCache[character] then
-		return originalCharacterStateCache[character]
-	end
-	local tbl9 = { anim = {} }
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if originalCharacterStateCache[character] then
+        return originalCharacterStateCache[character]
+    end
+    local savedCharacterState = { anim = {} }
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
 
-	if humanoid then
-		tbl9.hipHeight = humanoid.HipHeight
-	end
+    if humanoid then
+        savedCharacterState.hipHeight = humanoid.HipHeight
+    end
 
-	local animate = character:FindFirstChild("Animate")
+    local animate = character:FindFirstChild("Animate")
 
-	if animate then
-		for k in pairs(animationScriptNames) do
-			local currentEmoteTrack = animate:FindFirstChild(k)
+    if animate then
+        for k in pairs(animationScriptNames) do
+            local animationFolder = animate:FindFirstChild(k)
 
-			if currentEmoteTrack then
-				tbl9.anim[k] = {}
+            if animationFolder then
+                savedCharacterState.anim[k] = {}
 
-				for _, child in ipairs(currentEmoteTrack:GetChildren()) do
-					if child:IsA("Animation") then
-						local clone = child:Clone()
-						clone.Parent = nil
-						table.insert(tbl9.anim[k], clone)
-					end
-				end
-			end
-		end
-	end
+                for _, child in ipairs(animationFolder:GetChildren()) do
+                    if child:IsA("Animation") then
+                        local clone = child:Clone()
+                        clone.Parent = nil
+                        table.insert(savedCharacterState.anim[k], clone)
+                    end
+                end
+            end
+        end
+    end
 
-	originalCharacterStateCache[character] = tbl9
-	return tbl9
+    originalCharacterStateCache[character] = savedCharacterState
+    return savedCharacterState
 end
 
 local function noopCharacterStateHook(_character, _snapshot)
@@ -609,240 +609,240 @@ local function noopCharacterStateHook(_character, _snapshot)
 end
 
 local function restartCharacterAnimations(character)
-	local animate = character:FindFirstChild("Animate")
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if not (animate and humanoid) then
-		return
-	end
+    local animate = character:FindFirstChild("Animate")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not (animate and humanoid) then
+        return
+    end
 
-	for _, currentEmoteTrack in ipairs(humanoid:GetPlayingAnimationTracks()) do
-		if currentEmoteTrack.Priority ~= Enum.AnimationPriority.Action then
-			pcall(currentEmoteTrack.Stop, currentEmoteTrack, 0)
-		end
-	end
+    for _, animationTrack in ipairs(humanoid:GetPlayingAnimationTracks()) do
+        if animationTrack.Priority ~= Enum.AnimationPriority.Action then
+            pcall(animationTrack.Stop, animationTrack, 0)
+        end
+    end
 
-	animate.Disabled = true
-	animate.Disabled = false
+    animate.Disabled = true
+    animate.Disabled = false
 end
 
 local function applyAnimationSet(character, animationSet)
-	local animate = character:FindFirstChild("Animate")
-	if not animate then
-		return 0
-	end
-	local n3 = 0
+    local animate = character:FindFirstChild("Animate")
+    if not animate then
+        return 0
+    end
+    local clonedAnimationCount = 0
 
-	for k, currentEmoteTrack in pairs(animationSet) do
-		local v3 = animate:FindFirstChild(k)
+    for k, savedAnimations in pairs(animationSet) do
+        local animationFolder = animate:FindFirstChild(k)
 
-		if v3 and #currentEmoteTrack > 0 then
-			for _, child in ipairs(v3:GetChildren()) do
-				if child:IsA("Animation") then
-					child:Destroy()
-				end
-			end
+        if animationFolder and #savedAnimations > 0 then
+            for _, child in ipairs(animationFolder:GetChildren()) do
+                if child:IsA("Animation") then
+                    child:Destroy()
+                end
+            end
 
-			for _, v4 in ipairs(currentEmoteTrack) do
-				v4:Clone().Parent = v3
-				n3 += 1
-			end
-		end
-	end
+            for _, animationTemplate in ipairs(savedAnimations) do
+                animationTemplate:Clone().Parent = animationFolder
+                clonedAnimationCount += 1
+            end
+        end
+    end
 
-	if n3 > 0 then
-		restartCharacterAnimations(character)
-	end
+    if clonedAnimationCount > 0 then
+        restartCharacterAnimations(character)
+    end
 
-	return n3
+    return clonedAnimationCount
 end
 
 local function restoreAnimationSet(character, savedAnimationSet)
-	local animate = character:FindFirstChild("Animate")
-	if not (animate and savedAnimationSet and savedAnimationSet.anim) then
-		return
-	end
-	local flag = false
+    local animate = character:FindFirstChild("Animate")
+    if not (animate and savedAnimationSet and savedAnimationSet.anim) then
+        return
+    end
+    local restoredAnyAnimation = false
 
-	for k, currentEmoteTrack in pairs(savedAnimationSet.anim) do
-		local v3 = animate:FindFirstChild(k)
+    for k, savedAnimations in pairs(savedAnimationSet.anim) do
+        local animationFolder = animate:FindFirstChild(k)
 
-		if v3 then
-			for _, child in ipairs(v3:GetChildren()) do
-				if child:IsA("Animation") then
-					child:Destroy()
-				end
-			end
+        if animationFolder then
+            for _, child in ipairs(animationFolder:GetChildren()) do
+                if child:IsA("Animation") then
+                    child:Destroy()
+                end
+            end
 
-			for _, v4 in ipairs(currentEmoteTrack) do
-				v4:Clone().Parent = v3
-			end
+            for _, savedAnimation in ipairs(savedAnimations) do
+                savedAnimation:Clone().Parent = animationFolder
+            end
 
-			flag = true
-		end
-	end
+            restoredAnyAnimation = true
+        end
+    end
 
-	if flag then
-		restartCharacterAnimations(character)
-	end
+    if restoredAnyAnimation then
+        restartCharacterAnimations(character)
+    end
 end
 
 local copiedSkinAnimationData = nil
 local function applyCopiedSkinAnimations(character, enabled)
-	if not character or not character.Parent then return false end
-	local originalData = captureCharacterState(character)
-	if enabled then
-		if type(copiedSkinAnimationData) ~= "table" then return false end
-		return applyAnimationSet(character, copiedSkinAnimationData) > 0
-	end
-	restoreAnimationSet(character, originalData)
-	return true
+    if not character or not character.Parent then return false end
+    local savedCharacterState = captureCharacterState(character)
+    if enabled then
+        if type(copiedSkinAnimationData) ~= "table" then return false end
+        return applyAnimationSet(character, copiedSkinAnimationData) > 0
+    end
+    restoreAnimationSet(character, savedCharacterState)
+    return true
 end
 
 local characterEmoteCache = setmetatable({}, { __mode = "k" })
 
 local function getCharacterHumanoidDescription(character)
-	character = character and character:FindFirstChildOfClass("Humanoid")
-	return character and character:FindFirstChildOfClass("HumanoidDescription") or nil
+    character = character and character:FindFirstChildOfClass("Humanoid")
+    return character and character:FindFirstChildOfClass("HumanoidDescription") or nil
 end
 
 local function applyEmotes(character, emotes)
-	local currentEmoteTrack = getCharacterHumanoidDescription(character)
-	if not currentEmoteTrack then
-		return 0
-	end
+    local humanoidDescription = getCharacterHumanoidDescription(character)
+    if not humanoidDescription then
+        return 0
+    end
 
-	if not characterEmoteCache[character] then
-		local ok, result = pcall(currentEmoteTrack.GetEmotes, currentEmoteTrack)
-		local ok2, result2 = pcall(currentEmoteTrack.GetEquippedEmotes, currentEmoteTrack)
-		local tbl9 = {}
-		local v3 = ipairs
-		result2 = ok2 and result2 or {}
+    if not characterEmoteCache[character] then
+        local ok, result = pcall(humanoidDescription.GetEmotes, humanoidDescription)
+        local ok2, result2 = pcall(humanoidDescription.GetEquippedEmotes, humanoidDescription)
+        local emoteMap = {}
+        local iterateEquippedEmotes = ipairs
+        result2 = ok2 and result2 or {}
 
-		for _, v4 in v3(result2) do
-			tbl9[#tbl9 + 1] = v4.Name
-		end
+        for _, equippedEmote in iterateEquippedEmotes(result2) do
+            emoteMap[#emoteMap + 1] = equippedEmote.Name
+        end
 
-		characterEmoteCache[character] = { emotes = ok and result or {}, equipados = tbl9 }
-	end
+        characterEmoteCache[character] = { emotes = ok and result or {}, equipados = emoteMap }
+    end
 
-	local tbl9 = {}
-	local r6ToR15JointMappings = {}
+    local emoteMap = {}
+    local equippedEmoteNames = {}
 
-	for _, v3 in ipairs(emotes) do
-		tbl9[v3.nombre] = { v3.id }
+    for _, iterateEquippedEmotes in ipairs(emotes) do
+        emoteMap[iterateEquippedEmotes.nombre] = { iterateEquippedEmotes.id }
 
-		if #r6ToR15JointMappings < 8 then
-			r6ToR15JointMappings[#r6ToR15JointMappings + 1] = v3.nombre
-		end
-	end
+        if #equippedEmoteNames < 8 then
+            equippedEmoteNames[#equippedEmoteNames + 1] = iterateEquippedEmotes.nombre
+        end
+    end
 
-	return pcall(function()
-		currentEmoteTrack:SetEmotes(tbl9)
-		currentEmoteTrack:SetEquippedEmotes(r6ToR15JointMappings)
-	end) and #r6ToR15JointMappings or 0
+    return pcall(function()
+        humanoidDescription:SetEmotes(emoteMap)
+        humanoidDescription:SetEquippedEmotes(equippedEmoteNames)
+    end) and #equippedEmoteNames or 0
 end
 
 local localPlayerEmoteData = nil
 
 local function getLocalPlayerEmoteData()
-	if localPlayerEmoteData then
-		return localPlayerEmoteData
-	end
-	local ok, result = pcall(Players.GetHumanoidDescriptionFromUserId, Players, localPlayer.UserId)
-	if not (ok and result) then
-		return nil
-	end
-	local ok2, result2 = pcall(result.GetEmotes, result)
-	local ok3, result3 = pcall(result.GetEquippedEmotes, result)
-	if not (ok2 and ok3) then
-		return nil
-	end
-	local r6ToR15JointMappings = {}
+    if localPlayerEmoteData then
+        return localPlayerEmoteData
+    end
+    local ok, result = pcall(Players.GetHumanoidDescriptionFromUserId, Players, localPlayer.UserId)
+    if not (ok and result) then
+        return nil
+    end
+    local ok2, result2 = pcall(result.GetEmotes, result)
+    local ok3, result3 = pcall(result.GetEquippedEmotes, result)
+    if not (ok2 and ok3) then
+        return nil
+    end
+    local equippedEmoteNames = {}
 
-	for _, currentEmoteTrack in ipairs(result3) do
-		r6ToR15JointMappings[#r6ToR15JointMappings + 1] = currentEmoteTrack.Name
-	end
+    for _, equippedEmote in ipairs(result3) do
+        equippedEmoteNames[#equippedEmoteNames + 1] = equippedEmote.Name
+    end
 
-	localPlayerEmoteData = { emotes = result2, equipados = r6ToR15JointMappings }
-	return localPlayerEmoteData
+    localPlayerEmoteData = { emotes = result2, equipados = equippedEmoteNames }
+    return localPlayerEmoteData
 end
 
 local function restoreCharacterEmotes(character)
-	local currentEmoteTrack = getCharacterHumanoidDescription(character)
-	if not currentEmoteTrack then
-		return
-	end
-	local v3 = getLocalPlayerEmoteData() or characterEmoteCache[character]
-	if not v3 then
-		return
-	end
+    local humanoidDescription = getCharacterHumanoidDescription(character)
+    if not humanoidDescription then
+        return
+    end
+    local emoteData = getLocalPlayerEmoteData() or characterEmoteCache[character]
+    if not emoteData then
+        return
+    end
 
-	pcall(function()
-		currentEmoteTrack:SetEmotes(v3.emotes)
-		currentEmoteTrack:SetEquippedEmotes(v3.equipados)
-	end)
+    pcall(function()
+        humanoidDescription:SetEmotes(emoteData.emotes)
+        humanoidDescription:SetEquippedEmotes(emoteData.equipados)
+    end)
 end
 
 local r6ToR15JointMappings = {}
 
 local rootJointMapping = {
-	p0 = "HumanoidRootPart",
-	p1 = "Torso",
-	m0 = "HumanoidRootPart",
-	m1 = "UpperTorso",
-	r15 = { "Root", "Waist" },
-	c0 = CFrame.new(0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0),
-	c1 = CFrame.new(0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0),
+    targetPart0Name = "HumanoidRootPart",
+    targetPart1Name = "Torso",
+    sourcePart0Name = "HumanoidRootPart",
+    sourcePart1Name = "UpperTorso",
+    sourceJointNames = { "Root", "Waist" },
+    sourceOffset = CFrame.new(0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0),
+    targetOffset = CFrame.new(0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0),
 }
 
 local neckJointMapping = {
-	p0 = "Torso",
-	p1 = "Head",
-	m0 = "UpperTorso",
-	m1 = "Head",
-	r15 = { "Neck" },
-	c0 = CFrame.new(0, 1, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0),
-	c1 = CFrame.new(0, -0.5, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0),
+    targetPart0Name = "Torso",
+    targetPart1Name = "Head",
+    sourcePart0Name = "UpperTorso",
+    sourcePart1Name = "Head",
+    sourceJointNames = { "Neck" },
+    sourceOffset = CFrame.new(0, 1, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0),
+    targetOffset = CFrame.new(0, -0.5, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0),
 }
 
 local rightShoulderMapping = {
-	p0 = "Torso",
-	p1 = "Right Arm",
-	m0 = "UpperTorso",
-	m1 = "RightUpperArm",
-	r15 = { "RightShoulder" },
-	c0 = CFrame.new(1, 0.5, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0),
-	c1 = CFrame.new(-0.5, 0.5, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0),
+    targetPart0Name = "Torso",
+    targetPart1Name = "Right Arm",
+    sourcePart0Name = "UpperTorso",
+    sourcePart1Name = "RightUpperArm",
+    sourceJointNames = { "RightShoulder" },
+    sourceOffset = CFrame.new(1, 0.5, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0),
+    targetOffset = CFrame.new(-0.5, 0.5, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0),
 }
 
 local leftShoulderMapping = {
-	p0 = "Torso",
-	p1 = "Left Arm",
-	m0 = "UpperTorso",
-	m1 = "LeftUpperArm",
-	r15 = { "LeftShoulder" },
-	c0 = CFrame.new(-1, 0.5, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0),
-	c1 = CFrame.new(0.5, 0.5, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0),
+    targetPart0Name = "Torso",
+    targetPart1Name = "Left Arm",
+    sourcePart0Name = "UpperTorso",
+    sourcePart1Name = "LeftUpperArm",
+    sourceJointNames = { "LeftShoulder" },
+    sourceOffset = CFrame.new(-1, 0.5, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0),
+    targetOffset = CFrame.new(0.5, 0.5, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0),
 }
 
 local rightHipMapping = {
-	p0 = "Torso",
-	p1 = "Right Leg",
-	m0 = "UpperTorso",
-	m1 = "RightUpperLeg",
-	r15 = { "RightHip" },
-	c0 = CFrame.new(1, -1, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0),
-	c1 = CFrame.new(0.5, 1, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0),
+    targetPart0Name = "Torso",
+    targetPart1Name = "Right Leg",
+    sourcePart0Name = "UpperTorso",
+    sourcePart1Name = "RightUpperLeg",
+    sourceJointNames = { "RightHip" },
+    sourceOffset = CFrame.new(1, -1, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0),
+    targetOffset = CFrame.new(0.5, 1, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0),
 }
 
 local leftHipMapping = {
-	p0 = "Torso",
-	p1 = "Left Leg",
-	m0 = "UpperTorso",
-	m1 = "LeftUpperLeg",
-	r15 = { "LeftHip" },
-	c0 = CFrame.new(-1, -1, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0),
-	c1 = CFrame.new(-0.5, 1, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0),
+    targetPart0Name = "Torso",
+    targetPart1Name = "Left Leg",
+    sourcePart0Name = "UpperTorso",
+    sourcePart1Name = "LeftUpperLeg",
+    sourceJointNames = { "LeftHip" },
+    sourceOffset = CFrame.new(-1, -1, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0),
+    targetOffset = CFrame.new(-0.5, 1, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0),
 }
 
 r6ToR15JointMappings[1] = rootJointMapping
@@ -851,193 +851,193 @@ r6ToR15JointMappings[3] = rightShoulderMapping
 r6ToR15JointMappings[4] = leftShoulderMapping
 r6ToR15JointMappings[5] = rightHipMapping
 r6ToR15JointMappings[6] = leftHipMapping
-local visualModelState = { modelo = nil, char = nil, cadena = {}, folder = nil, conn = nil, connFisica = nil, connCamera = nil, connCameraRemoving = nil, connDescendant = nil, connHideCharacter = nil, connHideCharacterRemoving = nil }
+local visualModelState = { model = nil, character = nil, jointMappings = {}, folder = nil, renderConnection = nil, physicsConnection = nil, cameraTransparencyConnection = nil, cameraTransparencyRemovingConnection = nil, descendantConnection = nil, hideCharacterAddedConnection = nil, hideCharacterRemovingConnection = nil }
 
 local function indexCharacterJoints(character)
-	local tbl18 = {}
+    local jointsByName = {}
 
-	for _, descendant in ipairs(character:GetDescendants()) do
+    for _, descendant in ipairs(character:GetDescendants()) do
 
-		local insideAccessory = descendant:FindFirstAncestorOfClass("Accessory") ~= nil
-		if not insideAccessory
-			and (descendant:IsA("Motor6D") or descendant:IsA("AnimationConstraint"))
-			and not tbl18[descendant.Name] then
-			tbl18[descendant.Name] = descendant
-		end
-	end
+        local insideAccessory = descendant:FindFirstAncestorOfClass("Accessory") ~= nil
+        if not insideAccessory
+            and (descendant:IsA("Motor6D") or descendant:IsA("AnimationConstraint"))
+            and not jointsByName[descendant.Name] then
+            jointsByName[descendant.Name] = descendant
+        end
+    end
 
-	return tbl18
+    return jointsByName
 end
 
 local function getJointRotations(joint)
-	if joint:IsA("Motor6D") then
-		return joint.C0.Rotation, joint.C1.Rotation
-	end
-	local attachment0 = joint.Attachment0
-	local attachment1 = joint.Attachment1
-	return attachment0 and attachment0.CFrame.Rotation or CFrame.identity, attachment1 and attachment1.CFrame.Rotation or CFrame.identity
+    if joint:IsA("Motor6D") then
+        return joint.C0.Rotation, joint.C1.Rotation
+    end
+    local attachment0 = joint.Attachment0
+    local attachment1 = joint.Attachment1
+    return attachment0 and attachment0.CFrame.Rotation or CFrame.identity, attachment1 and attachment1.CFrame.Rotation or CFrame.identity
 end
 
 local function createJointMapping(sourcePart, targetPart, sourceOffset, targetOffset, sourceJoints)
-	local cframe = CFrame.identity
-	local cframe2 = CFrame.identity
+    local sourceRotationOffset = CFrame.identity
+    local targetRotationOffset = CFrame.identity
 
-	if #sourceJoints > 0 then
-		local currentEmoteTrack = getJointRotations(sourceJoints[1])
-		local v3, v4 = getJointRotations(sourceJoints[#sourceJoints])
-		cframe = sourceOffset.Rotation:Inverse() * currentEmoteTrack
-		local rotation = targetOffset.Rotation
-		cframe2 = v4:Inverse() * rotation
-	end
+    if #sourceJoints > 0 then
+        local firstSourceJointRotation = getJointRotations(sourceJoints[1])
+        local _unusedSourceRotation, lastSourceJointRotation = getJointRotations(sourceJoints[#sourceJoints])
+        sourceRotationOffset = sourceOffset.Rotation:Inverse() * firstSourceJointRotation
+        local targetPartRotation = targetOffset.Rotation
+        targetRotationOffset = lastSourceJointRotation:Inverse() * targetPartRotation
+    end
 
-	return { desde = sourcePart, hacia = targetPart, c0 = sourceOffset, c1 = targetOffset, srcs = sourceJoints, a = cframe, b = cframe2 }
+    return { sourcePart = sourcePart, targetPart = targetPart, sourceOffset = sourceOffset, targetOffset = targetOffset, sourceJoints = sourceJoints, sourceRotationOffset = sourceRotationOffset, targetRotationOffset = targetRotationOffset }
 end
 
 local function buildJointMappings(character, targetModel, visualRootPart, targetRig)
-	local currentEmoteTrack = indexCharacterJoints(character)
-	local tbl18 = {}
-	local tbl19 = {}
+    local sourceJointMap = indexCharacterJoints(character)
+    local jointMappings = {}
+    local targetBodyParts = {}
 
-	for _, child in ipairs(targetModel:GetChildren()) do
-		if child:IsA("BasePart") then
-			table.insert(tbl19, child)
-		end
-	end
+    for _, child in ipairs(targetModel:GetChildren()) do
+        if child:IsA("BasePart") then
+            table.insert(targetBodyParts, child)
+        end
+    end
 
-	if targetRig == "R6" then
-		for _, v3 in ipairs(r6ToR15JointMappings) do
-			local v4 = targetModel:FindFirstChild(v3.p0)
-			local v5 = targetModel:FindFirstChild(v3.p1)
+    if targetRig == "R6" then
+        for _, jointDefinition in ipairs(r6ToR15JointMappings) do
+            local targetPart0 = targetModel:FindFirstChild(jointDefinition.targetPart0Name)
+            local targetPart1 = targetModel:FindFirstChild(jointDefinition.targetPart1Name)
 
-			if v4 and v5 then
-				local tbl20 = {}
+            if targetPart0 and targetPart1 then
+                local matchingSourceJoints = {}
 
-				for _, v6 in ipairs(v3.r15) do
-					if currentEmoteTrack[v6] then
-						table.insert(tbl20, currentEmoteTrack[v6])
-					end
-				end
+                for _, sourceJointName in ipairs(jointDefinition.sourceJointNames) do
+                    if sourceJointMap[sourceJointName] then
+                        table.insert(matchingSourceJoints, sourceJointMap[sourceJointName])
+                    end
+                end
 
-				local v6 = createJointMapping(v4, v5, v3.c0, v3.c1, tbl20)
-				local v7 = character:FindFirstChild(v3.m0)
-				local v8 = character:FindFirstChild(v3.m1)
-				v6.m0 = v7
-				v6.m1 = v8
-				table.insert(tbl18, v6)
-			end
-		end
-	else
-		local tbl20 = { [visualRootPart] = true }
-		local tbl21 = { visualRootPart }
+                local jointMapping = createJointMapping(targetPart0, targetPart1, jointDefinition.sourceOffset, jointDefinition.targetOffset, matchingSourceJoints)
+                local sourcePart0 = character:FindFirstChild(jointDefinition.sourcePart0Name)
+                local sourcePart1 = character:FindFirstChild(jointDefinition.sourcePart1Name)
+                jointMapping.sourceBodyPart0 = sourcePart0
+                jointMapping.sourceBodyPart1 = sourcePart1
+                table.insert(jointMappings, jointMapping)
+            end
+        end
+    else
+        local visitedTargetParts = { [visualRootPart] = true }
+        local pendingTargetParts = { visualRootPart }
 
-		while #tbl21 > 0 do
-			local v3 = table.remove(tbl21, 1)
+        while #pendingTargetParts > 0 do
+            local currentTargetPart = table.remove(pendingTargetParts, 1)
 
-			for _, child in ipairs(v3:GetChildren()) do
-				if child:IsA("Attachment") and child.Name:match("RigAttachment$") then
-					for _, v4 in ipairs(tbl19) do
-						if not tbl20[v4] then
-							local v5 = v4:FindFirstChild(child.Name)
+            for _, child in ipairs(currentTargetPart:GetChildren()) do
+                if child:IsA("Attachment") and child.Name:match("RigAttachment$") then
+                    for _, targetBodyPart in ipairs(targetBodyParts) do
+                        if not visitedTargetParts[targetBodyPart] then
+                            local matchingAttachment = targetBodyPart:FindFirstChild(child.Name)
 
-							if v5 and v5:IsA("Attachment") then
-								tbl20[v4] = true
-								local v6 = currentEmoteTrack[child.Name:gsub("RigAttachment$", "")]
-								table.insert(tbl18, createJointMapping(v3, v4, child.CFrame, v5.CFrame, v6 and { v6 } or {}))
-								table.insert(tbl21, v4)
-							end
-						end
-					end
-				end
-			end
-		end
-	end
+                            if matchingAttachment and matchingAttachment:IsA("Attachment") then
+                                visitedTargetParts[targetBodyPart] = true
+                                local matchingSourceJoint = sourceJointMap[child.Name:gsub("RigAttachment$", "")]
+                                table.insert(jointMappings, createJointMapping(currentTargetPart, targetBodyPart, child.CFrame, matchingAttachment.CFrame, matchingSourceJoint and { matchingSourceJoint } or {}))
+                                table.insert(pendingTargetParts, targetBodyPart)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
 
-	for _, child in ipairs(targetModel:GetChildren()) do
-		if child:IsA("Accessory") then
-			local handle = child:FindFirstChild("Handle")
-			local matchedHandleAttachment = nil
-			local matchedBodyPart = nil
-			local matchedBodyAttachment = nil
+    for _, child in ipairs(targetModel:GetChildren()) do
+        if child:IsA("Accessory") then
+            local handle = child:FindFirstChild("Handle")
+            local matchedHandleAttachment = nil
+            local matchedBodyPart = nil
+            local matchedBodyAttachment = nil
 
-			if handle and handle:IsA("BasePart") then
+            if handle and handle:IsA("BasePart") then
 
-				for _, attachment in ipairs(handle:GetChildren()) do
-					if attachment:IsA("Attachment") then
-						for _, bodyPart in ipairs(tbl19) do
-							local bodyAttachment = bodyPart:FindFirstChild(attachment.Name)
-							if bodyAttachment and bodyAttachment:IsA("Attachment") then
-								matchedHandleAttachment = attachment
-								matchedBodyPart = bodyPart
-								matchedBodyAttachment = bodyAttachment
-								break
-							end
-						end
-					end
-					if matchedHandleAttachment then
-						break
-					end
-				end
-			end
+                for _, attachment in ipairs(handle:GetChildren()) do
+                    if attachment:IsA("Attachment") then
+                        for _, bodyPart in ipairs(targetBodyParts) do
+                            local bodyAttachment = bodyPart:FindFirstChild(attachment.Name)
+                            if bodyAttachment and bodyAttachment:IsA("Attachment") then
+                                matchedHandleAttachment = attachment
+                                matchedBodyPart = bodyPart
+                                matchedBodyAttachment = bodyAttachment
+                                break
+                            end
+                        end
+                    end
+                    if matchedHandleAttachment then
+                        break
+                    end
+                end
+            end
 
-			if matchedHandleAttachment and matchedBodyPart and matchedBodyAttachment then
-				table.insert(tbl18, createJointMapping(
-					matchedBodyPart,
-					handle,
-					matchedBodyAttachment.CFrame,
-					matchedHandleAttachment.CFrame,
-					{}
-				))
+            if matchedHandleAttachment and matchedBodyPart and matchedBodyAttachment then
+                table.insert(jointMappings, createJointMapping(
+                    matchedBodyPart,
+                    handle,
+                    matchedBodyAttachment.CFrame,
+                    matchedHandleAttachment.CFrame,
+                    {}
+                ))
 
-				for _, accessoryPart in ipairs(child:GetDescendants()) do
-					if accessoryPart:IsA("BasePart") and accessoryPart ~= handle then
-						local relativeCFrame = handle.CFrame:ToObjectSpace(accessoryPart.CFrame)
-						table.insert(tbl18, {
-							desde = handle,
-							hacia = accessoryPart,
-							c0 = relativeCFrame,
-							c1 = CFrame.identity,
-							srcs = {},
-							a = CFrame.identity,
-							b = CFrame.identity,
-						})
-					end
-				end
-			end
-		end
-	end
+                for _, accessoryPart in ipairs(child:GetDescendants()) do
+                    if accessoryPart:IsA("BasePart") and accessoryPart ~= handle then
+                        local relativeCFrame = handle.CFrame:ToObjectSpace(accessoryPart.CFrame)
+                        table.insert(jointMappings, {
+                            sourcePart = handle,
+                            targetPart = accessoryPart,
+                            sourceOffset = relativeCFrame,
+                            targetOffset = CFrame.identity,
+                            sourceJoints = {},
+                            sourceRotationOffset = CFrame.identity,
+                            targetRotationOffset = CFrame.identity,
+                        })
+                    end
+                end
+            end
+        end
+    end
 
-	return tbl18
+    return jointMappings
 end
 
 local function getSkinVisualFolder()
-	local currentCamera = workspace.CurrentCamera
-	if not currentCamera then
-		return nil
-	end
-	local visualFolder = currentCamera:FindFirstChild("SnowX_SkinsVisuals")
+    local currentCamera = workspace.CurrentCamera
+    if not currentCamera then
+        return nil
+    end
+    local visualFolder = currentCamera:FindFirstChild("SnowX_SkinsVisuals")
 
-	if not visualFolder then
-		local folder = Instance.new("Folder")
-		folder.Name = "SnowX_SkinsVisuals"
-		folder.Parent = currentCamera
-		visualFolder = folder
-	end
+    if not visualFolder then
+        local folder = Instance.new("Folder")
+        folder.Name = "SnowX_SkinsVisuals"
+        folder.Parent = currentCamera
+        visualFolder = folder
+    end
 
-	return visualFolder
+    return visualFolder
 end
 
 local hiddenCharacterEffectStates = setmetatable({}, { __mode = "k" })
 
 local function isNativeVisualEffect(instance)
-	return instance:IsA("ParticleEmitter")
-		or instance:IsA("Trail")
-		or instance:IsA("Beam")
-		or instance:IsA("Fire")
-		or instance:IsA("Smoke")
-		or instance:IsA("Sparkles")
-		or instance:IsA("Light")
-		or instance:IsA("BillboardGui")
-		or instance:IsA("SurfaceGui")
+    return instance:IsA("ParticleEmitter")
+        or instance:IsA("Trail")
+        or instance:IsA("Beam")
+        or instance:IsA("Fire")
+        or instance:IsA("Smoke")
+        or instance:IsA("Sparkles")
+        or instance:IsA("Light")
+        or instance:IsA("BillboardGui")
+        or instance:IsA("SurfaceGui")
 end
 
 local function enableCopiedAppearanceEffect(model, instance)
@@ -1128,16 +1128,16 @@ local function setOriginalCharacterHidden(character, shouldHide)
             table.clear(hiddenCharacterInstances)
             hiddenCharacterTracked = setmetatable({}, { __mode = "k" })
             for _, descendant in ipairs(character:GetDescendants()) do trackHiddenCharacterInstance(descendant) end
-            if visualModelState.connHideCharacter then
-                visualModelState.connHideCharacter:Disconnect()
-                visualModelState.connHideCharacter = nil
+            if visualModelState.hideCharacterAddedConnection then
+                visualModelState.hideCharacterAddedConnection:Disconnect()
+                visualModelState.hideCharacterAddedConnection = nil
             end
-            if visualModelState.connHideCharacterRemoving then
-                visualModelState.connHideCharacterRemoving:Disconnect()
-                visualModelState.connHideCharacterRemoving = nil
+            if visualModelState.hideCharacterRemovingConnection then
+                visualModelState.hideCharacterRemovingConnection:Disconnect()
+                visualModelState.hideCharacterRemovingConnection = nil
             end
-            visualModelState.connHideCharacter = character.DescendantAdded:Connect(trackHiddenCharacterInstance)
-            visualModelState.connHideCharacterRemoving = character.DescendantRemoving:Connect(function()
+            visualModelState.hideCharacterAddedConnection = character.DescendantAdded:Connect(trackHiddenCharacterInstance)
+            visualModelState.hideCharacterRemovingConnection = character.DescendantRemoving:Connect(function()
                 task.defer(function()
                     if hiddenCharacterModel ~= character then return end
                     for index = #hiddenCharacterInstances, 1, -1 do
@@ -1154,13 +1154,13 @@ local function setOriginalCharacterHidden(character, shouldHide)
         return
     end
     if hiddenCharacterModel ~= character then return end
-    if visualModelState.connHideCharacter then
-        visualModelState.connHideCharacter:Disconnect()
-        visualModelState.connHideCharacter = nil
+    if visualModelState.hideCharacterAddedConnection then
+        visualModelState.hideCharacterAddedConnection:Disconnect()
+        visualModelState.hideCharacterAddedConnection = nil
     end
-    if visualModelState.connHideCharacterRemoving then
-        visualModelState.connHideCharacterRemoving:Disconnect()
-        visualModelState.connHideCharacterRemoving = nil
+    if visualModelState.hideCharacterRemovingConnection then
+        visualModelState.hideCharacterRemovingConnection:Disconnect()
+        visualModelState.hideCharacterRemovingConnection = nil
     end
     for index = #hiddenCharacterInstances, 1, -1 do
         restoreHiddenCharacterInstance(hiddenCharacterInstances[index])
@@ -1374,539 +1374,539 @@ local function createNativeCameraTransparencyUpdater(character, visualModel)
 end
 
 local function destroySkinVisuals()
-	if visualModelState.conn then
-		visualModelState.conn:Disconnect()
-		visualModelState.conn = nil
-	end
+    if visualModelState.renderConnection then
+        visualModelState.renderConnection:Disconnect()
+        visualModelState.renderConnection = nil
+    end
 
-	if visualModelState.connFisica then
-		visualModelState.connFisica:Disconnect()
-		visualModelState.connFisica = nil
-	end
+    if visualModelState.physicsConnection then
+        visualModelState.physicsConnection:Disconnect()
+        visualModelState.physicsConnection = nil
+    end
 
-	if visualModelState.connCamera then
-		visualModelState.connCamera:Disconnect()
-		visualModelState.connCamera = nil
-	end
+    if visualModelState.cameraTransparencyConnection then
+        visualModelState.cameraTransparencyConnection:Disconnect()
+        visualModelState.cameraTransparencyConnection = nil
+    end
 
-	if visualModelState.connCameraRemoving then
-		visualModelState.connCameraRemoving:Disconnect()
-		visualModelState.connCameraRemoving = nil
-	end
+    if visualModelState.cameraTransparencyRemovingConnection then
+        visualModelState.cameraTransparencyRemovingConnection:Disconnect()
+        visualModelState.cameraTransparencyRemovingConnection = nil
+    end
 
-	if visualModelState.connDescendant then
-		visualModelState.connDescendant:Disconnect()
-		visualModelState.connDescendant = nil
-	end
+    if visualModelState.descendantConnection then
+        visualModelState.descendantConnection:Disconnect()
+        visualModelState.descendantConnection = nil
+    end
 
-	if visualModelState.connHideCharacter then
-		visualModelState.connHideCharacter:Disconnect()
-		visualModelState.connHideCharacter = nil
-	end
+    if visualModelState.hideCharacterAddedConnection then
+        visualModelState.hideCharacterAddedConnection:Disconnect()
+        visualModelState.hideCharacterAddedConnection = nil
+    end
 
-	if visualModelState.connHideCharacterRemoving then
-		visualModelState.connHideCharacterRemoving:Disconnect()
-		visualModelState.connHideCharacterRemoving = nil
-	end
+    if visualModelState.hideCharacterRemovingConnection then
+        visualModelState.hideCharacterRemovingConnection:Disconnect()
+        visualModelState.hideCharacterRemovingConnection = nil
+    end
 
-	if visualModelState.modelo then
-		visualModelState.modelo:Destroy()
-		visualModelState.modelo = nil
-	end
-	if visualModelState.folder and visualModelState.folder.Parent and #visualModelState.folder:GetChildren() == 0 then
-		pcall(function() visualModelState.folder:Destroy() end)
-	end
-	visualModelState.folder = nil
+    if visualModelState.model then
+        visualModelState.model:Destroy()
+        visualModelState.model = nil
+    end
+    if visualModelState.folder and visualModelState.folder.Parent and #visualModelState.folder:GetChildren() == 0 then
+        pcall(function() visualModelState.folder:Destroy() end)
+    end
+    visualModelState.folder = nil
 
-	visualModelState.cadena = {}
+    visualModelState.jointMappings = {}
 
-	if visualModelState.char then
-		setOriginalCharacterHidden(visualModelState.char, false)
-		visualModelState.char = nil
-	end
+    if visualModelState.character then
+        setOriginalCharacterHidden(visualModelState.character, false)
+        visualModelState.character = nil
+    end
 end
 
 local function getModelFootOffset(model, rootPart)
-	local y = rootPart.Position.Y
+    local y = rootPart.Position.Y
 
-	for _, child in ipairs(model:GetChildren()) do
-		if child:IsA("BasePart") and child ~= rootPart then
-			y = math.min(y, child.Position.Y - child.Size.Y / 2)
-		end
-	end
+    for _, child in ipairs(model:GetChildren()) do
+        if child:IsA("BasePart") and child ~= rootPart then
+            y = math.min(y, child.Position.Y - child.Size.Y / 2)
+        end
+    end
 
-	return rootPart.Position.Y - y
+    return rootPart.Position.Y - y
 end
 
 local function updateJointMappings(sourceRoot, targetRoot, jointMappings, rootOffset)
-	targetRoot.CFrame = sourceRoot.CFrame * rootOffset
+    targetRoot.CFrame = sourceRoot.CFrame * rootOffset
 
-	for _, currentEmoteTrack in ipairs(jointMappings) do
-		if currentEmoteTrack.m0 and currentEmoteTrack.m1 then
-			local rotation = currentEmoteTrack.m1.CFrame.Rotation
-			local n3 = currentEmoteTrack.m0.CFrame.Rotation:Inverse() * rotation
-			local c1 = currentEmoteTrack.c1
-			currentEmoteTrack.hacia.CFrame = currentEmoteTrack.desde.CFrame * currentEmoteTrack.c0 * currentEmoteTrack.c0.Rotation:Inverse() * n3 * currentEmoteTrack.c1.Rotation * c1:Inverse()
-		else
-			local a = currentEmoteTrack.a
+    for _, mapping in ipairs(jointMappings) do
+        if mapping.sourceBodyPart0 and mapping.sourceBodyPart1 then
+            local rotation = mapping.sourceBodyPart1.CFrame.Rotation
+            local relativeRotation = mapping.sourceBodyPart0.CFrame.Rotation:Inverse() * rotation
+            local targetOffsetInverse = mapping.targetOffset
+            mapping.targetPart.CFrame = mapping.sourcePart.CFrame * mapping.sourceOffset * mapping.sourceOffset.Rotation:Inverse() * relativeRotation * mapping.targetOffset.Rotation * targetOffsetInverse:Inverse()
+        else
+            local accumulatedRotation = mapping.sourceRotationOffset
 
-			for _, src in ipairs(currentEmoteTrack.srcs) do
-				a *= src.Transform
-			end
+            for _, src in ipairs(mapping.sourceJoints) do
+                accumulatedRotation *= src.Transform
+            end
 
-			currentEmoteTrack.hacia.CFrame = currentEmoteTrack.desde.CFrame * currentEmoteTrack.c0 * a * currentEmoteTrack.b * currentEmoteTrack.c1:Inverse()
-		end
-	end
+            mapping.targetPart.CFrame = mapping.sourcePart.CFrame * mapping.sourceOffset * accumulatedRotation * mapping.targetRotationOffset * mapping.targetOffset:Inverse()
+        end
+    end
 end
 
 local function buildR15SkinVisual(character, visualModel)
-	local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-	local humanoidRootPart2 = visualModel:FindFirstChild("HumanoidRootPart")
-	local currentEmoteTrack = getSkinVisualFolder()
-	if not (humanoidRootPart and humanoidRootPart2 and currentEmoteTrack) then
-		visualModel:Destroy()
-		return false
-	end
-	local humanoid = visualModel:FindFirstChildOfClass("Humanoid")
-	character:FindFirstChildOfClass("Humanoid")
-	local cframe = CFrame.new(0, (humanoid and humanoid.HipHeight > 0 and humanoid.HipHeight + humanoidRootPart2.Size.Y / 2 or getModelFootOffset(visualModel, humanoidRootPart2)) - getModelFootOffset(character, humanoidRootPart), 0)
-	local tbl18 = {}
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    local humanoidRootPart2 = visualModel:FindFirstChild("HumanoidRootPart")
+    local visualFolder = getSkinVisualFolder()
+    if not (humanoidRootPart and humanoidRootPart2 and visualFolder) then
+        visualModel:Destroy()
+        return false
+    end
+    local visualHumanoid = visualModel:FindFirstChildOfClass("Humanoid")
+    character:FindFirstChildOfClass("Humanoid")
+    local cframe = CFrame.new(0, (visualHumanoid and visualHumanoid.HipHeight > 0 and visualHumanoid.HipHeight + humanoidRootPart2.Size.Y / 2 or getModelFootOffset(visualModel, humanoidRootPart2)) - getModelFootOffset(character, humanoidRootPart), 0)
+    local visualParts = {}
 
-	local function configureVisualPart(part)
-		local insideAccessory = part:FindFirstAncestorOfClass("Accessory") ~= nil
-		local insideTool = part:FindFirstAncestorOfClass("Tool") ~= nil
-		part.Anchored = not insideAccessory and not insideTool and part == humanoidRootPart2
-		part.CanCollide = false
-		part.CanTouch = false
-		part.CanQuery = false
-		part.Massless = true
-		table.insert(tbl18, part)
-	end
+    local function configureVisualPart(part)
+        local insideAccessory = part:FindFirstAncestorOfClass("Accessory") ~= nil
+        local insideTool = part:FindFirstAncestorOfClass("Tool") ~= nil
+        part.Anchored = not insideAccessory and not insideTool and part == humanoidRootPart2
+        part.CanCollide = false
+        part.CanTouch = false
+        part.CanQuery = false
+        part.Massless = true
+        table.insert(visualParts, part)
+    end
 
-	for _, descendant in ipairs(visualModel:GetDescendants()) do
-		if descendant:IsA("BaseScript") then
-			descendant.Disabled = true
-		elseif descendant:IsA("BasePart") then
-			configureVisualPart(descendant)
-		end
-	end
+    for _, descendant in ipairs(visualModel:GetDescendants()) do
+        if descendant:IsA("BaseScript") then
+            descendant.Disabled = true
+        elseif descendant:IsA("BasePart") then
+            configureVisualPart(descendant)
+        end
+    end
 
-	if humanoid then
-		humanoid.PlatformStand = true
-		humanoid.AutoRotate = false
-		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+    if visualHumanoid then
+        visualHumanoid.PlatformStand = true
+        visualHumanoid.AutoRotate = false
+        visualHumanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 
-		pcall(function()
-			humanoid.EvaluateStateMachine = false
-		end)
+        pcall(function()
+            visualHumanoid.EvaluateStateMachine = false
+        end)
 
-		local animator = humanoid:FindFirstChildOfClass("Animator")
+        local animator = visualHumanoid:FindFirstChildOfClass("Animator")
 
-		if animator then
-			animator:Destroy()
-		end
-	end
+        if animator then
+            animator:Destroy()
+        end
+    end
 
-	visualModel.Name = "SnowX_SkinsVisuals_R15"
-	visualModel.PrimaryPart = humanoidRootPart2
-	visualModel:PivotTo(humanoidRootPart.CFrame * cframe)
-	visualModel.Parent = currentEmoteTrack
+    visualModel.Name = "SnowX_SkinsVisuals_R15"
+    visualModel.PrimaryPart = humanoidRootPart2
+    visualModel:PivotTo(humanoidRootPart.CFrame * cframe)
+    visualModel.Parent = visualFolder
 
-	local v3 = indexCharacterJoints(character)
-	local cadena = {}
+    local characterJointMap = indexCharacterJoints(character)
+    local jointMappings = {}
 
-	local function configureVisualJoint(joint)
+    local function configureVisualJoint(joint)
 
-		if joint:FindFirstAncestorOfClass("Accessory") then
-			return
-		end
+        if joint:FindFirstAncestorOfClass("Accessory") then
+            return
+        end
 
-		if joint:IsA("BallSocketConstraint") then
-			joint.Enabled = false
-		elseif joint:IsA("AnimationConstraint") or joint:IsA("Motor6D") then
-			pcall(function()
-				joint.IsKinematic = true
-			end)
+        if joint:IsA("BallSocketConstraint") then
+            joint.Enabled = false
+        elseif joint:IsA("AnimationConstraint") or joint:IsA("Motor6D") then
+            pcall(function()
+                joint.IsKinematic = true
+            end)
 
-			local v4 = v3[joint.Name]
+            local sourceJoint = characterJointMap[joint.Name]
 
-			if v4 then
-				table.insert(cadena, { src = v4, tgt = joint })
-			end
-		end
-	end
+            if sourceJoint then
+                table.insert(jointMappings, { sourceJoint = sourceJoint, targetJoint = joint })
+            end
+        end
+    end
 
-	for _, descendant in ipairs(visualModel:GetDescendants()) do
-		configureVisualJoint(descendant)
-	end
+    for _, descendant in ipairs(visualModel:GetDescendants()) do
+        configureVisualJoint(descendant)
+    end
 
-	if visualModelState.connDescendant then visualModelState.connDescendant:Disconnect() end
-	visualModelState.connDescendant = visualModel.DescendantAdded:Connect(function(descendant)
-		if descendant:IsA("BasePart") then
-			configureVisualPart(descendant)
-		else
-			configureVisualJoint(descendant)
-		end
-	end)
+    if visualModelState.descendantConnection then visualModelState.descendantConnection:Disconnect() end
+    visualModelState.descendantConnection = visualModel.DescendantAdded:Connect(function(descendant)
+        if descendant:IsA("BasePart") then
+            configureVisualPart(descendant)
+        else
+            configureVisualJoint(descendant)
+        end
+    end)
 
-	local v4 = visualModelState
-	local v5 = visualModelState
-	visualModelState.visualModel = visualModel
-	v4.character = character
-	v5.cadena = cadena
-	setOriginalCharacterHidden(character, true)
+    local characterVisualStateRef = visualModelState
+    local jointMappingsVisualStateRef = visualModelState
+    visualModelState.model = visualModel
+    characterVisualStateRef.character = character
+    jointMappingsVisualStateRef.jointMappings = jointMappings
+    setOriginalCharacterHidden(character, true)
 
-	local updateCameraTransparency, cameraDescendantConnection, cameraDescendantRemovingConnection =
-		createNativeCameraTransparencyUpdater(character, visualModel)
-	visualModelState.connCamera = cameraDescendantConnection
-	visualModelState.connCameraRemoving = cameraDescendantRemovingConnection
-	visualModelState.folder = currentEmoteTrack
+    local updateCameraTransparency, cameraDescendantConnection, cameraDescendantRemovingConnection =
+        createNativeCameraTransparencyUpdater(character, visualModel)
+    visualModelState.cameraTransparencyConnection = cameraDescendantConnection
+    visualModelState.cameraTransparencyRemovingConnection = cameraDescendantRemovingConnection
+    visualModelState.folder = visualFolder
 
-	local function updateVisualPose()
-		humanoidRootPart2.CFrame = humanoidRootPart.CFrame * cframe
+    local function updateVisualPose()
+        humanoidRootPart2.CFrame = humanoidRootPart.CFrame * cframe
 
-		for _, v6 in ipairs(cadena) do
-			if v6.src and v6.src.Parent and v6.tgt and v6.tgt.Parent then
-				pcall(function() v6.tgt.Transform = v6.src.Transform end)
-			end
-		end
-	end
+        for _, jointMapping in ipairs(jointMappings) do
+            if jointMapping.sourceJoint and jointMapping.sourceJoint.Parent and jointMapping.targetJoint and jointMapping.targetJoint.Parent then
+                pcall(function() jointMapping.targetJoint.Transform = jointMapping.sourceJoint.Transform end)
+            end
+        end
+    end
 
-	visualModelState.connFisica = RunService.Stepped:Connect(function()
-		if visualModelState.visualModel ~= visualModel then
-			return
-		end
-		for _, part in ipairs(tbl18) do
-			if part.Parent then
-				if part.CanCollide then part.CanCollide = false end
-				if part.CanTouch then part.CanTouch = false end
-			end
-		end
-		updateVisualPose()
-	end)
+    visualModelState.physicsConnection = RunService.Stepped:Connect(function()
+        if visualModelState.model ~= visualModel then
+            return
+        end
+        for _, part in ipairs(visualParts) do
+            if part.Parent then
+                if part.CanCollide then part.CanCollide = false end
+                if part.CanTouch then part.CanTouch = false end
+            end
+        end
+        updateVisualPose()
+    end)
 
-	local n3 = 0
+    local hiddenCharacterRefreshElapsed = 0
 
-	visualModelState.conn = RunService.RenderStepped:Connect(function(deltaTime)
-		if visualModelState.visualModel ~= visualModel then
-			return
-		end
+    visualModelState.renderConnection = RunService.RenderStepped:Connect(function(deltaTime)
+        if visualModelState.model ~= visualModel then
+            return
+        end
         local currentCamera = workspace.CurrentCamera
-        if not currentEmoteTrack or currentEmoteTrack.Parent ~= currentCamera then
-            local previousFolder = currentEmoteTrack
-            currentEmoteTrack = getSkinVisualFolder()
-            if previousFolder and previousFolder ~= currentEmoteTrack and previousFolder.Parent
+        if not visualFolder or visualFolder.Parent ~= currentCamera then
+            local previousFolder = visualFolder
+            visualFolder = getSkinVisualFolder()
+            if previousFolder and previousFolder ~= visualFolder and previousFolder.Parent
                 and #previousFolder:GetChildren() == 0 then
                 pcall(function() previousFolder:Destroy() end)
             end
-            visualModelState.folder = currentEmoteTrack
+            visualModelState.folder = visualFolder
         end
         if not currentCamera then return end
-        if currentEmoteTrack and visualModel.Parent ~= currentEmoteTrack then visualModel.Parent = currentEmoteTrack end
+        if visualFolder and visualModel.Parent ~= visualFolder then visualModel.Parent = visualFolder end
         updateVisualPose()
         updateCameraTransparency()
-		n3 += deltaTime
+        hiddenCharacterRefreshElapsed += deltaTime
 
-		if n3 >= 0.5 then
-			n3 %= 0.5
-			enforceHiddenCharacter()
-		end
-	end)
+        if hiddenCharacterRefreshElapsed >= 0.5 then
+            hiddenCharacterRefreshElapsed %= 0.5
+            enforceHiddenCharacter()
+        end
+    end)
 
-	return true
+    return true
 end
 
 local function buildSkinVisual(character, visualModel)
-	destroySkinVisuals()
-	local humanoid = visualModel:FindFirstChildOfClass("Humanoid")
-	humanoid = humanoid and humanoid.RigType == Enum.HumanoidRigType.R6 and "R6" or "R15"
-	if humanoid ~= "R6" then
-		return buildR15SkinVisual(character, visualModel)
-	end
-	local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-	local humanoidRootPart2 = visualModel:FindFirstChild("HumanoidRootPart")
-	local currentEmoteTrack = getSkinVisualFolder()
-	if not (humanoidRootPart and humanoidRootPart2 and currentEmoteTrack) then
-		visualModel:Destroy()
-		return false
-	end
-	local humanoid2 = visualModel:FindFirstChildOfClass("Humanoid")
-	character:FindFirstChildOfClass("Humanoid")
-	local flag = humanoid == "R6" and getModelFootOffset(visualModel, humanoidRootPart2)
-	local n3
+    destroySkinVisuals()
+    local visualRigName = visualModel:FindFirstChildOfClass("Humanoid")
+    visualRigName = visualRigName and visualRigName.RigType == Enum.HumanoidRigType.R6 and "R6" or "R15"
+    if visualRigName ~= "R6" then
+        return buildR15SkinVisual(character, visualModel)
+    end
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    local humanoidRootPart2 = visualModel:FindFirstChild("HumanoidRootPart")
+    local visualFolder = getSkinVisualFolder()
+    if not (humanoidRootPart and humanoidRootPart2 and visualFolder) then
+        visualModel:Destroy()
+        return false
+    end
+    local visualHumanoid = visualModel:FindFirstChildOfClass("Humanoid")
+    character:FindFirstChildOfClass("Humanoid")
+    local r6FootOffset = visualRigName == "R6" and getModelFootOffset(visualModel, humanoidRootPart2)
+    local visualHeightOffset
 
-	if flag then
-		n3 = flag
-	else
-		n3 = (humanoid2 and humanoid2.HipHeight or 2) + humanoidRootPart2.Size.Y / 2
-	end
+    if r6FootOffset then
+        visualHeightOffset = r6FootOffset
+    else
+        visualHeightOffset = (visualHumanoid and visualHumanoid.HipHeight or 2) + humanoidRootPart2.Size.Y / 2
+    end
 
-	local cframe = CFrame.new(0, n3 - getModelFootOffset(character, humanoidRootPart), 0)
-	local tbl18 = {}
+    local cframe = CFrame.new(0, visualHeightOffset - getModelFootOffset(character, humanoidRootPart), 0)
+    local visualParts = {}
 
-	for _, descendant in ipairs(visualModel:GetDescendants()) do
-		if descendant:IsA("BaseScript") then
-			descendant.Disabled = true
-		elseif descendant:IsA("BasePart") then
-			descendant.Anchored = true
-			descendant.CanCollide = false
-			descendant.CanTouch = false
-			descendant.CanQuery = false
-			descendant.Massless = true
-			table.insert(tbl18, descendant)
-		elseif (descendant:IsA("JointInstance") or descendant:IsA("Constraint"))
-			and not descendant:FindFirstAncestorOfClass("Accessory")
-			and not descendant:FindFirstAncestorOfClass("Tool") then
-			descendant:Destroy()
-		end
-	end
+    for _, descendant in ipairs(visualModel:GetDescendants()) do
+        if descendant:IsA("BaseScript") then
+            descendant.Disabled = true
+        elseif descendant:IsA("BasePart") then
+            descendant.Anchored = true
+            descendant.CanCollide = false
+            descendant.CanTouch = false
+            descendant.CanQuery = false
+            descendant.Massless = true
+            table.insert(visualParts, descendant)
+        elseif (descendant:IsA("JointInstance") or descendant:IsA("Constraint"))
+            and not descendant:FindFirstAncestorOfClass("Accessory")
+            and not descendant:FindFirstAncestorOfClass("Tool") then
+            descendant:Destroy()
+        end
+    end
 
-	if humanoid2 then
-		humanoid2.PlatformStand = true
-		humanoid2.AutoRotate = false
-		humanoid2.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+    if visualHumanoid then
+        visualHumanoid.PlatformStand = true
+        visualHumanoid.AutoRotate = false
+        visualHumanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 
-		pcall(function()
-			humanoid2.EvaluateStateMachine = false
-		end)
+        pcall(function()
+            visualHumanoid.EvaluateStateMachine = false
+        end)
 
-		local animator = humanoid2:FindFirstChildOfClass("Animator")
+        local animator = visualHumanoid:FindFirstChildOfClass("Animator")
 
-		if animator then
-			animator:Destroy()
-		end
-	end
+        if animator then
+            animator:Destroy()
+        end
+    end
 
-	visualModel.Name = "SnowX_SkinsVisuals_" .. humanoid
-	visualModel.PrimaryPart = humanoidRootPart2
-	local v3 = buildJointMappings(character, visualModel, humanoidRootPart2, humanoid)
-	updateJointMappings(humanoidRootPart, humanoidRootPart2, v3, cframe)
-	visualModel.Parent = currentEmoteTrack
+    visualModel.Name = "SnowX_SkinsVisuals_" .. visualRigName
+    visualModel.PrimaryPart = humanoidRootPart2
+    local jointMappings = buildJointMappings(character, visualModel, humanoidRootPart2, visualRigName)
+    updateJointMappings(humanoidRootPart, humanoidRootPart2, jointMappings, cframe)
+    visualModel.Parent = visualFolder
 
-	for _, descendant in ipairs(visualModel:GetDescendants()) do
-		if (descendant:IsA("Constraint") or descendant:IsA("JointInstance"))
-			and not descendant:FindFirstAncestorOfClass("Accessory")
-			and not descendant:FindFirstAncestorOfClass("Tool") then
-			descendant:Destroy()
-		end
-	end
+    for _, descendant in ipairs(visualModel:GetDescendants()) do
+        if (descendant:IsA("Constraint") or descendant:IsA("JointInstance"))
+            and not descendant:FindFirstAncestorOfClass("Accessory")
+            and not descendant:FindFirstAncestorOfClass("Tool") then
+            descendant:Destroy()
+        end
+    end
 
-	if visualModelState.connDescendant then visualModelState.connDescendant:Disconnect() end
-	visualModelState.connDescendant = visualModel.DescendantAdded:Connect(function(descendant)
-		if (descendant:IsA("Constraint") or descendant:IsA("JointInstance"))
-			and not descendant:FindFirstAncestorOfClass("Accessory")
-			and not descendant:FindFirstAncestorOfClass("Tool") then
-			task.defer(function()
-				if descendant.Parent
-					and not descendant:FindFirstAncestorOfClass("Accessory")
-					and not descendant:FindFirstAncestorOfClass("Tool") then
-					descendant:Destroy()
-				end
-			end)
-		elseif descendant:IsA("BasePart") then
-			descendant.Anchored = true
-			descendant.CanCollide = false
-			descendant.CanTouch = false
-			descendant.CanQuery = false
-			descendant.Massless = true
-			table.insert(tbl18, descendant)
-		end
-	end)
+    if visualModelState.descendantConnection then visualModelState.descendantConnection:Disconnect() end
+    visualModelState.descendantConnection = visualModel.DescendantAdded:Connect(function(descendant)
+        if (descendant:IsA("Constraint") or descendant:IsA("JointInstance"))
+            and not descendant:FindFirstAncestorOfClass("Accessory")
+            and not descendant:FindFirstAncestorOfClass("Tool") then
+            task.defer(function()
+                if descendant.Parent
+                    and not descendant:FindFirstAncestorOfClass("Accessory")
+                    and not descendant:FindFirstAncestorOfClass("Tool") then
+                    descendant:Destroy()
+                end
+            end)
+        elseif descendant:IsA("BasePart") then
+            descendant.Anchored = true
+            descendant.CanCollide = false
+            descendant.CanTouch = false
+            descendant.CanQuery = false
+            descendant.Massless = true
+            table.insert(visualParts, descendant)
+        end
+    end)
 
-	local v4 = visualModelState
-	local v5 = visualModelState
-	visualModelState.visualModel = visualModel
-	v4.character = character
-	v5.cadena = v3
-	setOriginalCharacterHidden(character, true)
-	local updateCameraTransparency, cameraDescendantConnection, cameraDescendantRemovingConnection =
-		createNativeCameraTransparencyUpdater(character, visualModel)
-	visualModelState.connCamera = cameraDescendantConnection
-	visualModelState.connCameraRemoving = cameraDescendantRemovingConnection
-	visualModelState.folder = currentEmoteTrack
+    local characterVisualStateRef = visualModelState
+    local jointMappingsVisualStateRef = visualModelState
+    visualModelState.model = visualModel
+    characterVisualStateRef.character = character
+    jointMappingsVisualStateRef.cadena = jointMappings
+    setOriginalCharacterHidden(character, true)
+    local updateCameraTransparency, cameraDescendantConnection, cameraDescendantRemovingConnection =
+        createNativeCameraTransparencyUpdater(character, visualModel)
+    visualModelState.cameraTransparencyConnection = cameraDescendantConnection
+    visualModelState.cameraTransparencyRemovingConnection = cameraDescendantRemovingConnection
+    visualModelState.folder = visualFolder
 
-	visualModelState.connFisica = RunService.Stepped:Connect(function()
-		if visualModelState.visualModel ~= visualModel then return end
-		for _, part in ipairs(tbl18) do
-			if part.Parent then
-				if part.CanCollide then part.CanCollide = false end
-				if part.CanTouch then part.CanTouch = false end
-			end
-		end
-	end)
+    visualModelState.physicsConnection = RunService.Stepped:Connect(function()
+        if visualModelState.model ~= visualModel then return end
+        for _, part in ipairs(visualParts) do
+            if part.Parent then
+                if part.CanCollide then part.CanCollide = false end
+                if part.CanTouch then part.CanTouch = false end
+            end
+        end
+    end)
 
-	local n4 = 0
+    local hiddenCharacterRefreshElapsed = 0
 
-	visualModelState.conn = RunService.RenderStepped:Connect(function(deltaTime)
-		if visualModelState.visualModel ~= visualModel then
-			return
-		end
+    visualModelState.renderConnection = RunService.RenderStepped:Connect(function(deltaTime)
+        if visualModelState.model ~= visualModel then
+            return
+        end
         local currentCamera = workspace.CurrentCamera
-        if not currentEmoteTrack or currentEmoteTrack.Parent ~= currentCamera then
-            local previousFolder = currentEmoteTrack
-            currentEmoteTrack = getSkinVisualFolder()
-            if previousFolder and previousFolder ~= currentEmoteTrack and previousFolder.Parent
+        if not visualFolder or visualFolder.Parent ~= currentCamera then
+            local previousFolder = visualFolder
+            visualFolder = getSkinVisualFolder()
+            if previousFolder and previousFolder ~= visualFolder and previousFolder.Parent
                 and #previousFolder:GetChildren() == 0 then
                 pcall(function() previousFolder:Destroy() end)
             end
-            visualModelState.folder = currentEmoteTrack
+            visualModelState.folder = visualFolder
         end
         if not currentCamera then return end
-        if currentEmoteTrack and visualModel.Parent ~= currentEmoteTrack then visualModel.Parent = currentEmoteTrack end
-        updateJointMappings(humanoidRootPart, humanoidRootPart2, v3, cframe)
+        if visualFolder and visualModel.Parent ~= visualFolder then visualModel.Parent = visualFolder end
+        updateJointMappings(humanoidRootPart, humanoidRootPart2, jointMappings, cframe)
         updateCameraTransparency()
-		n4 += deltaTime
+        hiddenCharacterRefreshElapsed += deltaTime
 
-		if n4 >= 0.5 then
-			n4 %= 0.5
-			enforceHiddenCharacter()
-		end
-	end)
+        if hiddenCharacterRefreshElapsed >= 0.5 then
+            hiddenCharacterRefreshElapsed %= 0.5
+            enforceHiddenCharacter()
+        end
+    end)
 
-	return true
+    return true
 end
 
 local function attachSkinVisual(character, visualModel, _unused, rigName)
-	if not character then
-		return 0
-	end
-	local currentEmoteTrack = captureCharacterState(character)
-	noopCharacterStateHook(character, currentEmoteTrack)
-	local v3 = visualModel and buildSkinVisual(character, visualModel, rigName)
-	if visualModel and not v3 then
-		return nil
-	end
-	local n3 = 0
+    if not character then
+        return 0
+    end
+    local savedCharacterState = captureCharacterState(character)
+    noopCharacterStateHook(character, savedCharacterState)
+    local visualModelAttached = visualModel and buildSkinVisual(character, visualModel, rigName)
+    if visualModel and not visualModelAttached then
+        return nil
+    end
+    local attachedJointCount = 0
 
-	if v3 then
-		n3 = 0 + #visualModelState.cadena + 1
-	end
+    if visualModelAttached then
+        attachedJointCount = 0 + #visualModelState.jointMappings + 1
+    end
 
-	return n3
+    return attachedJointCount
 end
 
 local function restoreCharacterAppearance(character)
-	if not character then
-		return
-	end
-	destroySkinVisuals()
-	local currentEmoteTrack = originalCharacterStateCache[character]
-	if not currentEmoteTrack then
-		return
-	end
-	noopCharacterStateHook(character, currentEmoteTrack)
-	restoreAnimationSet(character, currentEmoteTrack)
+    if not character then
+        return
+    end
+    destroySkinVisuals()
+    local savedCharacterState = originalCharacterStateCache[character]
+    if not savedCharacterState then
+        return
+    end
+    noopCharacterStateHook(character, savedCharacterState)
+    restoreAnimationSet(character, savedCharacterState)
 end
 
 local currentEmoteTrack = nil
 local emoteMonitorConnection = nil
 
 local function stopCurrentEmote()
-	if currentEmoteTrack then
-		pcall(currentEmoteTrack.Stop, currentEmoteTrack, 0.2)
-		currentEmoteTrack = nil
-	end
+    if currentEmoteTrack then
+        pcall(currentEmoteTrack.Stop, currentEmoteTrack, 0.2)
+        currentEmoteTrack = nil
+    end
 
-	if emoteMonitorConnection then
-		emoteMonitorConnection:Disconnect()
-		emoteMonitorConnection = nil
-	end
+    if emoteMonitorConnection then
+        emoteMonitorConnection:Disconnect()
+        emoteMonitorConnection = nil
+    end
 end
 
 local function findAnimationInAsset(assetId)
-	local v3 = loadAssetObjects(assetId)
-	local v4 = ipairs
-	local tbl20 = v3 or {}
+    local assetObjects = loadAssetObjects(assetId)
+    local iterateAssetObjects = ipairs
+    local assetObjectList = assetObjects or {}
 
-	for _, v5 in v4(tbl20) do
-		if v5:IsA("Animation") then
-			return v5
-		end
+    for _, assetObject in iterateAssetObjects(assetObjectList) do
+        if assetObject:IsA("Animation") then
+            return assetObject
+        end
 
-		for _, descendant in ipairs(v5:GetDescendants()) do
-			if descendant:IsA("Animation") then
-				return descendant
-			end
-		end
-	end
+        for _, descendant in ipairs(assetObject:GetDescendants()) do
+            if descendant:IsA("Animation") then
+                return descendant
+            end
+        end
+    end
 
-	return nil
+    return nil
 end
 
 local function playEmote(emote)
-	stopCurrentEmote()
-	local v3 = getLocalCharacter()
-	local humanoid = v3 and v3:FindFirstChildOfClass("Humanoid")
-	local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
-	if not animator then
-		return false
-	end
-	local v4 = getCharacterHumanoidDescription(v3)
+    stopCurrentEmote()
+    local character = getLocalCharacter()
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+    if not animator then
+        return false
+    end
+    local humanoidDescription = getCharacterHumanoidDescription(character)
 
-	if v4 then
-		local ok, result = pcall(v4.GetEmotes, v4)
+    if humanoidDescription then
+        local ok, result = pcall(humanoidDescription.GetEmotes, humanoidDescription)
 
-		if ok and result[emote.nombre] then
-			local ok2, result2 = pcall(humanoid.PlayEmote, humanoid, emote.nombre)
-			if ok2 and result2 then
-				return true
-			end
-		end
-	end
+        if ok and result[emote.nombre] then
+            local ok2, result2 = pcall(humanoid.PlayEmote, humanoid, emote.nombre)
+            if ok2 and result2 then
+                return true
+            end
+        end
+    end
 
-	local v5 = findAnimationInAsset(emote.id)
-	if not v5 then
-		return false
-	end
-	local ok, result = pcall(animator.LoadAnimation, animator, v5)
-	if not (ok and result) then
-		return false
-	end
-	result.Priority = Enum.AnimationPriority.Action
-	result.Looped = true
-	result:Play(0.2)
-	currentEmoteTrack = result
+    local animation = findAnimationInAsset(emote.id)
+    if not animation then
+        return false
+    end
+    local ok, result = pcall(animator.LoadAnimation, animator, animation)
+    if not (ok and result) then
+        return false
+    end
+    result.Priority = Enum.AnimationPriority.Action
+    result.Looped = true
+    result:Play(0.2)
+    currentEmoteTrack = result
 
-	emoteMonitorConnection = RunService.Heartbeat:Connect(function()
-		if not (humanoid.Parent and currentEmoteTrack == result) then
-			stopCurrentEmote()
-			return
-		end
-		local flag = humanoid.MoveDirection.Magnitude > 0
+    emoteMonitorConnection = RunService.Heartbeat:Connect(function()
+        if not (humanoid.Parent and currentEmoteTrack == result) then
+            stopCurrentEmote()
+            return
+        end
+        local isMoving = humanoid.MoveDirection.Magnitude > 0
 
-		if not flag then
-			local jumping = Enum.HumanoidStateType.Jumping
-			flag = humanoid:GetState() == jumping
-		end
+        if not isMoving then
+            local jumping = Enum.HumanoidStateType.Jumping
+            isMoving = humanoid:GetState() == jumping
+        end
 
-		if not flag then
-			local freefall = Enum.HumanoidStateType.Freefall
-			flag = humanoid:GetState() == freefall
-		end
+        if not isMoving then
+            local freefall = Enum.HumanoidStateType.Freefall
+            isMoving = humanoid:GetState() == freefall
+        end
 
-		if flag then
-			stopCurrentEmote()
-		end
-	end)
+        if isMoving then
+            stopCurrentEmote()
+        end
+    end)
 
-	return true
+    return true
 end
 
 local guiParent = nil
 
 if gethui then
-	local ok, result = pcall(gethui)
-	guiParent = ok and result or nil
+    local ok, result = pcall(gethui)
+    guiParent = ok and result or nil
 end
 
 guiParent = guiParent or CoreGui
 local function removeOldGui(root, name)
-	if root then
-		local existing = root:FindFirstChild(name)
-		if existing then
-			existing:Destroy()
-		end
-	end
+    if root then
+        local existing = root:FindFirstChild(name)
+        if existing then
+            existing:Destroy()
+        end
+    end
 end
 
 removeOldGui(guiParent, "snowx-skins")
@@ -1923,9 +1923,9 @@ screenGui.DisplayOrder = 2147483647
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 if not pcall(function()
-	screenGui.Parent = guiParent
+    screenGui.Parent = guiParent
 end) then
-	screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
+    screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
 end
 
 local function loadBackgroundAsset()
@@ -1955,18 +1955,18 @@ end
 
 local bgAsset = loadBackgroundAsset()
 local mainFrame = createGuiInstance("Frame", {
-	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.fromScale(0.5, 0.5),
-	Size = UDim2.fromOffset(590, 274),
-	BackgroundColor3 = theme.Background,
-	BorderSizePixel = 0,
-	Active = true,
-	ClipsDescendants = true,
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.fromScale(0.5, 0.5),
+    Size = UDim2.fromOffset(590, 274),
+    BackgroundColor3 = COLORS.Background,
+    BorderSizePixel = 0,
+    Active = true,
+    ClipsDescendants = true,
 }, screenGui, 16)
 
-createGuiInstance("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.2 }, mainFrame)
+createGuiInstance("UIStroke", { Color = COLORS.Border, Thickness = 1, Transparency = 0.2 }, mainFrame)
 local uiGradient = Instance.new("UIGradient")
-uiGradient.Color = ColorSequence.new(theme.BackgroundAlt, theme.Background)
+uiGradient.Color = ColorSequence.new(COLORS.BackgroundAlt, COLORS.Background)
 uiGradient.Rotation = 90
 uiGradient.Parent = mainFrame
 
@@ -1990,13 +1990,13 @@ createGuiInstance("Frame", {
 }, mainFrame)
 
 createGuiInstance("TextButton", {
-	Text = "",
-	Size = UDim2.new(1, 0, 1, 0),
-	BackgroundTransparency = 1,
-	AutoButtonColor = false,
-	Active = true,
-	Selectable = false,
-	ZIndex = 0,
+    Text = "",
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    AutoButtonColor = false,
+    Active = true,
+    Selectable = false,
+    ZIndex = 0,
 }, mainFrame)
 
 local uiScale = Instance.new("UIScale")
@@ -2004,58 +2004,58 @@ uiScale.Parent = mainFrame
 local flag = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
 local function clampFrameCenter(position)
-	local camera = Workspace.CurrentCamera
-	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
-	local halfSize = Vector2.new(mainFrame.AbsoluteSize.X * 0.5 + 2, mainFrame.AbsoluteSize.Y * 0.5 + 2)
-	local maxX, maxY = viewport.X - halfSize.X, viewport.Y - halfSize.Y
-	if maxX < halfSize.X or maxY < halfSize.Y then
-		return Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
-	end
-	return Vector2.new(
-		math.clamp(position.X, halfSize.X, maxX),
-		math.clamp(position.Y, halfSize.Y, maxY)
-	)
+    local camera = Workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+    local halfSize = Vector2.new(mainFrame.AbsoluteSize.X * 0.5 + 2, mainFrame.AbsoluteSize.Y * 0.5 + 2)
+    local maxX, maxY = viewport.X - halfSize.X, viewport.Y - halfSize.Y
+    if maxX < halfSize.X or maxY < halfSize.Y then
+        return Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
+    end
+    return Vector2.new(
+        math.clamp(position.X, halfSize.X, maxX),
+        math.clamp(position.Y, halfSize.Y, maxY)
+    )
 end
 
 local function keepFrameInsideViewport()
-	if not mainFrame.Parent then return end
-	local absolute = mainFrame.AbsolutePosition
-	local center = Vector2.new(
-		absolute.X + mainFrame.AbsoluteSize.X * 0.5,
-		absolute.Y + mainFrame.AbsoluteSize.Y * 0.5
-	)
-	local target = clampFrameCenter(center)
-	mainFrame.Position = UDim2.fromOffset(target.X, target.Y)
+    if not mainFrame.Parent then return end
+    local absolute = mainFrame.AbsolutePosition
+    local center = Vector2.new(
+        absolute.X + mainFrame.AbsoluteSize.X * 0.5,
+        absolute.Y + mainFrame.AbsoluteSize.Y * 0.5
+    )
+    local target = clampFrameCenter(center)
+    mainFrame.Position = UDim2.fromOffset(target.X, target.Y)
 end
 
 local function updateUiScale()
-	local currentCamera = workspace.CurrentCamera
-	currentCamera = currentCamera and currentCamera.ViewportSize or Vector2.new(1280, 720)
-	local n3 = 0.92
-	local n4 = 0.94
+    local currentCamera = workspace.CurrentCamera
+    currentCamera = currentCamera and currentCamera.ViewportSize or Vector2.new(1280, 720)
+    local widthScaleRatio = 0.92
+    local heightScaleRatio = 0.94
 
-	if flag then
-		n3 = 0.78
-		n4 = 0.9
-	end
+    if flag then
+        widthScaleRatio = 0.78
+        heightScaleRatio = 0.9
+    end
 
-	uiScale.Scale = math.clamp(math.min(currentCamera.X * n4 / PANEL_WIDTH, currentCamera.Y * n3 / PANEL_HEIGHT), 0.01, 1)
-	task.defer(keepFrameInsideViewport)
+    uiScale.Scale = math.clamp(math.min(currentCamera.X * heightScaleRatio / PANEL_WIDTH, currentCamera.Y * widthScaleRatio / PANEL_HEIGHT), 0.01, 1)
+    task.defer(keepFrameInsideViewport)
 end
 
 updateUiScale()
 local windowHeader = createGuiInstance("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52) }, mainFrame)
 
 local titleLabel = createGuiInstance("TextLabel", {
-	BackgroundTransparency = 1,
-	Position = UDim2.fromOffset(18, 15),
-	Size = UDim2.fromOffset(166, 22),
-	Font = Enum.Font.GothamBold,
-	Text = "SnowX",
-	TextSize = 16,
-	TextColor3 = theme.Text,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	TextTruncate = Enum.TextTruncate.AtEnd,
+    BackgroundTransparency = 1,
+    Position = UDim2.fromOffset(18, 15),
+    Size = UDim2.fromOffset(166, 22),
+    Font = Enum.Font.GothamBold,
+    Text = "SnowX",
+    TextSize = 16,
+    TextColor3 = COLORS.Text,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextTruncate = Enum.TextTruncate.AtEnd,
 }, mainFrame)
 local titleGradient = Instance.new("UIGradient")
 titleGradient.Color = ColorSequence.new({
@@ -2075,271 +2075,271 @@ task.spawn(function()
     end
 end)
 createGuiInstance("TextLabel", {
-	BackgroundTransparency = 1,
-	Position = UDim2.fromOffset(19, 32),
-	Size = UDim2.fromOffset(150, 12),
-	Font = Enum.Font.Gotham,
-	Text = "By Fabnx1",
-	TextSize = 9,
-	TextColor3 = theme.Faint,
-	TextXAlignment = Enum.TextXAlignment.Left,
+    BackgroundTransparency = 1,
+    Position = UDim2.fromOffset(19, 32),
+    Size = UDim2.fromOffset(150, 12),
+    Font = Enum.Font.Gotham,
+    Text = "By Fabnx1",
+    TextSize = 9,
+    TextColor3 = COLORS.Faint,
+    TextXAlignment = Enum.TextXAlignment.Left,
 }, mainFrame)
 
 local minimizeButton = createGuiInstance("TextButton", {
-	AnchorPoint = Vector2.new(1, 0),
-	Position = UDim2.new(1, -44, 0, 13),
-	Size = UDim2.fromOffset(26, 26),
-	BackgroundColor3 = theme.Surface,
-	BorderSizePixel = 0,
-	AutoButtonColor = true,
-	Font = Enum.Font.GothamBold,
-	Text = "−",
-	TextSize = 21,
-	TextColor3 = theme.Icon,
+    AnchorPoint = Vector2.new(1, 0),
+    Position = UDim2.new(1, -44, 0, 13),
+    Size = UDim2.fromOffset(26, 26),
+    BackgroundColor3 = COLORS.Surface,
+    BorderSizePixel = 0,
+    AutoButtonColor = true,
+    Font = Enum.Font.GothamBold,
+    Text = "−",
+    TextSize = 21,
+    TextColor3 = COLORS.Icon,
 }, mainFrame, 8)
 
 local closeButton = createGuiInstance("TextButton", {
-	AnchorPoint = Vector2.new(1, 0),
-	Position = UDim2.new(1, -14, 0, 13),
-	Size = UDim2.fromOffset(26, 26),
-	BackgroundColor3 = theme.Surface,
-	BorderSizePixel = 0,
-	AutoButtonColor = true,
-	Font = Enum.Font.GothamBold,
-	Text = "×",
-	TextSize = 16,
-	TextColor3 = theme.Icon,
+    AnchorPoint = Vector2.new(1, 0),
+    Position = UDim2.new(1, -14, 0, 13),
+    Size = UDim2.fromOffset(26, 26),
+    BackgroundColor3 = COLORS.Surface,
+    BorderSizePixel = 0,
+    AutoButtonColor = true,
+    Font = Enum.Font.GothamBold,
+    Text = "×",
+    TextSize = 16,
+    TextColor3 = COLORS.Icon,
 }, mainFrame, 8)
 
 createGuiInstance("Frame", {
-	Position = UDim2.fromOffset(0, 52),
-	Size = UDim2.new(1, 0, 0, 1),
-	BackgroundColor3 = theme.Line,
-	BorderSizePixel = 0,
+    Position = UDim2.fromOffset(0, 52),
+    Size = UDim2.new(1, 0, 0, 1),
+    BackgroundColor3 = COLORS.Line,
+    BorderSizePixel = 0,
 }, mainFrame)
 
 createGuiInstance("Frame", {
-	Position = UDim2.fromOffset(176, 52),
-	Size = UDim2.new(0, 1, 1, -52),
-	BackgroundColor3 = theme.Line,
-	BorderSizePixel = 0,
+    Position = UDim2.fromOffset(176, 52),
+    Size = UDim2.new(0, 1, 1, -52),
+    BackgroundColor3 = COLORS.Line,
+    BorderSizePixel = 0,
 }, mainFrame)
 
 createGuiInstance("TextLabel", {
-	BackgroundTransparency = 1,
-	Position = UDim2.fromOffset(14, 60),
-	Size = UDim2.fromOffset(152, 26),
-	Font = Enum.Font.GothamBold,
-	Text = "Jugadores",
-	TextSize = 12,
-	TextColor3 = theme.Faint,
-	TextXAlignment = Enum.TextXAlignment.Left,
+    BackgroundTransparency = 1,
+    Position = UDim2.fromOffset(14, 60),
+    Size = UDim2.fromOffset(152, 26),
+    Font = Enum.Font.GothamBold,
+    Text = "Jugadores",
+    TextSize = 12,
+    TextColor3 = COLORS.Faint,
+    TextXAlignment = Enum.TextXAlignment.Left,
 }, mainFrame)
 
 local playerListContainer = createGuiInstance("ScrollingFrame", {
-	Position = UDim2.fromOffset(8, 92),
-	Size = UDim2.new(0, 164, 1, -100),
-	BackgroundTransparency = 1,
-	BorderSizePixel = 0,
-	ScrollBarThickness = 3,
-	ScrollBarImageColor3 = theme.Soft,
-	CanvasSize = UDim2.new(),
-	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    Position = UDim2.fromOffset(8, 92),
+    Size = UDim2.new(0, 164, 1, -100),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 3,
+    ScrollBarImageColor3 = COLORS.Soft,
+    CanvasSize = UDim2.new(),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
 }, mainFrame)
 
 createGuiInstance("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, playerListContainer)
 createGuiInstance("UIPadding", { PaddingTop = UDim.new(0, 1), PaddingBottom = UDim.new(0, 4) }, playerListContainer)
-local n3 = PANEL_WIDTH - 176 - 28 - 4
+local playerPanelWidth = PANEL_WIDTH - 176 - 28 - 4
 
 local playerSearchFrame = createGuiInstance("Frame", {
-	Position = UDim2.fromOffset(194, 64),
-	Size = UDim2.fromOffset(n3 - 44, 36),
-	BackgroundColor3 = theme.Surface,
-	BorderSizePixel = 0,
+    Position = UDim2.fromOffset(194, 64),
+    Size = UDim2.fromOffset(playerPanelWidth - 44, 36),
+    BackgroundColor3 = COLORS.Surface,
+    BorderSizePixel = 0,
 }, mainFrame, 8)
 
 local playerSearchBox = createGuiInstance("TextBox", {
-	BackgroundTransparency = 1,
-	Position = UDim2.fromOffset(10, 0),
-	Size = UDim2.new(1, -20, 1, 0),
-	Font = Enum.Font.Gotham,
-	PlaceholderText = "Usuario o ID",
-	PlaceholderColor3 = theme.Faint,
-	Text = "",
-	TextSize = 13,
-	TextColor3 = theme.Text,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	ClearTextOnFocus = false,
+    BackgroundTransparency = 1,
+    Position = UDim2.fromOffset(10, 0),
+    Size = UDim2.new(1, -20, 1, 0),
+    Font = Enum.Font.Gotham,
+    PlaceholderText = "Usuario o ID",
+    PlaceholderColor3 = COLORS.Faint,
+    Text = "",
+    TextSize = 13,
+    TextColor3 = COLORS.Text,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ClearTextOnFocus = false,
 }, playerSearchFrame)
 
 local searchButton = createGuiInstance("TextButton", {
-	Position = UDim2.fromOffset(194 + n3 - 38, 64),
-	Size = UDim2.fromOffset(38, 36),
-	BackgroundColor3 = theme.Surface,
-	BorderSizePixel = 0,
-	AutoButtonColor = true,
-	Font = Enum.Font.GothamBold,
-	Text = "→",
-	TextSize = 22,
-	TextColor3 = theme.Faint,
+    Position = UDim2.fromOffset(194 + playerPanelWidth - 38, 64),
+    Size = UDim2.fromOffset(38, 36),
+    BackgroundColor3 = COLORS.Surface,
+    BorderSizePixel = 0,
+    AutoButtonColor = true,
+    Font = Enum.Font.GothamBold,
+    Text = "→",
+    TextSize = 22,
+    TextColor3 = COLORS.Faint,
 }, mainFrame, 8)
-local n4 = n3 - 166
+local detailsPanelWidth = playerPanelWidth - 166
 
 local avatarPreviewCard = createGuiInstance("Frame", {
-	Position = UDim2.fromOffset(194, 108),
-	Size = UDim2.fromOffset(150, 150),
-	BackgroundColor3 = theme.Surface,
-	BorderSizePixel = 0,
+    Position = UDim2.fromOffset(194, 108),
+    Size = UDim2.fromOffset(150, 150),
+    BackgroundColor3 = COLORS.Surface,
+    BorderSizePixel = 0,
 }, mainFrame, 12)
 
 local avatarPreviewImage = createGuiInstance("ImageLabel", {
-	BackgroundTransparency = 1,
-	Position = UDim2.fromOffset(6, 6),
-	Size = UDim2.new(1, -12, 1, -12),
-	Image = "",
-	ScaleType = Enum.ScaleType.Fit,
+    BackgroundTransparency = 1,
+    Position = UDim2.fromOffset(6, 6),
+    Size = UDim2.new(1, -12, 1, -12),
+    Image = "",
+    ScaleType = Enum.ScaleType.Fit,
 }, avatarPreviewCard)
 
 local favoriteButton = createGuiInstance("TextButton", {
-	AnchorPoint = Vector2.new(1, 0),
-	Position = UDim2.new(1, -6, 0, 6),
-	Size = UDim2.fromOffset(28, 28),
-	BackgroundColor3 = theme.Background,
-	BackgroundTransparency = 0.25,
-	BorderSizePixel = 0,
-	AutoButtonColor = true,
-	Font = Enum.Font.GothamBold,
-	Text = "☆",
-	TextSize = 19,
-	TextColor3 = theme.Faint,
-	ZIndex = 3,
+    AnchorPoint = Vector2.new(1, 0),
+    Position = UDim2.new(1, -6, 0, 6),
+    Size = UDim2.fromOffset(28, 28),
+    BackgroundColor3 = COLORS.Background,
+    BackgroundTransparency = 0.25,
+    BorderSizePixel = 0,
+    AutoButtonColor = true,
+    Font = Enum.Font.GothamBold,
+    Text = "☆",
+    TextSize = 19,
+    TextColor3 = COLORS.Faint,
+    ZIndex = 3,
 }, avatarPreviewCard, 14)
 
 local selectedPlayerNameLabel = createGuiInstance("TextLabel", {
-	Position = UDim2.fromOffset(360, 110),
-	Size = UDim2.fromOffset(n4, 22),
-	BackgroundTransparency = 1,
-	Font = Enum.Font.GothamBold,
-	Text = "Selecciona un jugador",
-	TextSize = 15,
-	TextColor3 = theme.Text,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	TextTruncate = Enum.TextTruncate.AtEnd,
+    Position = UDim2.fromOffset(360, 110),
+    Size = UDim2.fromOffset(detailsPanelWidth, 22),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBold,
+    Text = "Selecciona un jugador",
+    TextSize = 15,
+    TextColor3 = COLORS.Text,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextTruncate = Enum.TextTruncate.AtEnd,
 }, mainFrame)
 
 local selectedPlayerUsernameLabel = createGuiInstance("TextLabel", {
-	Position = UDim2.fromOffset(360, 132),
-	Size = UDim2.fromOffset(n4, 16),
-	BackgroundTransparency = 1,
-	Font = Enum.Font.Gotham,
-	Text = "",
-	TextSize = 10,
-	TextColor3 = theme.Faint,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	TextTruncate = Enum.TextTruncate.AtEnd,
+    Position = UDim2.fromOffset(360, 132),
+    Size = UDim2.fromOffset(detailsPanelWidth, 16),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham,
+    Text = "",
+    TextSize = 10,
+    TextColor3 = COLORS.Faint,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextTruncate = Enum.TextTruncate.AtEnd,
 }, mainFrame)
 
 local skinStatusLabel = createGuiInstance("TextLabel", {
-	Position = UDim2.fromOffset(360, 145),
-	Size = UDim2.fromOffset(n4, 12),
-	BackgroundTransparency = 1,
-	Font = Enum.Font.Gotham,
-	Text = "",
-	TextSize = 9,
-	TextColor3 = theme.Faint,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	TextTruncate = Enum.TextTruncate.AtEnd,
+    Position = UDim2.fromOffset(360, 145),
+    Size = UDim2.fromOffset(detailsPanelWidth, 12),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham,
+    Text = "",
+    TextSize = 9,
+    TextColor3 = COLORS.Faint,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextTruncate = Enum.TextTruncate.AtEnd,
 }, mainFrame)
 
 local statusTextProxy = setmetatable({}, { __newindex = function(_, key, value)
-	if key ~= "Text" then
-		return
-	end
-	local status = tostring(value or "")
-	if status == "Aplicado" or status == "Retirado" or status == "Fallo" then
-		skinStatusLabel.Text = status
-		skinStatusLabel.TextColor3 = status == "Fallo" and theme.Danger or theme.OnFill
-	else
-		skinStatusLabel.Text = ""
-		skinStatusLabel.TextColor3 = theme.Faint
-	end
+    if key ~= "Text" then
+        return
+    end
+    local status = tostring(value or "")
+    if status == "Aplicado" or status == "Retirado" or status == "Fallo" then
+        skinStatusLabel.Text = status
+        skinStatusLabel.TextColor3 = status == "Fallo" and COLORS.Danger or COLORS.OnFill
+    else
+        skinStatusLabel.Text = ""
+        skinStatusLabel.TextColor3 = COLORS.Faint
+    end
 end })
 
 local function createSkinActionButton(x, y, width, height, label, iconName, backgroundColor, textColor)
-	local createdButton = createGuiInstance("TextButton", {
-		Position = UDim2.fromOffset(x, y),
-		Size = UDim2.fromOffset(width, height),
-		BackgroundColor3 = backgroundColor,
-		BorderSizePixel = 0,
-		AutoButtonColor = true,
-		Font = Enum.Font.GothamBold,
-		Text = label,
-		TextSize = 12,
-		TextColor3 = textColor,
-	}, mainFrame, 8)
+    local createdButton = createGuiInstance("TextButton", {
+        Position = UDim2.fromOffset(x, y),
+        Size = UDim2.fromOffset(width, height),
+        BackgroundColor3 = backgroundColor,
+        BorderSizePixel = 0,
+        AutoButtonColor = true,
+        Font = Enum.Font.GothamBold,
+        Text = label,
+        TextSize = 12,
+        TextColor3 = textColor,
+    }, mainFrame, 8)
 
-	local v5 = nil
+    local iconImage = nil
 
-	if iconName then
-		createGuiInstance("UIPadding", { PaddingLeft = UDim.new(0, 18) }, createdButton)
-		v5 = createImageLabel(createdButton, iconName, 14, textColor, UDim2.new(0, 2, 0.5, 0))
-	end
+    if iconName then
+        createGuiInstance("UIPadding", { PaddingLeft = UDim.new(0, 18) }, createdButton)
+        iconImage = createImageLabel(createdButton, iconName, 14, textColor, UDim2.new(0, 2, 0.5, 0))
+    end
 
-	return createdButton, v5
+    return createdButton, iconImage
 end
 
-local aplicar = createSkinActionButton(360, 158, 112, 30, "APLICAR", nil, theme.AccentFill, theme.On)
-local quitar = createSkinActionButton(480, 158, n4 - 120, 30, "QUITAR", nil, theme.Surface, theme.Icon)
-local animationToggleButton, animationToggleIcon = createSkinActionButton(360, 196, n4, 28, "Animaciones: On", nil, theme.Surface, theme.Faint)
-v5.TextSize = 11
-local r15 = createSkinActionButton(360, 232, 112, 26, "R15", nil, theme.Surface, theme.Faint)
-local r6 = createSkinActionButton(480, 232, n4 - 120, 26, "R6", nil, theme.Surface, theme.Faint)
+local applySkinButton = createSkinActionButton(360, 158, 112, 30, "APLICAR", nil, COLORS.AccentFill, COLORS.On)
+local removeSkinButton = createSkinActionButton(480, 158, detailsPanelWidth - 120, 30, "QUITAR", nil, COLORS.Surface, COLORS.Icon)
+local animationToggleButton, animationToggleIcon = createSkinActionButton(360, 196, detailsPanelWidth, 28, "Animaciones: On", nil, COLORS.Surface, COLORS.Faint)
+animationToggleButton.TextSize = 11
+local r15Button = createSkinActionButton(360, 232, 112, 26, "R15", nil, COLORS.Surface, COLORS.Faint)
+local r6Button = createSkinActionButton(480, 232, detailsPanelWidth - 120, 26, "R6", nil, COLORS.Surface, COLORS.Faint)
 
 local function notifyAccessoryInventory()
     bumpSkinRevision()
-	if type(avatarBridge.accessory.refreshInventory) == "function" then
-		pcall(avatarBridge.accessory.refreshInventory)
-	end
+    if type(avatarBridge.accessory.refreshInventory) == "function" then
+        pcall(avatarBridge.accessory.refreshInventory)
+    end
 end
 
 local function updateSkinControls()
-	skinState.feMode = "ON"
-	for k, v7 in pairs({ [r15] = skinState.rig == "R15", [r6] = skinState.rig == "R6" }) do
-		k.BackgroundColor3 = v7 and theme.OnFill or theme.Surface
-		v7 = v7 and theme.On or theme.Faint
-		k.TextColor3 = v7
-	end
+    skinState.feMode = "ON"
+    for rigButton, isRigSelected in pairs({ [r15Button] = skinState.rig == "R15", [r6Button] = skinState.rig == "R6" }) do
+        rigButton.BackgroundColor3 = isRigSelected and COLORS.OnFill or COLORS.Surface
+        isRigSelected = isRigSelected and COLORS.On or COLORS.Faint
+        rigButton.TextColor3 = isRigSelected
+    end
 
-	local skinEquipped = avatarBridge.skin.active == true and tonumber(skinState.aplicado) ~= nil
-	local useRobloxAnimations = skinState.rig == "R6"
-	local animationsEnabled = skinState.animationsEnabled == true
-	animationToggleButton.Text = useRobloxAnimations and "Animaciones: Roblox"
-		or (animationsEnabled and "Animaciones: On" or "Animaciones: Off")
-	local animationControlEnabled = skinEquipped and not useRobloxAnimations
-	animationToggleButton.BackgroundColor3 = not animationControlEnabled and theme.BackgroundAlt
-		or (animationsEnabled and theme.AccentFill or theme.Surface)
-	animationToggleButton.TextColor3 = animationControlEnabled and (animationsEnabled and theme.Accent or theme.Faint) or theme.Faint
-	animationToggleButton.TextTransparency = animationControlEnabled and 0 or 0.35
-	animationToggleButton.Active = animationControlEnabled
-	animationToggleButton.Selectable = animationControlEnabled
-	animationToggleButton.AutoButtonColor = animationControlEnabled
-	if animationToggleIcon then animationToggleIcon.ImageColor3 = animationToggleButton.TextColor3 end
+    local skinEquipped = avatarBridge.skin.active == true and tonumber(skinState.aplicado) ~= nil
+    local useRobloxAnimations = skinState.rig == "R6"
+    local animationsEnabled = skinState.animationsEnabled == true
+    animationToggleButton.Text = useRobloxAnimations and "Animaciones: Roblox"
+        or (animationsEnabled and "Animaciones: On" or "Animaciones: Off")
+    local animationControlEnabled = skinEquipped and not useRobloxAnimations
+    animationToggleButton.BackgroundColor3 = not animationControlEnabled and COLORS.BackgroundAlt
+        or (animationsEnabled and COLORS.AccentFill or COLORS.Surface)
+    animationToggleButton.TextColor3 = animationControlEnabled and (animationsEnabled and COLORS.Accent or COLORS.Faint) or COLORS.Faint
+    animationToggleButton.TextTransparency = animationControlEnabled and 0 or 0.35
+    animationToggleButton.Active = animationControlEnabled
+    animationToggleButton.Selectable = animationControlEnabled
+    animationToggleButton.AutoButtonColor = animationControlEnabled
+    if animationToggleIcon then animationToggleIcon.ImageColor3 = animationToggleButton.TextColor3 end
 end
 
 local isWindowMinimized = false
 
 local floatingButtonFrame = createGuiInstance("Frame", {
-	AnchorPoint = Vector2.new(0.5, 0.5),
-	Size = UDim2.fromOffset(150, 46),
-	BackgroundColor3 = theme.BackgroundAlt,
-	BackgroundTransparency = 0.05,
-	BorderSizePixel = 0,
-	ClipsDescendants = true,
-	Visible = false,
-	ZIndex = 50,
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Size = UDim2.fromOffset(150, 46),
+    BackgroundColor3 = COLORS.BackgroundAlt,
+    BackgroundTransparency = 0.05,
+    BorderSizePixel = 0,
+    ClipsDescendants = true,
+    Visible = false,
+    ZIndex = 50,
 }, screenGui, 12)
 
-createGuiInstance("UIStroke", { Color = theme.Text, Thickness = 1.5, Transparency = 0.45 }, floatingButtonFrame)
+createGuiInstance("UIStroke", { Color = COLORS.Text, Thickness = 1.5, Transparency = 0.45 }, floatingButtonFrame)
 local reopenBackground = Instance.new("ImageLabel")
 reopenBackground.Size = UDim2.fromScale(1, 1)
 reopenBackground.BackgroundTransparency = 1
@@ -2361,7 +2361,7 @@ local reopenDot = createGuiInstance("Frame", {
     AnchorPoint = Vector2.new(0.5, 0.5),
     Position = UDim2.new(1, -12, 0, 10),
     Size = UDim2.fromOffset(8, 8),
-    BackgroundColor3 = theme.Text,
+    BackgroundColor3 = COLORS.Text,
     BorderSizePixel = 0,
     ZIndex = 53,
 }, floatingButtonFrame, 4)
@@ -2372,7 +2372,7 @@ createGuiInstance("TextLabel", {
     Font = Enum.Font.GothamBold,
     Text = "Open Skins",
     TextSize = 13,
-    TextColor3 = theme.Text,
+    TextColor3 = COLORS.Text,
     TextXAlignment = Enum.TextXAlignment.Left,
     ZIndex = 53,
 }, floatingButtonFrame)
@@ -2443,7 +2443,7 @@ local function setWindowMinimized(visible)
 end
 
 minimizeButton.Activated:Connect(function()
-	setWindowMinimized(true)
+    setWindowMinimized(true)
 end)
 
 local floatingButtonDragState = nil
@@ -2460,7 +2460,7 @@ openClick.InputBegan:Connect(function(input)
     end
 end)
 
-local connection3 = UserInputService.InputChanged:Connect(function(input)
+local floatingDragChangedConnection = UserInputService.InputChanged:Connect(function(input)
     local drag = floatingButtonDragState
     if not drag then return end
     local isMouseMove = drag.input.UserInputType == Enum.UserInputType.MouseButton1
@@ -2472,7 +2472,7 @@ local connection3 = UserInputService.InputChanged:Connect(function(input)
     if drag.movio then setFloatingCenter(drag.origen + delta) end
 end)
 
-local connection4 = UserInputService.InputEnded:Connect(function(input)
+local floatingDragEndedConnection = UserInputService.InputEnded:Connect(function(input)
     local drag = floatingButtonDragState
     if not drag then return end
     local ended = input == drag.input
@@ -2484,330 +2484,330 @@ local connection4 = UserInputService.InputEnded:Connect(function(input)
 end)
 
 local closeConfirmationOverlay = createGuiInstance("Frame", {
-	Size = UDim2.fromScale(1, 1),
-	BackgroundColor3 = theme.Background,
-	BackgroundTransparency = 0.3,
-	BorderSizePixel = 0,
-	Visible = false,
-	ZIndex = 20,
-	Active = true,
+    Size = UDim2.fromScale(1, 1),
+    BackgroundColor3 = COLORS.Background,
+    BackgroundTransparency = 0.3,
+    BorderSizePixel = 0,
+    Visible = false,
+    ZIndex = 20,
+    Active = true,
 }, mainFrame, 16)
 
 createGuiInstance("TextButton", {
-	Text = "",
-	Size = UDim2.fromScale(1, 1),
-	BackgroundTransparency = 1,
-	AutoButtonColor = false,
-	ZIndex = 20,
+    Text = "",
+    Size = UDim2.fromScale(1, 1),
+    BackgroundTransparency = 1,
+    AutoButtonColor = false,
+    ZIndex = 20,
 }, closeConfirmationOverlay)
 
 local closeConfirmationDialog = createGuiInstance("Frame", {
-	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.fromScale(0.5, 0.5),
-	Size = UDim2.fromOffset(300, 132),
-	BackgroundColor3 = theme.Surface,
-	BorderSizePixel = 0,
-	ZIndex = 21,
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.fromScale(0.5, 0.5),
+    Size = UDim2.fromOffset(300, 132),
+    BackgroundColor3 = COLORS.Surface,
+    BorderSizePixel = 0,
+    ZIndex = 21,
 }, closeConfirmationOverlay, 12)
 
-createGuiInstance("UIStroke", { Color = theme.Line, Thickness = 1 }, closeConfirmationDialog)
+createGuiInstance("UIStroke", { Color = COLORS.Line, Thickness = 1 }, closeConfirmationDialog)
 
 createGuiInstance("TextLabel", {
-	BackgroundTransparency = 1,
-	Position = UDim2.fromOffset(16, 16),
-	Size = UDim2.new(1, -32, 0, 22),
-	Font = Enum.Font.GothamBold,
-	Text = "¿Cerrar SnowX?",
-	TextSize = 15,
-	TextColor3 = theme.Text,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	ZIndex = 22,
+    BackgroundTransparency = 1,
+    Position = UDim2.fromOffset(16, 16),
+    Size = UDim2.new(1, -32, 0, 22),
+    Font = Enum.Font.GothamBold,
+    Text = "¿Cerrar SnowX?",
+    TextSize = 15,
+    TextColor3 = COLORS.Text,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 22,
 }, closeConfirmationDialog)
 
 createGuiInstance("TextLabel", {
-	BackgroundTransparency = 1,
-	Position = UDim2.fromOffset(16, 40),
-	Size = UDim2.new(1, -32, 0, 32),
-	Font = Enum.Font.Gotham,
-	Text = "Se cerrará SnowX.",
-	TextSize = 11,
-	TextColor3 = theme.Faint,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	TextWrapped = true,
-	ZIndex = 22,
+    BackgroundTransparency = 1,
+    Position = UDim2.fromOffset(16, 40),
+    Size = UDim2.new(1, -32, 0, 32),
+    Font = Enum.Font.Gotham,
+    Text = "Se cerrará SnowX.",
+    TextSize = 11,
+    TextColor3 = COLORS.Faint,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextWrapped = true,
+    ZIndex = 22,
 }, closeConfirmationDialog)
 
 local confirmCloseButton = createGuiInstance("TextButton", {
-	AnchorPoint = Vector2.new(1, 1),
-	Position = UDim2.new(1, -16, 1, -14),
-	Size = UDim2.fromOffset(96, 30),
-	BackgroundColor3 = theme.DangerFill,
-	BorderSizePixel = 0,
-	AutoButtonColor = true,
-	Font = Enum.Font.GothamBold,
-	Text = "Cerrar",
-	TextSize = 12,
-	TextColor3 = theme.Danger,
-	ZIndex = 22,
+    AnchorPoint = Vector2.new(1, 1),
+    Position = UDim2.new(1, -16, 1, -14),
+    Size = UDim2.fromOffset(96, 30),
+    BackgroundColor3 = COLORS.DangerFill,
+    BorderSizePixel = 0,
+    AutoButtonColor = true,
+    Font = Enum.Font.GothamBold,
+    Text = "Cerrar",
+    TextSize = 12,
+    TextColor3 = COLORS.Danger,
+    ZIndex = 22,
 }, closeConfirmationDialog, 8)
 
 createGuiInstance("TextButton", {
-	AnchorPoint = Vector2.new(1, 1),
-	Position = UDim2.new(1, -120, 1, -14),
-	Size = UDim2.fromOffset(96, 30),
-	BackgroundColor3 = theme.SurfaceUp,
-	BorderSizePixel = 0,
-	AutoButtonColor = true,
-	Font = Enum.Font.GothamBold,
-	Text = "Cancelar",
-	TextSize = 12,
-	TextColor3 = theme.Icon,
-	ZIndex = 22,
+    AnchorPoint = Vector2.new(1, 1),
+    Position = UDim2.new(1, -120, 1, -14),
+    Size = UDim2.fromOffset(96, 30),
+    BackgroundColor3 = COLORS.SurfaceUp,
+    BorderSizePixel = 0,
+    AutoButtonColor = true,
+    Font = Enum.Font.GothamBold,
+    Text = "Cancelar",
+    TextSize = 12,
+    TextColor3 = COLORS.Icon,
+    ZIndex = 22,
 }, closeConfirmationDialog, 8).Activated:Connect(function()
-	closeConfirmationOverlay.Visible = false
+    closeConfirmationOverlay.Visible = false
 end)
 
 local function preloadSelectedPlayerAnimations()
-	if not skinState.userId then
-		return
-	end
-	local userId = skinState.userId
+    if not skinState.userId then
+        return
+    end
+    local userId = skinState.userId
 
-	task.spawn(function()
-		local v7 = getUserHumanoidDescription(userId)
-		if skinState.userId ~= userId or not v7 then
-			return
-		end
-		task.spawn(preloadAnimationAssets, v7)
-	end)
+    task.spawn(function()
+        local humanoidDescription = getUserHumanoidDescription(userId)
+        if skinState.userId ~= userId or not humanoidDescription then
+            return
+        end
+        task.spawn(preloadAnimationAssets, humanoidDescription)
+    end)
 end
 
 local findFavoriteIndex = nil
 
 local function updateFavoriteButton()
-	local isFavorite = skinState.userId and findFavoriteIndex(skinState.userId) ~= nil or false
-	favoriteButton.Visible = skinState.userId ~= nil
-	favoriteButton.Text = isFavorite and "★" or "☆"
-	favoriteButton.TextColor3 = isFavorite and Color3.fromRGB(250, 204, 21) or theme.Faint
-	favoriteButton.BackgroundColor3 = isFavorite and Color3.fromRGB(49, 42, 25) or theme.Background
+    local isFavorite = skinState.userId and findFavoriteIndex(skinState.userId) ~= nil or false
+    favoriteButton.Visible = skinState.userId ~= nil
+    favoriteButton.Text = isFavorite and "★" or "☆"
+    favoriteButton.TextColor3 = isFavorite and Color3.fromRGB(250, 204, 21) or COLORS.Faint
+    favoriteButton.BackgroundColor3 = isFavorite and Color3.fromRGB(49, 42, 25) or COLORS.Background
 end
 
 local function updateSelectedPlayerCard()
-	updateFavoriteButton()
+    updateFavoriteButton()
 
-	if not skinState.userId then
-		selectedPlayerNameLabel.Text = "Selecciona un jugador"
-		selectedPlayerUsernameLabel.Text = "Apariencias de jugadores"
-		skinStatusLabel.Text = ""
-		avatarPreviewImage.Image = ""
-		return
-	end
+    if not skinState.userId then
+        selectedPlayerNameLabel.Text = "Selecciona un jugador"
+        selectedPlayerUsernameLabel.Text = "Apariencias de jugadores"
+        skinStatusLabel.Text = ""
+        avatarPreviewImage.Image = ""
+        return
+    end
 
-	selectedPlayerNameLabel.Text = skinState.nombre or "..."
-	selectedPlayerUsernameLabel.Text = skinState.usuario and "@" .. skinState.usuario or ("ID " .. tostring(skinState.userId))
-	skinStatusLabel.Text = ""
-	avatarPreviewImage.Image = ("rbxthumb://type=Avatar&id=%d&w=352&h=352"):format(skinState.userId)
-	preloadSelectedPlayerAnimations()
+    selectedPlayerNameLabel.Text = skinState.nombre or "..."
+    selectedPlayerUsernameLabel.Text = skinState.usuario and "@" .. skinState.usuario or ("ID " .. tostring(skinState.userId))
+    skinStatusLabel.Text = ""
+    avatarPreviewImage.Image = ("rbxthumb://type=Avatar&id=%d&w=352&h=352"):format(skinState.userId)
+    preloadSelectedPlayerAnimations()
 end
 
 local refreshPlayerList = nil
 
 local function updateCachedUserInfo(userId)
-	local v7, v8 = getUserNames(userId)
-	if not v8 then
-		return false
-	end
-	local flag3 = false
+    local displayName, username = getUserNames(userId)
+    if not username then
+        return false
+    end
+    local hasChanged = false
 
-	for _, favorito in ipairs(skinState.favoritos) do
-		if favorito.userId == userId and (favorito.nombre ~= v7 or favorito.usuario ~= v8) then
-			favorito.nombre = v7
-			favorito.usuario = v8
-			flag3 = true
-		end
-	end
+    for _, favorito in ipairs(skinState.favoritos) do
+        if favorito.userId == userId and (favorito.nombre ~= displayName or favorito.usuario ~= username) then
+            favorito.nombre = displayName
+            favorito.usuario = username
+            hasChanged = true
+        end
+    end
 
-	if skinState.userId == userId and (skinState.nombre ~= v7 or skinState.usuario ~= v8) then
-		local v9 = skinState
-		skinState.nombre = v7
-		v9.usuario = v8
-		flag3 = true
-	end
+    if skinState.userId == userId and (skinState.nombre ~= displayName or skinState.usuario ~= username) then
+        local selectedSkinState = skinState
+        skinState.nombre = displayName
+        selectedSkinState.usuario = username
+        hasChanged = true
+    end
 
-	return flag3
+    return hasChanged
 end
 
 local function selectPlayer(targetUserId)
-	local userId = tonumber(targetUserId)
-	local v7 = userInfoCache[userId]
-	skinState.userId = userId
-	skinState.nombre = v7 and v7.nombre or nil
-	skinState.usuario = v7 and v7.usuario or nil
+    local userId = tonumber(targetUserId)
+    local cachedUserInfo = userInfoCache[userId]
+    skinState.userId = userId
+    skinState.nombre = cachedUserInfo and cachedUserInfo.nombre or nil
+    skinState.usuario = cachedUserInfo and cachedUserInfo.usuario or nil
 
-	for _, favorito in ipairs(skinState.favoritos) do
-		if favorito.userId == userId and not v7 then
-			local v8 = skinState
-			local usuario = favorito.usuario
-			skinState.nombre = favorito.nombre
-			v8.usuario = usuario
-		end
-	end
+    for _, favorito in ipairs(skinState.favoritos) do
+        if favorito.userId == userId and not cachedUserInfo then
+            local selectedSkinState = skinState
+            local usuario = favorito.usuario
+            skinState.nombre = favorito.nombre
+            selectedSkinState.usuario = usuario
+        end
+    end
 
-	updateSelectedPlayerCard()
-	statusTextProxy.Text = ""
-	saveConfiguration()
-	refreshPlayerList()
+    updateSelectedPlayerCard()
+    statusTextProxy.Text = ""
+    saveConfiguration()
+    refreshPlayerList()
 
-	task.spawn(function()
-		if updateCachedUserInfo(userId) and skinState.userId == userId then
-			updateSelectedPlayerCard()
-			saveConfiguration()
-			refreshPlayerList()
-		end
-	end)
+    task.spawn(function()
+        if updateCachedUserInfo(userId) and skinState.userId == userId then
+            updateSelectedPlayerCard()
+            saveConfiguration()
+            refreshPlayerList()
+        end
+    end)
 
-	task.spawn(function()
-		local v8 = getUserRigType(userId)
+    task.spawn(function()
+        local detectedRigType = getUserRigType(userId)
 
-		if v8 and skinState.userId == userId and skinState.rig ~= v8 then
-			skinState.rig = v8
-			saveConfiguration()
-			updateSkinControls()
-		end
-	end)
+        if detectedRigType and skinState.userId == userId and skinState.rig ~= detectedRigType then
+            skinState.rig = detectedRigType
+            saveConfiguration()
+            updateSkinControls()
+        end
+    end)
 end
 
 local function createPlayerListItem(displayName, username, layoutOrder, onActivated, isSelected)
-	local playerListItemButton = createGuiInstance("TextButton", {
-		Size = UDim2.new(1, -6, 0, 34),
-		BackgroundColor3 = isSelected and theme.OnFill or theme.Surface,
-		BorderSizePixel = 0,
-		AutoButtonColor = false,
-		Font = Enum.Font.Gotham,
-		Text = "",
-		LayoutOrder = layoutOrder,
-	}, playerListContainer, 7)
+    local playerListItemButton = createGuiInstance("TextButton", {
+        Size = UDim2.new(1, -6, 0, 34),
+        BackgroundColor3 = isSelected and COLORS.OnFill or COLORS.Surface,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Font = Enum.Font.Gotham,
+        Text = "",
+        LayoutOrder = layoutOrder,
+    }, playerListContainer, 7)
 
-	createGuiInstance("TextLabel", {
-		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(9, 3),
-		Size = UDim2.new(1, -18, 0, 15),
-		Font = Enum.Font.Gotham,
-		Text = tostring(displayName or "Jugador"),
-		TextSize = 10,
-		TextColor3 = isSelected and theme.On or theme.Text,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-	}, playerListItemButton)
+    createGuiInstance("TextLabel", {
+        BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(9, 3),
+        Size = UDim2.new(1, -18, 0, 15),
+        Font = Enum.Font.Gotham,
+        Text = tostring(displayName or "Jugador"),
+        TextSize = 10,
+        TextColor3 = isSelected and COLORS.On or COLORS.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    }, playerListItemButton)
 
-	if username and username ~= "" then
-		createGuiInstance("TextLabel", {
-			BackgroundTransparency = 1,
-			Position = UDim2.fromOffset(9, 18),
-			Size = UDim2.new(1, -18, 0, 12),
-			Font = Enum.Font.Gotham,
-			Text = username,
-			TextSize = 8,
-			TextColor3 = isSelected and theme.Text or theme.Faint,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextTruncate = Enum.TextTruncate.AtEnd,
-		}, playerListItemButton)
-	end
+    if username and username ~= "" then
+        createGuiInstance("TextLabel", {
+            BackgroundTransparency = 1,
+            Position = UDim2.fromOffset(9, 18),
+            Size = UDim2.new(1, -18, 0, 12),
+            Font = Enum.Font.Gotham,
+            Text = username,
+            TextSize = 8,
+            TextColor3 = isSelected and COLORS.Text or COLORS.Faint,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        }, playerListItemButton)
+    end
 
-	if onActivated then
-		playerListItemButton.Activated:Connect(onActivated)
-	end
+    if onActivated then
+        playerListItemButton.Activated:Connect(onActivated)
+    end
 
-	return playerListItemButton
+    return playerListItemButton
 end
 
-findFavoriteIndex = function(arg)
-	for i, favorito in ipairs(skinState.favoritos) do
-		if favorito.userId == arg then
-			return i
-		end
-	end
+findFavoriteIndex = function(userId)
+    for i, favorito in ipairs(skinState.favoritos) do
+        if favorito.userId == userId then
+            return i
+        end
+    end
 
-	return nil
+    return nil
 end
 
 refreshPlayerList = function()
-	for _, child in ipairs(playerListContainer:GetChildren()) do
-		if not child:IsA("UIListLayout") then
-			child:Destroy()
-		end
-	end
+    for _, child in ipairs(playerListContainer:GetChildren()) do
+        if not child:IsA("UIListLayout") then
+            child:Destroy()
+        end
+    end
 
-	local order = 0
-	local seen = {}
-	local function addSection(title)
-		order += 1
-		createGuiInstance("TextLabel", {
-			Size = UDim2.new(1, -6, 0, 21),
-			BackgroundTransparency = 1,
-			Font = Enum.Font.GothamBold,
-			Text = string.upper(title),
-			TextColor3 = theme.Faint,
-			TextSize = 9,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			LayoutOrder = order,
-		}, playerListContainer)
-	end
+    local order = 0
+    local seen = {}
+    local function addSection(title)
+        order += 1
+        createGuiInstance("TextLabel", {
+            Size = UDim2.new(1, -6, 0, 21),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.GothamBold,
+            Text = string.upper(title),
+            TextColor3 = COLORS.Faint,
+            TextSize = 9,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            LayoutOrder = order,
+        }, playerListContainer)
+    end
 
-	local function addEmpty(text)
-		order += 1
-		createGuiInstance("TextLabel", {
-			Size = UDim2.new(1, -8, 0, 28),
-			BackgroundTransparency = 1,
-			Font = Enum.Font.Gotham,
-			Text = text,
-			TextColor3 = theme.Faint,
-			TextSize = 9,
-			TextWrapped = true,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			LayoutOrder = order,
-		}, playerListContainer)
-	end
+    local function addEmpty(text)
+        order += 1
+        createGuiInstance("TextLabel", {
+            Size = UDim2.new(1, -8, 0, 28),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.Gotham,
+            Text = text,
+            TextColor3 = COLORS.Faint,
+            TextSize = 9,
+            TextWrapped = true,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            LayoutOrder = order,
+        }, playerListContainer)
+    end
 
-	addSection("Favoritos")
-	local favoriteCount = 0
-	for _, favorito in ipairs(skinState.favoritos) do
-		local userId = tonumber(favorito.userId)
-		if userId and not seen[userId] then
-			seen[userId] = true
-			favoriteCount += 1
-			order += 1
-			createPlayerListItem(favorito.nombre, favorito.usuario and "@" .. favorito.usuario or ("ID " .. tostring(userId)), order, function()
-				selectPlayer(userId)
-			end, skinState.userId == userId)
-		end
-	end
-	if favoriteCount == 0 then
-		addEmpty("Sin favoritos")
-	end
+    addSection("Favoritos")
+    local favoriteCount = 0
+    for _, favorito in ipairs(skinState.favoritos) do
+        local userId = tonumber(favorito.userId)
+        if userId and not seen[userId] then
+            seen[userId] = true
+            favoriteCount += 1
+            order += 1
+            createPlayerListItem(favorito.nombre, favorito.usuario and "@" .. favorito.usuario or ("ID " .. tostring(userId)), order, function()
+                selectPlayer(userId)
+            end, skinState.userId == userId)
+        end
+    end
+    if favoriteCount == 0 then
+        addEmpty("Sin favoritos")
+    end
 
-	addSection("Jugadores")
-	local onlinePlayers = Players:GetPlayers()
-	table.sort(onlinePlayers, function(a, b)
-		return tostring(a.DisplayName):lower() < tostring(b.DisplayName):lower()
-	end)
-	local playerCount = 0
-	for _, player in ipairs(onlinePlayers) do
-		local userId = player.UserId
-		if userId ~= localPlayer.UserId and not seen[userId] then
-			seen[userId] = true
-			playerCount += 1
-			order += 1
-			local displayName = player.DisplayName
-			local username = player.Name
-			createPlayerListItem(displayName, "@" .. username, order, function()
-				selectPlayer(userId)
-			end, skinState.userId == userId)
-		end
-	end
-	if playerCount == 0 then
-		addEmpty("Sin jugadores")
-	end
+    addSection("Jugadores")
+    local onlinePlayers = Players:GetPlayers()
+    table.sort(onlinePlayers, function(a, b)
+        return tostring(a.DisplayName):lower() < tostring(b.DisplayName):lower()
+    end)
+    local playerCount = 0
+    for _, player in ipairs(onlinePlayers) do
+        local userId = player.UserId
+        if userId ~= localPlayer.UserId and not seen[userId] then
+            seen[userId] = true
+            playerCount += 1
+            order += 1
+            local displayName = player.DisplayName
+            local username = player.Name
+            createPlayerListItem(displayName, "@" .. username, order, function()
+                selectPlayer(userId)
+            end, skinState.userId == userId)
+        end
+    end
+    if playerCount == 0 then
+        addEmpty("Sin jugadores")
+    end
 end
 
 local isApplyingSkin = false
@@ -2864,56 +2864,56 @@ local function createSkinModel(userId, rigName)
 end
 
 local function applySkinVisualModel(character, userId, requestedRig, requestGeneration)
-	local rig = requestedRig or skinState.rig
-	local v7, v8 = createSkinModel(userId, rig)
-	if not v7 or not v8 then
-		if v8 then pcall(function() v8:Destroy() end) end
-		return nil
-	end
+    local rig = requestedRig or skinState.rig
+    local baseDescription, visualModel = createSkinModel(userId, rig)
+    if not baseDescription or not visualModel then
+        if visualModel then pcall(function() visualModel:Destroy() end) end
+        return nil
+    end
 
-	if (requestGeneration and requestGeneration ~= applicationGeneration) or getLocalCharacter() ~= character then
-		if v8 then v8:Destroy() end
-		return nil
-	end
+    if (requestGeneration and requestGeneration ~= applicationGeneration) or getLocalCharacter() ~= character then
+        if visualModel then visualModel:Destroy() end
+        return nil
+    end
 
     local sourceHumanoid = character:FindFirstChildOfClass("Humanoid")
     if not waitForCharacterRig(character, sourceHumanoid, rig, 2.5) then
-        pcall(function() v8:Destroy() end)
+        pcall(function() visualModel:Destroy() end)
         return nil
     end
     if (requestGeneration and requestGeneration ~= applicationGeneration) or getLocalCharacter() ~= character then
-        pcall(function() v8:Destroy() end)
+        pcall(function() visualModel:Destroy() end)
         return nil
     end
 
-	captureCharacterState(character)
-	stopCurrentEmote()
-	restoreCharacterAppearance(character)
-	restoreCharacterEmotes(character)
+    captureCharacterState(character)
+    stopCurrentEmote()
+    restoreCharacterAppearance(character)
+    restoreCharacterEmotes(character)
 
-	local animationData
-	if rig == "R15" then
-		animationData = extractAnimationSets(v7)
-	end
+    local animationData
+    if rig == "R15" then
+        animationData = extractAnimationSets(baseDescription)
+    end
 
-	applyEmotes(character, getDescriptionEmotes(v7))
-    local result = attachSkinVisual(character, v8, nil, rig)
+    applyEmotes(character, getDescriptionEmotes(baseDescription))
+    local result = attachSkinVisual(character, visualModel, nil, rig)
     if requestGeneration and requestGeneration ~= applicationGeneration then
         restoreCharacterAppearance(character)
         return nil
     end
     if not result then
-        if v8 and v8.Parent then
-            pcall(function() v8:Destroy() end)
+        if visualModel and visualModel.Parent then
+            pcall(function() visualModel:Destroy() end)
         end
         return nil
     end
-	copiedSkinAnimationData = animationData
-	if rig == "R15" and skinState.animationsEnabled then
-		applyCopiedSkinAnimations(character, true)
-	else
-		applyCopiedSkinAnimations(character, false)
-	end
+    copiedSkinAnimationData = animationData
+    if rig == "R15" and skinState.animationsEnabled then
+        applyCopiedSkinAnimations(character, true)
+    else
+        applyCopiedSkinAnimations(character, false)
+    end
     if type(avatarBridge.accessory.suspend) == "function" then
         pcall(avatarBridge.accessory.suspend)
     end
@@ -3039,11 +3039,11 @@ local function removeSkin()
     stopCurrentEmote()
     destroySkinVisuals()
     copiedSkinAnimationData = nil
-    local v7 = getLocalCharacter()
+    local character = getLocalCharacter()
 
-    if v7 then
-        restoreCharacterAppearance(v7)
-        restoreCharacterEmotes(v7)
+    if character then
+        restoreCharacterAppearance(character)
+        restoreCharacterEmotes(character)
     end
 
     statusTextProxy.Text = "Retirado"
@@ -3086,108 +3086,108 @@ avatarBridge.skin.refresh = function()
     return applySkin(tonumber(userId), rig)
 end
 
-aplicar.Activated:Connect(applySkin)
-quitar.Activated:Connect(removeSkin)
+applySkinButton.Activated:Connect(applySkin)
+removeSkinButton.Activated:Connect(removeSkin)
 
 local function setRigType(rig)
-	if skinState.rig == rig then
-		return
-	end
-	skinState.rig = rig
-	saveConfiguration()
-	updateSkinControls()
+    if skinState.rig == rig then
+        return
+    end
+    skinState.rig = rig
+    saveConfiguration()
+    updateSkinControls()
 
-	if (skinState.aplicado or isApplyingSkin) and getLocalCharacter() then
-		skinState.userId = skinState.userId or skinState.aplicado
-		applySkin()
-	end
+    if (skinState.aplicado or isApplyingSkin) and getLocalCharacter() then
+        skinState.userId = skinState.userId or skinState.aplicado
+        applySkin()
+    end
 end
 
-r15.Activated:Connect(function()
-	setRigType("R15")
+r15Button.Activated:Connect(function()
+    setRigType("R15")
 end)
 
-r6.Activated:Connect(function()
-	setRigType("R6")
+r6Button.Activated:Connect(function()
+    setRigType("R6")
 end)
 
 animationToggleButton.Activated:Connect(function()
-	if skinState.rig == "R6" then
-		updateSkinControls()
-		return
-	end
+    if skinState.rig == "R6" then
+        updateSkinControls()
+        return
+    end
 
-	if avatarBridge.skin.active ~= true or not tonumber(skinState.aplicado) then
-		updateSkinControls()
-		return
-	end
-	local character = getLocalCharacter()
-	if not character then return end
-	skinState.animationsEnabled = not (skinState.animationsEnabled == true)
-	local applied = applyCopiedSkinAnimations(character, skinState.animationsEnabled)
-	if not applied and skinState.animationsEnabled then
-		skinState.animationsEnabled = false
-		applyCopiedSkinAnimations(character, false)
-		statusTextProxy.Text = "La skin no tiene animaciones compatibles"
-	else
-		statusTextProxy.Text = skinState.animationsEnabled and "Aplicado" or "Retirado"
-	end
-	saveConfiguration()
-	updateSkinControls()
+    if avatarBridge.skin.active ~= true or not tonumber(skinState.aplicado) then
+        updateSkinControls()
+        return
+    end
+    local character = getLocalCharacter()
+    if not character then return end
+    skinState.animationsEnabled = not (skinState.animationsEnabled == true)
+    local applied = applyCopiedSkinAnimations(character, skinState.animationsEnabled)
+    if not applied and skinState.animationsEnabled then
+        skinState.animationsEnabled = false
+        applyCopiedSkinAnimations(character, false)
+        statusTextProxy.Text = "La skin no tiene animaciones compatibles"
+    else
+        statusTextProxy.Text = skinState.animationsEnabled and "Aplicado" or "Retirado"
+    end
+    saveConfiguration()
+    updateSkinControls()
 end)
 
 favoriteButton.Activated:Connect(function()
-	if not skinState.userId then
-		return
-	end
-	local v7 = findFavoriteIndex(skinState.userId)
+    if not skinState.userId then
+        return
+    end
+    local favoriteIndex = findFavoriteIndex(skinState.userId)
 
-	if v7 then
-		table.remove(skinState.favoritos, v7)
-	else
-		table.insert(skinState.favoritos, { userId = skinState.userId, nombre = skinState.nombre or tostring(skinState.userId), usuario = skinState.usuario })
-	end
+    if favoriteIndex then
+        table.remove(skinState.favoritos, favoriteIndex)
+    else
+        table.insert(skinState.favoritos, { userId = skinState.userId, nombre = skinState.nombre or tostring(skinState.userId), usuario = skinState.usuario })
+    end
 
-	saveConfiguration()
-	updateFavoriteButton()
-	refreshPlayerList()
+    saveConfiguration()
+    updateFavoriteButton()
+    refreshPlayerList()
 end)
 
 local function searchPlayer()
-	local str2 = playerSearchBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
-	if str2 == "" then
-		return
-	end
-	local num = tonumber(str2)
-	if num then
-		selectPlayer(num)
-		return
-	end
+    local searchText = playerSearchBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
+    if searchText == "" then
+        return
+    end
+    local targetUserId = tonumber(searchText)
+    if targetUserId then
+        selectPlayer(targetUserId)
+        return
+    end
 
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player.Name:lower() == str2:lower() or player.DisplayName:lower() == str2:lower() then
-			selectPlayer(player.UserId)
-			return
-		end
-	end
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player.Name:lower() == searchText:lower() or player.DisplayName:lower() == searchText:lower() then
+            selectPlayer(player.UserId)
+            return
+        end
+    end
 
-	task.spawn(function()
-		local ok, result = pcall(Players.GetUserIdFromNameAsync, Players, str2)
+    task.spawn(function()
+        local ok, result = pcall(Players.GetUserIdFromNameAsync, Players, searchText)
 
-		if ok and result then
-			selectPlayer(result)
-		else
-			statusTextProxy.Text = "Fallo"
-		end
-	end)
+        if ok and result then
+            selectPlayer(result)
+        else
+            statusTextProxy.Text = "Fallo"
+        end
+    end)
 end
 
 searchButton.Activated:Connect(searchPlayer)
 
 playerSearchBox.FocusLost:Connect(function(enterPressed)
-	if enterPressed then
-		searchPlayer()
-	end
+    if enterPressed then
+        searchPlayer()
+    end
 end)
 
 local lifecycleConnections = {}
@@ -3211,10 +3211,10 @@ local function disconnectCharacterLifecycleConnections()
 end
 
 table.insert(lifecycleConnections, Players.PlayerAdded:Connect(function()
-	task.defer(refreshPlayerList)
+    task.defer(refreshPlayerList)
 end))
 table.insert(lifecycleConnections, Players.PlayerRemoving:Connect(function()
-	task.defer(refreshPlayerList)
+    task.defer(refreshPlayerList)
 end))
 
 table.insert(lifecycleConnections, localPlayer.CharacterRemoving:Connect(function(character)
@@ -3361,13 +3361,13 @@ table.insert(lifecycleConnections, localPlayer.CharacterAdded:Connect(function(c
     end)
 end))
 
-local panelDrag = nil
+local mainWindowDragState = nil
 
 windowHeader.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
         local absolute = mainFrame.AbsolutePosition
-        panelDrag = {
+        mainWindowDragState = {
             input = input,
             start = Vector2.new(input.Position.X, input.Position.Y),
             origin = Vector2.new(
@@ -3379,7 +3379,7 @@ windowHeader.InputBegan:Connect(function(input)
 end)
 
 table.insert(lifecycleConnections, UserInputService.InputChanged:Connect(function(input)
-    local drag = panelDrag
+    local drag = mainWindowDragState
     if not drag then return end
     local isMouseMove = drag.input.UserInputType == Enum.UserInputType.MouseButton1
         and input.UserInputType == Enum.UserInputType.MouseMovement
@@ -3390,77 +3390,77 @@ table.insert(lifecycleConnections, UserInputService.InputChanged:Connect(functio
 end))
 
 table.insert(lifecycleConnections, UserInputService.InputEnded:Connect(function(input)
-    local drag = panelDrag
+    local drag = mainWindowDragState
     if not drag then return end
     local ended = input == drag.input
         or (drag.input.UserInputType == Enum.UserInputType.MouseButton1
             and input.UserInputType == Enum.UserInputType.MouseButton1)
-    if ended then panelDrag = nil end
+    if ended then mainWindowDragState = nil end
 end))
 
 local currentCameraViewportConnection = nil
 
 local function connectCurrentCameraViewport()
-	if currentCameraViewportConnection then
-		currentCameraViewportConnection:Disconnect()
-		for index = #lifecycleConnections, 1, -1 do
-			if lifecycleConnections[index] == currentCameraViewportConnection then
-				table.remove(lifecycleConnections, index)
-				break
-			end
-		end
-		currentCameraViewportConnection = nil
-	end
+    if currentCameraViewportConnection then
+        currentCameraViewportConnection:Disconnect()
+        for index = #lifecycleConnections, 1, -1 do
+            if lifecycleConnections[index] == currentCameraViewportConnection then
+                table.remove(lifecycleConnections, index)
+                break
+            end
+        end
+        currentCameraViewportConnection = nil
+    end
 
-	local currentCamera = Workspace.CurrentCamera
-	if currentCamera then
-		currentCameraViewportConnection = currentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-			updateUiScale()
-			task.defer(keepFrameInsideViewport)
-			if floatingButtonFrame.Visible and floatingPositionInitialized then
-				task.defer(function() setFloatingCenter(getFloatingCenter()) end)
-			end
-		end)
-		table.insert(lifecycleConnections, currentCameraViewportConnection)
-	end
-	updateUiScale()
-	task.defer(keepFrameInsideViewport)
-	if floatingButtonFrame.Visible and floatingPositionInitialized then
-		task.defer(function() setFloatingCenter(getFloatingCenter()) end)
-	end
+    local currentCamera = Workspace.CurrentCamera
+    if currentCamera then
+        currentCameraViewportConnection = currentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+            updateUiScale()
+            task.defer(keepFrameInsideViewport)
+            if floatingButtonFrame.Visible and floatingPositionInitialized then
+                task.defer(function() setFloatingCenter(getFloatingCenter()) end)
+            end
+        end)
+        table.insert(lifecycleConnections, currentCameraViewportConnection)
+    end
+    updateUiScale()
+    task.defer(keepFrameInsideViewport)
+    if floatingButtonFrame.Visible and floatingPositionInitialized then
+        task.defer(function() setFloatingCenter(getFloatingCenter()) end)
+    end
 end
 
 connectCurrentCameraViewport()
 table.insert(lifecycleConnections, Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-	connectCurrentCameraViewport()
-	local currentCamera = Workspace.CurrentCamera
-	if currentCamera and visualModelState.modelo then
-		local visualFolder = getSkinVisualFolder()
-		if visualFolder then
-			local previousFolder = visualModelState.folder
-			visualModelState.modelo.Parent = visualFolder
-			visualModelState.folder = visualFolder
-			if previousFolder and previousFolder ~= visualFolder and previousFolder.Parent
-				and #previousFolder:GetChildren() == 0 then
-				pcall(function() previousFolder:Destroy() end)
-			end
-		end
-	end
+    connectCurrentCameraViewport()
+    local currentCamera = Workspace.CurrentCamera
+    if currentCamera and visualModelState.model then
+        local visualFolder = getSkinVisualFolder()
+        if visualFolder then
+            local previousFolder = visualModelState.folder
+            visualModelState.model.Parent = visualFolder
+            visualModelState.folder = visualFolder
+            if previousFolder and previousFolder ~= visualFolder and previousFolder.Parent
+                and #previousFolder:GetChildren() == 0 then
+                pcall(function() previousFolder:Destroy() end)
+            end
+        end
+    end
 end))
 
 closeButton.Activated:Connect(function()
-	if isWindowMinimized then
-		setWindowMinimized(false)
-	end
+    if isWindowMinimized then
+        setWindowMinimized(false)
+    end
 
-	closeConfirmationOverlay.Visible = true
+    closeConfirmationOverlay.Visible = true
 end)
 
 confirmCloseButton.Activated:Connect(function()
-	closeConfirmationOverlay.Visible = false
+    closeConfirmationOverlay.Visible = false
     disconnectCharacterLifecycleConnections()
-	connection3:Disconnect()
-	connection4:Disconnect()
+    floatingDragChangedConnection:Disconnect()
+    floatingDragEndedConnection:Disconnect()
     removeSkin()
     if avatarBridge.skin.owner == skinBridgeToken then
         avatarBridge.skin.owner = nil
@@ -3468,25 +3468,25 @@ confirmCloseButton.Activated:Connect(function()
         avatarBridge.skin.refresh = nil
     end
 
-    for _, v9 in ipairs(lifecycleConnections) do
-		pcall(function()
-			v9:Disconnect()
-		end)
-	end
+    for _, connection in ipairs(lifecycleConnections) do
+        pcall(function()
+            connection:Disconnect()
+        end)
+    end
     for _, template in pairs(skinModelTemplates) do
         pcall(function() template:Destroy() end)
     end
     table.clear(skinModelTemplates)
     table.clear(skinModelTemplateOrder)
 
-	screenGui:Destroy()
+    screenGui:Destroy()
 end)
 
 screenGui.Enabled = false
 
 local skinApi = {
-	gui = screenGui,
-	setEnabled = function(enabled)
+    gui = screenGui,
+    setEnabled = function(enabled)
         if not screenGui.Parent then return false end
         if enabled == true then
             screenGui.Enabled = true
@@ -3496,77 +3496,77 @@ local skinApi = {
         end
         return true
     end,
-	open = function()
-		screenGui.Enabled = true
-		mainFrame.Visible = true
-		floatingButtonFrame.Visible = false
-		return screenGui.Parent ~= nil
-	end,
-	aplicar = applySkin,
-	quitar = removeSkin,
-	elegir = selectPlayer,
-	emote = playEmote,
-	pararEmote = stopCurrentEmote,
-	destroy = function()
-		disconnectCharacterLifecycleConnections()
-		pcall(function() connection3:Disconnect() end)
-        pcall(function() connection4:Disconnect() end)
-		removeSkin()
-		if avatarBridge.skin.owner == skinBridgeToken then
-			avatarBridge.skin.owner = nil
-			avatarBridge.skin.getBaseDescription = nil
-			avatarBridge.skin.refresh = nil
-		end
-		for _, connection in ipairs(lifecycleConnections) do pcall(function() connection:Disconnect() end) end
-		for _, template in pairs(skinModelTemplates) do pcall(function() template:Destroy() end) end
-		table.clear(skinModelTemplates)
-		table.clear(skinModelTemplateOrder)
-			if screenGui.Parent then screenGui:Destroy() end
-	end,
+    open = function()
+        screenGui.Enabled = true
+        mainFrame.Visible = true
+        floatingButtonFrame.Visible = false
+        return screenGui.Parent ~= nil
+    end,
+    aplicar = applySkin,
+    quitar = removeSkin,
+    elegir = selectPlayer,
+    emote = playEmote,
+    pararEmote = stopCurrentEmote,
+    destroy = function()
+        disconnectCharacterLifecycleConnections()
+        pcall(function() floatingDragChangedConnection:Disconnect() end)
+        pcall(function() floatingDragEndedConnection:Disconnect() end)
+        removeSkin()
+        if avatarBridge.skin.owner == skinBridgeToken then
+            avatarBridge.skin.owner = nil
+            avatarBridge.skin.getBaseDescription = nil
+            avatarBridge.skin.refresh = nil
+        end
+        for _, connection in ipairs(lifecycleConnections) do pcall(function() connection:Disconnect() end) end
+        for _, template in pairs(skinModelTemplates) do pcall(function() template:Destroy() end) end
+        table.clear(skinModelTemplates)
+        table.clear(skinModelTemplateOrder)
+            if screenGui.Parent then screenGui:Destroy() end
+    end,
 
-	setFEMode = function(mode)
-		skinState.feMode = "ON"
-		saveConfiguration()
-		updateSkinControls()
-		return mode == "ON"
-	end,
-	setAnimations = function(enabled)
-		if skinState.rig == "R6" then
-			updateSkinControls()
-			return false
-		end
-		if avatarBridge.skin.active ~= true or not tonumber(skinState.aplicado) then return false end
-		local character = getLocalCharacter()
-		if not character then return false end
-		local requested = enabled == true
-		local applied = applyCopiedSkinAnimations(character, requested)
-		if requested and not applied then return false end
-		skinState.animationsEnabled = requested
-		saveConfiguration()
-		updateSkinControls()
-		return true
-	end,
+    setFEMode = function(mode)
+        skinState.feMode = "ON"
+        saveConfiguration()
+        updateSkinControls()
+        return mode == "ON"
+    end,
+    setAnimations = function(enabled)
+        if skinState.rig == "R6" then
+            updateSkinControls()
+            return false
+        end
+        if avatarBridge.skin.active ~= true or not tonumber(skinState.aplicado) then return false end
+        local character = getLocalCharacter()
+        if not character then return false end
+        local requested = enabled == true
+        local applied = applyCopiedSkinAnimations(character, requested)
+        if requested and not applied then return false end
+        skinState.animationsEnabled = requested
+        saveConfiguration()
+        updateSkinControls()
+        return true
+    end,
 }
 updateSkinControls()
 updateSelectedPlayerCard()
 refreshPlayerList()
 
 task.spawn(function()
-	local flag5 = false
+    local favoriteInfoChanged = false
 
-	for _, favorito in ipairs(skinState.favoritos) do
-		flag5 = updateCachedUserInfo(favorito.userId) or flag5
-	end
+    for _, favorito in ipairs(skinState.favoritos) do
+        favoriteInfoChanged = updateCachedUserInfo(favorito.userId) or favoriteInfoChanged
+    end
 
-	if skinState.userId then
-		flag5 = updateCachedUserInfo(skinState.userId) or flag5
-	end
+    if skinState.userId then
+        favoriteInfoChanged = updateCachedUserInfo(skinState.userId) or favoriteInfoChanged
+    end
 
-	if flag5 then
-		saveConfiguration()
-		updateSelectedPlayerCard()
-		refreshPlayerList()
-	end
+    if favoriteInfoChanged then
+        saveConfiguration()
+        updateSelectedPlayerCard()
+        refreshPlayerList()
+    end
 end)
 
 return skinApi
