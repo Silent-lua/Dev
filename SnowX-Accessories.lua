@@ -4115,60 +4115,6 @@ local function buildUI()
         end
     end)
 
-    local mainDrag = nil
-
-    local function beginMainDrag(input)
-        local inputType = input.UserInputType
-        if inputType ~= Enum.UserInputType.MouseButton1
-            and inputType ~= Enum.UserInputType.Touch then return end
-        mainDrag = {
-            input = input,
-            inputType = inputType,
-            start = Vector2.new(input.Position.X, input.Position.Y),
-            origin = mainCenter,
-        }
-    end
-
-    local function moveMainDrag(input, isTouch)
-        local drag = mainDrag
-        if not drag then return end
-        if isTouch then
-            if drag.inputType ~= Enum.UserInputType.Touch or input ~= drag.input then return end
-        elseif drag.inputType ~= Enum.UserInputType.MouseButton1
-            or input.UserInputType ~= Enum.UserInputType.MouseMovement then
-            return
-        end
-        local pointer = Vector2.new(input.Position.X, input.Position.Y)
-        setMainCenter(drag.origin + pointer - drag.start)
-    end
-
-    local function finishMainDrag(input, isTouch)
-        local drag = mainDrag
-        if not drag then return end
-        local ended
-        if isTouch then
-            ended = drag.inputType == Enum.UserInputType.Touch and input == drag.input
-        else
-            ended = drag.inputType == Enum.UserInputType.MouseButton1
-                and input.UserInputType == Enum.UserInputType.MouseButton1
-        end
-        if ended then mainDrag = nil end
-    end
-
-    addConnection(state.uiConnections, header.InputBegan:Connect(beginMainDrag))
-    addConnection(state.uiConnections, UserInputService.InputChanged:Connect(function(input)
-        moveMainDrag(input, false)
-    end))
-    addConnection(state.uiConnections, UserInputService.TouchMoved:Connect(function(input)
-        moveMainDrag(input, true)
-    end))
-    addConnection(state.uiConnections, UserInputService.InputEnded:Connect(function(input)
-        finishMainDrag(input, false)
-    end))
-    addConnection(state.uiConnections, UserInputService.TouchEnded:Connect(function(input)
-        finishMainDrag(input, true)
-    end))
-
     local viewportConnection = nil
     local function connectCurrentCamera()
         if viewportConnection then pcall(function() viewportConnection:Disconnect() end) end
@@ -4190,7 +4136,7 @@ local function buildUI()
     connectCurrentCamera()
     addConnection(state.uiConnections, Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(connectCurrentCamera))
     addConnection(state.uiConnections, UserInputService.InputBegan:Connect(function(input, processed)
-        if processed then return end
+        if processed or not screen.Enabled then return end
         if input.KeyCode == Enum.KeyCode.RightControl then
             if main.Visible then hideWindow() else showWindow() end
         end
