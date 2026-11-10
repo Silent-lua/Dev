@@ -24,7 +24,7 @@ local function bumpSkinRevision()
     avatarBridge.skin.revision = (tonumber(avatarBridge.skin.revision) or 0) + 1
 end
 
-local tbl = {
+local theme = {
     Background = Color3.fromRGB(12, 12, 14),
     BackgroundAlt = Color3.fromRGB(18, 18, 22),
     Surface = Color3.fromRGB(26, 26, 32),
@@ -43,10 +43,10 @@ local tbl = {
     DangerFill = Color3.fromRGB(95, 45, 45),
 }
 
-local n = 590
-local n2 = 274
+local PANEL_WIDTH = 590
+local PANEL_HEIGHT = 274
 
-local tbl2 = {
+local animationScriptNames = {
 	idle = "IdleAnimation",
 	walk = "WalkAnimation",
 	run = "RunAnimation",
@@ -56,7 +56,7 @@ local tbl2 = {
 	swim = "SwimAnimation",
 }
 
-local tbl3 = {
+local skinState = {
 	userId = nil,
 	nombre = nil,
 	usuario = nil,
@@ -67,7 +67,7 @@ local tbl3 = {
 	animationsEnabled = true,
 }
 
-local function fn()
+local function loadConfiguration()
 	if typeof(readfile) ~= "function" or typeof(isfile) ~= "function" then
 		return
 	end
@@ -90,7 +90,7 @@ local function fn()
 	if type(result2.favoritos) == "table" then
 		for _, favorito in ipairs(result2.favoritos) do
 			if type(favorito) == "table" and tonumber(favorito.userId) then
-				table.insert(tbl3.favoritos, {
+				table.insert(skinState.favoritos, {
 					userId = tonumber(favorito.userId),
 					nombre = tostring(favorito.nombre or favorito.userId),
 					usuario = type(favorito.usuario) == "string" and favorito.usuario or nil,
@@ -100,22 +100,22 @@ local function fn()
 	end
 
 	if tonumber(result2.userId) then
-		tbl3.userId = tonumber(result2.userId)
-		tbl3.nombre = tostring(result2.nombre or result2.userId)
-		tbl3.usuario = type(result2.usuario) == "string" and result2.usuario or nil
+		skinState.userId = tonumber(result2.userId)
+		skinState.nombre = tostring(result2.nombre or result2.userId)
+		skinState.usuario = type(result2.usuario) == "string" and result2.usuario or nil
 	end
 
 	if result2.rig == "R6" or result2.rig == "R15" then
-		tbl3.rig = result2.rig
+		skinState.rig = result2.rig
 	end
 
-	tbl3.feMode = "ON"
+	skinState.feMode = "ON"
 	if type(result2.animationsEnabled) == "boolean" then
-		tbl3.animationsEnabled = result2.animationsEnabled
+		skinState.animationsEnabled = result2.animationsEnabled
 	end
 end
 
-local function fn2()
+local function saveConfiguration()
 	if typeof(writefile) ~= "function" then
 		return
 	end
@@ -127,31 +127,31 @@ local function fn2()
 	end)
 
 	pcall(writefile, CONFIG_PATH, HttpService:JSONEncode({
-		userId = tbl3.userId,
-		nombre = tbl3.nombre,
-		usuario = tbl3.usuario,
-		favoritos = tbl3.favoritos,
-		rig = tbl3.rig,
+		userId = skinState.userId,
+		nombre = skinState.nombre,
+		usuario = skinState.usuario,
+		favoritos = skinState.favoritos,
+		rig = skinState.rig,
 		feMode = "ON",
-		animationsEnabled = tbl3.animationsEnabled == true,
+		animationsEnabled = skinState.animationsEnabled == true,
 	}))
 end
 
-local function fn3(arg, arg2, parent, arg3)
-	local instance = Instance.new(arg)
+local function createGuiInstance(className, properties, parent, cornerRadius)
+	local instance = Instance.new(className)
 
-	for k, v in pairs(arg2) do
+	for k, v in pairs(properties) do
 		instance[k] = v
 	end
 
-	if instance:IsA("TextButton") and arg2.Text and arg2.Text ~= "" then
+	if instance:IsA("TextButton") and properties.Text and properties.Text ~= "" then
 		instance.TextStrokeColor3 = Color3.new(0, 0, 0)
 		instance.TextStrokeTransparency = 0.75
 	end
 
-	if arg3 then
+	if cornerRadius then
 		local uiCorner = Instance.new("UICorner")
-		uiCorner.CornerRadius = UDim.new(0, arg3)
+		uiCorner.CornerRadius = UDim.new(0, cornerRadius)
 		uiCorner.Parent = instance
 	end
 
@@ -159,20 +159,20 @@ local function fn3(arg, arg2, parent, arg3)
 	return instance
 end
 
-local v = nil
-local tbl4 = {}
+local lucideLibrary = nil
+local pendingIconRequests = {}
 
-local function fn4(arg, arg2)
-	if not v then
-		table.insert(tbl4, { arg, arg2 })
+local function setLucideImage(imageLabel, iconName)
+	if not lucideLibrary then
+		table.insert(pendingIconRequests, { imageLabel, iconName })
 		return
 	end
-	local ok, result = pcall(v.GetAsset, arg2)
+	local ok, result = pcall(lucideLibrary.GetAsset, iconName)
 
 	if ok and result then
-		arg.Image = result.Url
-		arg.ImageRectOffset = result.ImageRectOffset
-		arg.ImageRectSize = result.ImageRectSize
+		imageLabel.Image = result.Url
+		imageLabel.ImageRectOffset = result.ImageRectOffset
+		imageLabel.ImageRectSize = result.ImageRectSize
 	end
 end
 
@@ -182,31 +182,31 @@ task.spawn(function()
 	end)
 
 	if ok and type(result) == "table" and result.GetAsset then
-		v = result
+		lucideLibrary = result
 
-		for _, v2 in ipairs(tbl4) do
-			fn4(v2[1], v2[2])
+		for _, v2 in ipairs(pendingIconRequests) do
+			setLucideImage(v2[1], v2[2])
 		end
 
-		table.clear(tbl4)
+		table.clear(pendingIconRequests)
 	end
 end)
 
-local function createImageLabel(parent, arg, arg2, imageColor3, position)
+local function createImageLabel(parent, iconName, iconSize, imageColor3, position)
 	local imageLabel = Instance.new("ImageLabel")
 	imageLabel.BackgroundTransparency = 1
 	imageLabel.AnchorPoint = Vector2.new(0.5, 0.5)
 	imageLabel.Position = position or UDim2.fromScale(0.5, 0.5)
-	imageLabel.Size = UDim2.fromOffset(arg2, arg2)
+	imageLabel.Size = UDim2.fromOffset(iconSize, iconSize)
 	imageLabel.ImageColor3 = imageColor3
 	imageLabel.Image = ""
 	imageLabel.Active = false
 	imageLabel.Parent = parent
-	fn4(imageLabel, arg)
+	setLucideImage(imageLabel, iconName)
 	return imageLabel
 end
 
-local function fn5()
+local function getLocalCharacter()
 	local character = localPlayer.Character
 	if not character then
 		return nil
@@ -300,17 +300,17 @@ local function waitForCharacterRig(character, humanoid, visualRigName, timeout)
     return isCharacterRigComplete(character, humanoid, visualRigName)
 end
 
-local function fn6(arg, arg2, arg3)
-    local rigType = arg3 == "R6" and Enum.HumanoidRigType.R6 or Enum.HumanoidRigType.R15
-    if not arg2 or not arg2:IsA("HumanoidDescription") then
+local function createHumanoidModel(_userId, humanoidDescription, rigName)
+    local rigType = rigName == "R6" and Enum.HumanoidRigType.R6 or Enum.HumanoidRigType.R15
+    if not humanoidDescription or not humanoidDescription:IsA("HumanoidDescription") then
         return nil
     end
 
     local ok, result = pcall(function()
-        return Players:CreateHumanoidModelFromDescriptionAsync(arg2, rigType)
+        return Players:CreateHumanoidModelFromDescriptionAsync(humanoidDescription, rigType)
     end)
     if not (ok and result) then
-        ok, result = pcall(Players.CreateHumanoidModelFromDescription, Players, arg2, rigType)
+        ok, result = pcall(Players.CreateHumanoidModelFromDescription, Players, humanoidDescription, rigType)
     end
 
     if not (ok and result) then
@@ -320,7 +320,7 @@ local function fn6(arg, arg2, arg3)
     return result
 end
 
-local tbl5 = {}
+local userInfoCache = {}
 local skinModelTemplates = {}
 local skinModelTemplateOrder = {}
 local MAX_SKIN_MODEL_TEMPLATES = 6
@@ -361,18 +361,18 @@ local function storeSkinTemplate(key, model)
     end
 end
 
-local function fn7(arg)
-	if tbl5[arg] then
-		return tbl5[arg].nombre, tbl5[arg].usuario
+local function getUserNames(userId)
+	if userInfoCache[userId] then
+		return userInfoCache[userId].nombre, userInfoCache[userId].usuario
 	end
-	local playerByUserId = Players:GetPlayerByUserId(arg)
+	local playerByUserId = Players:GetPlayerByUserId(userId)
 	local displayName, name
 
 	if playerByUserId then
 		displayName = playerByUserId.DisplayName
 		name = playerByUserId.Name
 	else
-		local ok, result = pcall(UserService.GetUserInfosByUserIdsAsync, UserService, { arg })
+		local ok, result = pcall(UserService.GetUserInfosByUserIdsAsync, UserService, { userId })
 		ok = ok and type(result) == "table" and result[1]
 		displayName = nil
 		name = nil
@@ -383,7 +383,7 @@ local function fn7(arg)
 		end
 
 		if not name then
-			local ok2, result2 = pcall(Players.GetNameFromUserIdAsync, Players, arg)
+			local ok2, result2 = pcall(Players.GetNameFromUserIdAsync, Players, userId)
 
 			if ok2 and result2 then
 				if displayName then
@@ -397,100 +397,100 @@ local function fn7(arg)
 	end
 
 	if name then
-		tbl5[arg] = { nombre = displayName or name, usuario = name }
+		userInfoCache[userId] = { nombre = displayName or name, usuario = name }
 	end
 
 	return displayName, name
 end
 
-local tbl6 = {}
+local avatarRigTypeCache = {}
 
-local function fn8(arg)
-	if tbl6[arg] then
-		return tbl6[arg]
+local function getUserRigType(userId)
+	if avatarRigTypeCache[userId] then
+		return avatarRigTypeCache[userId]
 	end
-	local ok, result = pcall(Players.GetCharacterAppearanceInfoAsync, Players, arg)
+	local ok, result = pcall(Players.GetCharacterAppearanceInfoAsync, Players, userId)
 	ok = ok and type(result) == "table" and result.playerAvatarType
 	if ok == "R6" or ok == "R15" then
-		tbl6[arg] = ok
+		avatarRigTypeCache[userId] = ok
 		return ok
 	end
 	return nil
 end
 
-local tbl7 = {}
+local humanoidDescriptionCache = {}
 
-local function fn9(arg)
-	if tbl7[arg] then
-		return tbl7[arg]
+local function getUserHumanoidDescription(userId)
+	if humanoidDescriptionCache[userId] then
+		return humanoidDescriptionCache[userId]
 	end
-	local playerByUserId = Players:GetPlayerByUserId(arg)
+	local playerByUserId = Players:GetPlayerByUserId(userId)
 	local humanoid = playerByUserId and playerByUserId.Character and playerByUserId.Character:FindFirstChildOfClass("Humanoid")
-	local v2 = nil
+	local currentEmoteTrack = nil
 
 	if humanoid then
 		local ok, result = pcall(humanoid.GetAppliedDescription, humanoid)
 		ok = ok and result
-		v2 = nil
+		currentEmoteTrack = nil
 
 		if ok then
-			v2 = result
+			currentEmoteTrack = result
 		end
 	end
 
-	if not v2 then
+	if not currentEmoteTrack then
 		local ok, result = pcall(function()
-			return Players:GetHumanoidDescriptionFromUserIdAsync(arg)
+			return Players:GetHumanoidDescriptionFromUserIdAsync(userId)
 		end)
 
 		if not (ok and result) then
-			ok, result = pcall(Players.GetHumanoidDescriptionFromUserId, Players, arg)
+			ok, result = pcall(Players.GetHumanoidDescriptionFromUserId, Players, userId)
 		end
 
 		if ok and result then
-			v2 = result
+			currentEmoteTrack = result
 		end
 	end
 
-	if v2 then
-		tbl7[arg] = v2
+	if currentEmoteTrack then
+		humanoidDescriptionCache[userId] = currentEmoteTrack
 	end
 
-	return v2
+	return currentEmoteTrack
 end
 
-local tbl8 = {}
+local loadedAssetObjectsCache = {}
 
-local function fn10(arg)
-	local str2 = tostring(arg)
-	if tbl8[str2] ~= nil then
-		return tbl8[str2] or nil
+local function loadAssetObjects(assetId)
+	local str2 = tostring(assetId)
+	if loadedAssetObjectsCache[str2] ~= nil then
+		return loadedAssetObjectsCache[str2] or nil
 	end
 	local ok, result = pcall(game.GetObjects, game, "rbxassetid://" .. str2)
 	if not (ok and type(result) == "table") then
-		tbl8[str2] = false
+		loadedAssetObjectsCache[str2] = false
 		return nil
 	end
 
-	for _, v2 in ipairs(result) do
-		v2.Parent = nil
+	for _, currentEmoteTrack in ipairs(result) do
+		currentEmoteTrack.Parent = nil
 	end
 
-	tbl8[str2] = result
+	loadedAssetObjectsCache[str2] = result
 	return result
 end
 
-local function fn11(arg)
+local function preloadAnimationAssets(humanoidDescription)
 	local n3 = 0
 
-	for _, v2 in pairs(tbl2) do
-		local v3 = arg[v2]
+	for _, currentEmoteTrack in pairs(animationScriptNames) do
+		local v3 = humanoidDescription[currentEmoteTrack]
 
-		if type(v3) == "number" and v3 > 0 and tbl8[tostring(v3)] == nil then
+		if type(v3) == "number" and v3 > 0 and loadedAssetObjectsCache[tostring(v3)] == nil then
 			n3 += 1
 
 			task.spawn(function()
-				fn10(v3)
+				loadAssetObjects(v3)
 				n3 -= 1
 			end)
 		end
@@ -503,15 +503,15 @@ local function fn11(arg)
 	end
 end
 
-local function fn12(arg)
+local function extractAnimationSets(humanoidDescription)
 	local tbl9 = {}
-	fn11(arg)
+	preloadAnimationAssets(humanoidDescription)
 
-	for k, v2 in pairs(tbl2) do
-		local v3 = arg[v2]
+	for k, currentEmoteTrack in pairs(animationScriptNames) do
+		local v3 = humanoidDescription[currentEmoteTrack]
 
 		if type(v3) == "number" and v3 > 0 then
-			local v4 = fn10(v3)
+			local v4 = loadAssetObjects(v3)
 			local v5 = ipairs
 			local tbl10 = v4 or {}
 
@@ -533,26 +533,26 @@ local function fn12(arg)
 	return tbl9
 end
 
-local function fn13(arg)
+local function getDescriptionEmotes(humanoidDescription)
 	local tbl9 = {}
-	local ok, result = pcall(arg.GetEmotes, arg)
+	local ok, result = pcall(humanoidDescription.GetEmotes, humanoidDescription)
 	if not (ok and type(result) == "table") then
 		return tbl9
 	end
-	local tbl10 = {}
-	local ok2, result2 = pcall(arg.GetEquippedEmotes, arg)
+	local r6ToR15JointMappings = {}
+	local ok2, result2 = pcall(humanoidDescription.GetEquippedEmotes, humanoidDescription)
 
 	if ok2 and type(result2) == "table" then
-		for _, v2 in ipairs(result2) do
-			tbl10[v2.Name] = v2.Slot
+		for _, currentEmoteTrack in ipairs(result2) do
+			r6ToR15JointMappings[currentEmoteTrack.Name] = currentEmoteTrack.Slot
 		end
 	end
 
-	for k, v2 in pairs(result) do
-		local num = type(v2) == "table" and tonumber(v2[1]) or tonumber(v2)
+	for k, currentEmoteTrack in pairs(result) do
+		local num = type(currentEmoteTrack) == "table" and tonumber(currentEmoteTrack[1]) or tonumber(currentEmoteTrack)
 
 		if num then
-			table.insert(tbl9, { nombre = k, id = num, slot = tbl10[k] or 99 })
+			table.insert(tbl9, { nombre = k, id = num, slot = r6ToR15JointMappings[k] or 99 })
 		end
 	end
 
@@ -566,29 +566,29 @@ local function fn13(arg)
 	return tbl9
 end
 
-local obj = setmetatable({}, { __mode = "k" })
+local originalCharacterStateCache = setmetatable({}, { __mode = "k" })
 
-local function fn14(arg)
-	if obj[arg] then
-		return obj[arg]
+local function captureCharacterState(character)
+	if originalCharacterStateCache[character] then
+		return originalCharacterStateCache[character]
 	end
 	local tbl9 = { anim = {} }
-	local humanoid = arg:FindFirstChildOfClass("Humanoid")
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
 
 	if humanoid then
 		tbl9.hipHeight = humanoid.HipHeight
 	end
 
-	local animate = arg:FindFirstChild("Animate")
+	local animate = character:FindFirstChild("Animate")
 
 	if animate then
-		for k in pairs(tbl2) do
-			local v2 = animate:FindFirstChild(k)
+		for k in pairs(animationScriptNames) do
+			local currentEmoteTrack = animate:FindFirstChild(k)
 
-			if v2 then
+			if currentEmoteTrack then
 				tbl9.anim[k] = {}
 
-				for _, child in ipairs(v2:GetChildren()) do
+				for _, child in ipairs(currentEmoteTrack:GetChildren()) do
 					if child:IsA("Animation") then
 						local clone = child:Clone()
 						clone.Parent = nil
@@ -599,25 +599,25 @@ local function fn14(arg)
 		end
 	end
 
-	obj[arg] = tbl9
+	originalCharacterStateCache[character] = tbl9
 	return tbl9
 end
 
-local function fn15(arg, arg2)
+local function noopCharacterStateHook(_character, _snapshot)
 
     return
 end
 
-local function fn16(arg)
-	local animate = arg:FindFirstChild("Animate")
-	local humanoid = arg:FindFirstChildOfClass("Humanoid")
+local function restartCharacterAnimations(character)
+	local animate = character:FindFirstChild("Animate")
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not (animate and humanoid) then
 		return
 	end
 
-	for _, v2 in ipairs(humanoid:GetPlayingAnimationTracks()) do
-		if v2.Priority ~= Enum.AnimationPriority.Action then
-			pcall(v2.Stop, v2, 0)
+	for _, currentEmoteTrack in ipairs(humanoid:GetPlayingAnimationTracks()) do
+		if currentEmoteTrack.Priority ~= Enum.AnimationPriority.Action then
+			pcall(currentEmoteTrack.Stop, currentEmoteTrack, 0)
 		end
 	end
 
@@ -625,24 +625,24 @@ local function fn16(arg)
 	animate.Disabled = false
 end
 
-local function fn17(arg, arg2)
-	local animate = arg:FindFirstChild("Animate")
+local function applyAnimationSet(character, animationSet)
+	local animate = character:FindFirstChild("Animate")
 	if not animate then
 		return 0
 	end
 	local n3 = 0
 
-	for k, v2 in pairs(arg2) do
+	for k, currentEmoteTrack in pairs(animationSet) do
 		local v3 = animate:FindFirstChild(k)
 
-		if v3 and #v2 > 0 then
+		if v3 and #currentEmoteTrack > 0 then
 			for _, child in ipairs(v3:GetChildren()) do
 				if child:IsA("Animation") then
 					child:Destroy()
 				end
 			end
 
-			for _, v4 in ipairs(v2) do
+			for _, v4 in ipairs(currentEmoteTrack) do
 				v4:Clone().Parent = v3
 				n3 += 1
 			end
@@ -650,20 +650,20 @@ local function fn17(arg, arg2)
 	end
 
 	if n3 > 0 then
-		fn16(arg)
+		restartCharacterAnimations(character)
 	end
 
 	return n3
 end
 
-local function fn18(arg, arg2)
-	local animate = arg:FindFirstChild("Animate")
-	if not (animate and arg2 and arg2.anim) then
+local function restoreAnimationSet(character, savedAnimationSet)
+	local animate = character:FindFirstChild("Animate")
+	if not (animate and savedAnimationSet and savedAnimationSet.anim) then
 		return
 	end
 	local flag = false
 
-	for k, v2 in pairs(arg2.anim) do
+	for k, currentEmoteTrack in pairs(savedAnimationSet.anim) do
 		local v3 = animate:FindFirstChild(k)
 
 		if v3 then
@@ -673,7 +673,7 @@ local function fn18(arg, arg2)
 				end
 			end
 
-			for _, v4 in ipairs(v2) do
+			for _, v4 in ipairs(currentEmoteTrack) do
 				v4:Clone().Parent = v3
 			end
 
@@ -682,38 +682,38 @@ local function fn18(arg, arg2)
 	end
 
 	if flag then
-		fn16(arg)
+		restartCharacterAnimations(character)
 	end
 end
 
 local copiedSkinAnimationData = nil
 local function applyCopiedSkinAnimations(character, enabled)
 	if not character or not character.Parent then return false end
-	local originalData = fn14(character)
+	local originalData = captureCharacterState(character)
 	if enabled then
 		if type(copiedSkinAnimationData) ~= "table" then return false end
-		return fn17(character, copiedSkinAnimationData) > 0
+		return applyAnimationSet(character, copiedSkinAnimationData) > 0
 	end
-	fn18(character, originalData)
+	restoreAnimationSet(character, originalData)
 	return true
 end
 
-local obj2 = setmetatable({}, { __mode = "k" })
+local characterEmoteCache = setmetatable({}, { __mode = "k" })
 
-local function fn19(arg)
-	arg = arg and arg:FindFirstChildOfClass("Humanoid")
-	return arg and arg:FindFirstChildOfClass("HumanoidDescription") or nil
+local function getCharacterHumanoidDescription(character)
+	character = character and character:FindFirstChildOfClass("Humanoid")
+	return character and character:FindFirstChildOfClass("HumanoidDescription") or nil
 end
 
-local function fn20(arg, arg2)
-	local v2 = fn19(arg)
-	if not v2 then
+local function applyEmotes(character, emotes)
+	local currentEmoteTrack = getCharacterHumanoidDescription(character)
+	if not currentEmoteTrack then
 		return 0
 	end
 
-	if not obj2[arg] then
-		local ok, result = pcall(v2.GetEmotes, v2)
-		local ok2, result2 = pcall(v2.GetEquippedEmotes, v2)
+	if not characterEmoteCache[character] then
+		local ok, result = pcall(currentEmoteTrack.GetEmotes, currentEmoteTrack)
+		local ok2, result2 = pcall(currentEmoteTrack.GetEquippedEmotes, currentEmoteTrack)
 		local tbl9 = {}
 		local v3 = ipairs
 		result2 = ok2 and result2 or {}
@@ -722,31 +722,31 @@ local function fn20(arg, arg2)
 			tbl9[#tbl9 + 1] = v4.Name
 		end
 
-		obj2[arg] = { emotes = ok and result or {}, equipados = tbl9 }
+		characterEmoteCache[character] = { emotes = ok and result or {}, equipados = tbl9 }
 	end
 
 	local tbl9 = {}
-	local tbl10 = {}
+	local r6ToR15JointMappings = {}
 
-	for _, v3 in ipairs(arg2) do
+	for _, v3 in ipairs(emotes) do
 		tbl9[v3.nombre] = { v3.id }
 
-		if #tbl10 < 8 then
-			tbl10[#tbl10 + 1] = v3.nombre
+		if #r6ToR15JointMappings < 8 then
+			r6ToR15JointMappings[#r6ToR15JointMappings + 1] = v3.nombre
 		end
 	end
 
 	return pcall(function()
-		v2:SetEmotes(tbl9)
-		v2:SetEquippedEmotes(tbl10)
-	end) and #tbl10 or 0
+		currentEmoteTrack:SetEmotes(tbl9)
+		currentEmoteTrack:SetEquippedEmotes(r6ToR15JointMappings)
+	end) and #r6ToR15JointMappings or 0
 end
 
-local tbl9 = nil
+local localPlayerEmoteData = nil
 
-local function fn21()
-	if tbl9 then
-		return tbl9
+local function getLocalPlayerEmoteData()
+	if localPlayerEmoteData then
+		return localPlayerEmoteData
 	end
 	local ok, result = pcall(Players.GetHumanoidDescriptionFromUserId, Players, localPlayer.UserId)
 	if not (ok and result) then
@@ -757,35 +757,35 @@ local function fn21()
 	if not (ok2 and ok3) then
 		return nil
 	end
-	local tbl10 = {}
+	local r6ToR15JointMappings = {}
 
-	for _, v2 in ipairs(result3) do
-		tbl10[#tbl10 + 1] = v2.Name
+	for _, currentEmoteTrack in ipairs(result3) do
+		r6ToR15JointMappings[#r6ToR15JointMappings + 1] = currentEmoteTrack.Name
 	end
 
-	tbl9 = { emotes = result2, equipados = tbl10 }
-	return tbl9
+	localPlayerEmoteData = { emotes = result2, equipados = r6ToR15JointMappings }
+	return localPlayerEmoteData
 end
 
-local function fn22(arg)
-	local v2 = fn19(arg)
-	if not v2 then
+local function restoreCharacterEmotes(character)
+	local currentEmoteTrack = getCharacterHumanoidDescription(character)
+	if not currentEmoteTrack then
 		return
 	end
-	local v3 = fn21() or obj2[arg]
+	local v3 = getLocalPlayerEmoteData() or characterEmoteCache[character]
 	if not v3 then
 		return
 	end
 
 	pcall(function()
-		v2:SetEmotes(v3.emotes)
-		v2:SetEquippedEmotes(v3.equipados)
+		currentEmoteTrack:SetEmotes(v3.emotes)
+		currentEmoteTrack:SetEquippedEmotes(v3.equipados)
 	end)
 end
 
-local tbl10 = {}
+local r6ToR15JointMappings = {}
 
-local tbl11 = {
+local rootJointMapping = {
 	p0 = "HumanoidRootPart",
 	p1 = "Torso",
 	m0 = "HumanoidRootPart",
@@ -795,7 +795,7 @@ local tbl11 = {
 	c1 = CFrame.new(0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0),
 }
 
-local tbl12 = {
+local neckJointMapping = {
 	p0 = "Torso",
 	p1 = "Head",
 	m0 = "UpperTorso",
@@ -805,7 +805,7 @@ local tbl12 = {
 	c1 = CFrame.new(0, -0.5, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0),
 }
 
-local tbl13 = {
+local rightShoulderMapping = {
 	p0 = "Torso",
 	p1 = "Right Arm",
 	m0 = "UpperTorso",
@@ -815,7 +815,7 @@ local tbl13 = {
 	c1 = CFrame.new(-0.5, 0.5, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0),
 }
 
-local tbl14 = {
+local leftShoulderMapping = {
 	p0 = "Torso",
 	p1 = "Left Arm",
 	m0 = "UpperTorso",
@@ -825,7 +825,7 @@ local tbl14 = {
 	c1 = CFrame.new(0.5, 0.5, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0),
 }
 
-local tbl15 = {
+local rightHipMapping = {
 	p0 = "Torso",
 	p1 = "Right Leg",
 	m0 = "UpperTorso",
@@ -835,7 +835,7 @@ local tbl15 = {
 	c1 = CFrame.new(0.5, 1, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0),
 }
 
-local tbl16 = {
+local leftHipMapping = {
 	p0 = "Torso",
 	p1 = "Left Leg",
 	m0 = "UpperTorso",
@@ -845,18 +845,18 @@ local tbl16 = {
 	c1 = CFrame.new(-0.5, 1, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0),
 }
 
-tbl10[1] = tbl11
-tbl10[2] = tbl12
-tbl10[3] = tbl13
-tbl10[4] = tbl14
-tbl10[5] = tbl15
-tbl10[6] = tbl16
-local tbl17 = { modelo = nil, char = nil, cadena = {}, folder = nil, conn = nil, connFisica = nil, connCamera = nil, connCameraRemoving = nil, connDescendant = nil, connHideCharacter = nil, connHideCharacterRemoving = nil }
+r6ToR15JointMappings[1] = rootJointMapping
+r6ToR15JointMappings[2] = neckJointMapping
+r6ToR15JointMappings[3] = rightShoulderMapping
+r6ToR15JointMappings[4] = leftShoulderMapping
+r6ToR15JointMappings[5] = rightHipMapping
+r6ToR15JointMappings[6] = leftHipMapping
+local visualModelState = { modelo = nil, char = nil, cadena = {}, folder = nil, conn = nil, connFisica = nil, connCamera = nil, connCameraRemoving = nil, connDescendant = nil, connHideCharacter = nil, connHideCharacterRemoving = nil }
 
-local function fn23(arg)
+local function indexCharacterJoints(character)
 	local tbl18 = {}
 
-	for _, descendant in ipairs(arg:GetDescendants()) do
+	for _, descendant in ipairs(character:GetDescendants()) do
 
 		local insideAccessory = descendant:FindFirstAncestorOfClass("Accessory") ~= nil
 		if not insideAccessory
@@ -869,66 +869,66 @@ local function fn23(arg)
 	return tbl18
 end
 
-local function fn24(arg)
-	if arg:IsA("Motor6D") then
-		return arg.C0.Rotation, arg.C1.Rotation
+local function getJointRotations(joint)
+	if joint:IsA("Motor6D") then
+		return joint.C0.Rotation, joint.C1.Rotation
 	end
-	local attachment0 = arg.Attachment0
-	local attachment1 = arg.Attachment1
+	local attachment0 = joint.Attachment0
+	local attachment1 = joint.Attachment1
 	return attachment0 and attachment0.CFrame.Rotation or CFrame.identity, attachment1 and attachment1.CFrame.Rotation or CFrame.identity
 end
 
-local function fn25(arg, arg2, arg3, arg4, arg5)
+local function createJointMapping(sourcePart, targetPart, sourceOffset, targetOffset, sourceJoints)
 	local cframe = CFrame.identity
 	local cframe2 = CFrame.identity
 
-	if #arg5 > 0 then
-		local v2 = fn24(arg5[1])
-		local v3, v4 = fn24(arg5[#arg5])
-		cframe = arg3.Rotation:Inverse() * v2
-		local rotation = arg4.Rotation
+	if #sourceJoints > 0 then
+		local currentEmoteTrack = getJointRotations(sourceJoints[1])
+		local v3, v4 = getJointRotations(sourceJoints[#sourceJoints])
+		cframe = sourceOffset.Rotation:Inverse() * currentEmoteTrack
+		local rotation = targetOffset.Rotation
 		cframe2 = v4:Inverse() * rotation
 	end
 
-	return { desde = arg, hacia = arg2, c0 = arg3, c1 = arg4, srcs = arg5, a = cframe, b = cframe2 }
+	return { desde = sourcePart, hacia = targetPart, c0 = sourceOffset, c1 = targetOffset, srcs = sourceJoints, a = cframe, b = cframe2 }
 end
 
-local function fn26(arg, arg2, arg3, arg4)
-	local v2 = fn23(arg)
+local function buildJointMappings(character, targetModel, visualRootPart, targetRig)
+	local currentEmoteTrack = indexCharacterJoints(character)
 	local tbl18 = {}
 	local tbl19 = {}
 
-	for _, child in ipairs(arg2:GetChildren()) do
+	for _, child in ipairs(targetModel:GetChildren()) do
 		if child:IsA("BasePart") then
 			table.insert(tbl19, child)
 		end
 	end
 
-	if arg4 == "R6" then
-		for _, v3 in ipairs(tbl10) do
-			local v4 = arg2:FindFirstChild(v3.p0)
-			local v5 = arg2:FindFirstChild(v3.p1)
+	if targetRig == "R6" then
+		for _, v3 in ipairs(r6ToR15JointMappings) do
+			local v4 = targetModel:FindFirstChild(v3.p0)
+			local v5 = targetModel:FindFirstChild(v3.p1)
 
 			if v4 and v5 then
 				local tbl20 = {}
 
 				for _, v6 in ipairs(v3.r15) do
-					if v2[v6] then
-						table.insert(tbl20, v2[v6])
+					if currentEmoteTrack[v6] then
+						table.insert(tbl20, currentEmoteTrack[v6])
 					end
 				end
 
-				local v6 = fn25(v4, v5, v3.c0, v3.c1, tbl20)
-				local v7 = arg:FindFirstChild(v3.m0)
-				local v8 = arg:FindFirstChild(v3.m1)
+				local v6 = createJointMapping(v4, v5, v3.c0, v3.c1, tbl20)
+				local v7 = character:FindFirstChild(v3.m0)
+				local v8 = character:FindFirstChild(v3.m1)
 				v6.m0 = v7
 				v6.m1 = v8
 				table.insert(tbl18, v6)
 			end
 		end
 	else
-		local tbl20 = { [arg3] = true }
-		local tbl21 = { arg3 }
+		local tbl20 = { [visualRootPart] = true }
+		local tbl21 = { visualRootPart }
 
 		while #tbl21 > 0 do
 			local v3 = table.remove(tbl21, 1)
@@ -941,8 +941,8 @@ local function fn26(arg, arg2, arg3, arg4)
 
 							if v5 and v5:IsA("Attachment") then
 								tbl20[v4] = true
-								local v6 = v2[child.Name:gsub("RigAttachment$", "")]
-								table.insert(tbl18, fn25(v3, v4, child.CFrame, v5.CFrame, v6 and { v6 } or {}))
+								local v6 = currentEmoteTrack[child.Name:gsub("RigAttachment$", "")]
+								table.insert(tbl18, createJointMapping(v3, v4, child.CFrame, v5.CFrame, v6 and { v6 } or {}))
 								table.insert(tbl21, v4)
 							end
 						end
@@ -952,7 +952,7 @@ local function fn26(arg, arg2, arg3, arg4)
 		end
 	end
 
-	for _, child in ipairs(arg2:GetChildren()) do
+	for _, child in ipairs(targetModel:GetChildren()) do
 		if child:IsA("Accessory") then
 			local handle = child:FindFirstChild("Handle")
 			local matchedHandleAttachment = nil
@@ -980,7 +980,7 @@ local function fn26(arg, arg2, arg3, arg4)
 			end
 
 			if matchedHandleAttachment and matchedBodyPart and matchedBodyAttachment then
-				table.insert(tbl18, fn25(
+				table.insert(tbl18, createJointMapping(
 					matchedBodyPart,
 					handle,
 					matchedBodyAttachment.CFrame,
@@ -1009,7 +1009,7 @@ local function fn26(arg, arg2, arg3, arg4)
 	return tbl18
 end
 
-local function fn27()
+local function getSkinVisualFolder()
 	local currentCamera = workspace.CurrentCamera
 	if not currentCamera then
 		return nil
@@ -1120,29 +1120,29 @@ local function enforceHiddenCharacter()
     end
 end
 
-local function fn28(arg, arg2)
-    if arg2 then
-        if hiddenCharacterModel ~= arg then
-            if hiddenCharacterModel then fn28(hiddenCharacterModel, false) end
-            hiddenCharacterModel = arg
+local function setOriginalCharacterHidden(character, shouldHide)
+    if shouldHide then
+        if hiddenCharacterModel ~= character then
+            if hiddenCharacterModel then setOriginalCharacterHidden(hiddenCharacterModel, false) end
+            hiddenCharacterModel = character
             table.clear(hiddenCharacterInstances)
             hiddenCharacterTracked = setmetatable({}, { __mode = "k" })
-            for _, descendant in ipairs(arg:GetDescendants()) do trackHiddenCharacterInstance(descendant) end
-            if tbl17.connHideCharacter then
-                tbl17.connHideCharacter:Disconnect()
-                tbl17.connHideCharacter = nil
+            for _, descendant in ipairs(character:GetDescendants()) do trackHiddenCharacterInstance(descendant) end
+            if visualModelState.connHideCharacter then
+                visualModelState.connHideCharacter:Disconnect()
+                visualModelState.connHideCharacter = nil
             end
-            if tbl17.connHideCharacterRemoving then
-                tbl17.connHideCharacterRemoving:Disconnect()
-                tbl17.connHideCharacterRemoving = nil
+            if visualModelState.connHideCharacterRemoving then
+                visualModelState.connHideCharacterRemoving:Disconnect()
+                visualModelState.connHideCharacterRemoving = nil
             end
-            tbl17.connHideCharacter = arg.DescendantAdded:Connect(trackHiddenCharacterInstance)
-            tbl17.connHideCharacterRemoving = arg.DescendantRemoving:Connect(function()
+            visualModelState.connHideCharacter = character.DescendantAdded:Connect(trackHiddenCharacterInstance)
+            visualModelState.connHideCharacterRemoving = character.DescendantRemoving:Connect(function()
                 task.defer(function()
-                    if hiddenCharacterModel ~= arg then return end
+                    if hiddenCharacterModel ~= character then return end
                     for index = #hiddenCharacterInstances, 1, -1 do
                         local descendant = hiddenCharacterInstances[index]
-                        if not descendant:IsDescendantOf(arg)
+                        if not descendant:IsDescendantOf(character)
                             or descendant:FindFirstAncestorOfClass("Tool") then
                             restoreHiddenCharacterInstance(descendant)
                         end
@@ -1153,14 +1153,14 @@ local function fn28(arg, arg2)
         enforceHiddenCharacter()
         return
     end
-    if hiddenCharacterModel ~= arg then return end
-    if tbl17.connHideCharacter then
-        tbl17.connHideCharacter:Disconnect()
-        tbl17.connHideCharacter = nil
+    if hiddenCharacterModel ~= character then return end
+    if visualModelState.connHideCharacter then
+        visualModelState.connHideCharacter:Disconnect()
+        visualModelState.connHideCharacter = nil
     end
-    if tbl17.connHideCharacterRemoving then
-        tbl17.connHideCharacterRemoving:Disconnect()
-        tbl17.connHideCharacterRemoving = nil
+    if visualModelState.connHideCharacterRemoving then
+        visualModelState.connHideCharacterRemoving:Disconnect()
+        visualModelState.connHideCharacterRemoving = nil
     end
     for index = #hiddenCharacterInstances, 1, -1 do
         restoreHiddenCharacterInstance(hiddenCharacterInstances[index])
@@ -1170,7 +1170,7 @@ local function fn28(arg, arg2)
 end
 
 
-local function createNativeCameraTransparencyUpdater(char, modelo)
+local function createNativeCameraTransparencyUpdater(character, visualModel)
     local visualEntries = {}
     local trackedInstances = setmetatable({}, { __mode = "k" })
     local lastTransparency = nil
@@ -1180,7 +1180,7 @@ local function createNativeCameraTransparencyUpdater(char, modelo)
 
     local function isInsideTool(instance)
         local ancestor = instance.Parent
-        while ancestor and ancestor ~= modelo do
+        while ancestor and ancestor ~= visualModel do
             if ancestor:IsA("Tool") then return true end
             ancestor = ancestor.Parent
         end
@@ -1217,7 +1217,7 @@ local function createNativeCameraTransparencyUpdater(char, modelo)
 
     local function trackVisual(instance)
         if trackedInstances[instance] or isInsideTool(instance) then return end
-        enableCopiedAppearanceEffect(modelo, instance)
+        enableCopiedAppearanceEffect(visualModel, instance)
         local entry = { instance = instance }
         if instance:IsA("BasePart") or instance:IsA("Decal") or instance:IsA("Texture") then
             local ok, originalModifier = pcall(function() return instance.LocalTransparencyModifier end)
@@ -1247,7 +1247,7 @@ local function createNativeCameraTransparencyUpdater(char, modelo)
         table.insert(visualEntries, entry)
     end
 
-    for _, descendant in ipairs(modelo:GetDescendants()) do trackVisual(descendant) end
+    for _, descendant in ipairs(visualModel:GetDescendants()) do trackVisual(descendant) end
 
     local function getTargetTransparency()
         local camera = Workspace.CurrentCamera
@@ -1258,9 +1258,9 @@ local function createNativeCameraTransparencyUpdater(char, modelo)
             else
                 local distance = (camera.Focus.Position - camera.CFrame.Position).Magnitude
                 if distance >= 2 then
-                    local reference = modelo:FindFirstChild("Head")
-                        or char:FindFirstChild("Head")
-                        or modelo:FindFirstChild("HumanoidRootPart")
+                    local reference = visualModel:FindFirstChild("Head")
+                        or character:FindFirstChild("Head")
+                        or visualModel:FindFirstChild("HumanoidRootPart")
                     if reference and reference:IsA("BasePart") then
                         local lookVector = camera.CFrame.LookVector
                         local toReference = reference.Position - camera.CFrame.Position
@@ -1293,7 +1293,7 @@ local function createNativeCameraTransparencyUpdater(char, modelo)
 
     local function applyVisual(entry, nativeTransparency)
         local instance = entry.instance
-        if not instance.Parent or not instance:IsDescendantOf(modelo) or isInsideTool(instance) then return end
+        if not instance.Parent or not instance:IsDescendantOf(visualModel) or isInsideTool(instance) then return end
         local fullyFirstPerson = nativeTransparency >= 0.995
         if entry.kind == "nativeModifier" then
             local desired = math.max(entry.originalLocalTransparencyModifier or 0, nativeTransparency)
@@ -1339,7 +1339,7 @@ local function createNativeCameraTransparencyUpdater(char, modelo)
     end
 
     local function update()
-        if not (char.Parent and modelo.Parent) then return false end
+        if not (character.Parent and visualModel.Parent) then return false end
         local nativeTransparency = getTargetTransparency()
         local fullyFirstPerson = nativeTransparency >= 0.995
         local now = os.clock()
@@ -1348,7 +1348,7 @@ local function createNativeCameraTransparencyUpdater(char, modelo)
             for index = #visualEntries, 1, -1 do
                 local entry = visualEntries[index]
                 local instance = entry.instance
-                if not instance:IsDescendantOf(modelo) or isInsideTool(instance) then
+                if not instance:IsDescendantOf(visualModel) or isInsideTool(instance) then
                     restoreEntry(entry)
                     trackedInstances[instance] = nil
                     table.remove(visualEntries, index)
@@ -1359,12 +1359,12 @@ local function createNativeCameraTransparencyUpdater(char, modelo)
         return fullyFirstPerson
     end
 
-    local descendantConnection = modelo.DescendantAdded:Connect(trackVisual)
-    local descendantRemovingConnection = modelo.DescendantRemoving:Connect(function(descendant)
+    local descendantConnection = visualModel.DescendantAdded:Connect(trackVisual)
+    local descendantRemovingConnection = visualModel.DescendantRemoving:Connect(function(descendant)
         if not trackedInstances[descendant] then return end
         task.defer(function()
             if trackedInstances[descendant]
-                and (not descendant:IsDescendantOf(modelo) or isInsideTool(descendant)) then
+                and (not descendant:IsDescendantOf(visualModel) or isInsideTool(descendant)) then
                 untrack(descendant)
             end
         end)
@@ -1373,121 +1373,121 @@ local function createNativeCameraTransparencyUpdater(char, modelo)
     return update, descendantConnection, descendantRemovingConnection
 end
 
-local function fn29()
-	if tbl17.conn then
-		tbl17.conn:Disconnect()
-		tbl17.conn = nil
+local function destroySkinVisuals()
+	if visualModelState.conn then
+		visualModelState.conn:Disconnect()
+		visualModelState.conn = nil
 	end
 
-	if tbl17.connFisica then
-		tbl17.connFisica:Disconnect()
-		tbl17.connFisica = nil
+	if visualModelState.connFisica then
+		visualModelState.connFisica:Disconnect()
+		visualModelState.connFisica = nil
 	end
 
-	if tbl17.connCamera then
-		tbl17.connCamera:Disconnect()
-		tbl17.connCamera = nil
+	if visualModelState.connCamera then
+		visualModelState.connCamera:Disconnect()
+		visualModelState.connCamera = nil
 	end
 
-	if tbl17.connCameraRemoving then
-		tbl17.connCameraRemoving:Disconnect()
-		tbl17.connCameraRemoving = nil
+	if visualModelState.connCameraRemoving then
+		visualModelState.connCameraRemoving:Disconnect()
+		visualModelState.connCameraRemoving = nil
 	end
 
-	if tbl17.connDescendant then
-		tbl17.connDescendant:Disconnect()
-		tbl17.connDescendant = nil
+	if visualModelState.connDescendant then
+		visualModelState.connDescendant:Disconnect()
+		visualModelState.connDescendant = nil
 	end
 
-	if tbl17.connHideCharacter then
-		tbl17.connHideCharacter:Disconnect()
-		tbl17.connHideCharacter = nil
+	if visualModelState.connHideCharacter then
+		visualModelState.connHideCharacter:Disconnect()
+		visualModelState.connHideCharacter = nil
 	end
 
-	if tbl17.connHideCharacterRemoving then
-		tbl17.connHideCharacterRemoving:Disconnect()
-		tbl17.connHideCharacterRemoving = nil
+	if visualModelState.connHideCharacterRemoving then
+		visualModelState.connHideCharacterRemoving:Disconnect()
+		visualModelState.connHideCharacterRemoving = nil
 	end
 
-	if tbl17.modelo then
-		tbl17.modelo:Destroy()
-		tbl17.modelo = nil
+	if visualModelState.modelo then
+		visualModelState.modelo:Destroy()
+		visualModelState.modelo = nil
 	end
-	if tbl17.folder and tbl17.folder.Parent and #tbl17.folder:GetChildren() == 0 then
-		pcall(function() tbl17.folder:Destroy() end)
+	if visualModelState.folder and visualModelState.folder.Parent and #visualModelState.folder:GetChildren() == 0 then
+		pcall(function() visualModelState.folder:Destroy() end)
 	end
-	tbl17.folder = nil
+	visualModelState.folder = nil
 
-	tbl17.cadena = {}
+	visualModelState.cadena = {}
 
-	if tbl17.char then
-		fn28(tbl17.char, false)
-		tbl17.char = nil
+	if visualModelState.char then
+		setOriginalCharacterHidden(visualModelState.char, false)
+		visualModelState.char = nil
 	end
 end
 
-local function fn30(arg, arg2)
-	local y = arg2.Position.Y
+local function getModelFootOffset(model, rootPart)
+	local y = rootPart.Position.Y
 
-	for _, child in ipairs(arg:GetChildren()) do
-		if child:IsA("BasePart") and child ~= arg2 then
+	for _, child in ipairs(model:GetChildren()) do
+		if child:IsA("BasePart") and child ~= rootPart then
 			y = math.min(y, child.Position.Y - child.Size.Y / 2)
 		end
 	end
 
-	return arg2.Position.Y - y
+	return rootPart.Position.Y - y
 end
 
-local function fn31(arg, arg2, arg3, arg4)
-	arg2.CFrame = arg.CFrame * arg4
+local function updateJointMappings(sourceRoot, targetRoot, jointMappings, rootOffset)
+	targetRoot.CFrame = sourceRoot.CFrame * rootOffset
 
-	for _, v2 in ipairs(arg3) do
-		if v2.m0 and v2.m1 then
-			local rotation = v2.m1.CFrame.Rotation
-			local n3 = v2.m0.CFrame.Rotation:Inverse() * rotation
-			local c1 = v2.c1
-			v2.hacia.CFrame = v2.desde.CFrame * v2.c0 * v2.c0.Rotation:Inverse() * n3 * v2.c1.Rotation * c1:Inverse()
+	for _, currentEmoteTrack in ipairs(jointMappings) do
+		if currentEmoteTrack.m0 and currentEmoteTrack.m1 then
+			local rotation = currentEmoteTrack.m1.CFrame.Rotation
+			local n3 = currentEmoteTrack.m0.CFrame.Rotation:Inverse() * rotation
+			local c1 = currentEmoteTrack.c1
+			currentEmoteTrack.hacia.CFrame = currentEmoteTrack.desde.CFrame * currentEmoteTrack.c0 * currentEmoteTrack.c0.Rotation:Inverse() * n3 * currentEmoteTrack.c1.Rotation * c1:Inverse()
 		else
-			local a = v2.a
+			local a = currentEmoteTrack.a
 
-			for _, src in ipairs(v2.srcs) do
+			for _, src in ipairs(currentEmoteTrack.srcs) do
 				a *= src.Transform
 			end
 
-			v2.hacia.CFrame = v2.desde.CFrame * v2.c0 * a * v2.b * v2.c1:Inverse()
+			currentEmoteTrack.hacia.CFrame = currentEmoteTrack.desde.CFrame * currentEmoteTrack.c0 * a * currentEmoteTrack.b * currentEmoteTrack.c1:Inverse()
 		end
 	end
 end
 
-local function fn32(char, modelo)
-	local humanoidRootPart = char:FindFirstChild("HumanoidRootPart")
-	local humanoidRootPart2 = modelo:FindFirstChild("HumanoidRootPart")
-	local v2 = fn27()
-	if not (humanoidRootPart and humanoidRootPart2 and v2) then
-		modelo:Destroy()
+local function buildR15SkinVisual(character, visualModel)
+	local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+	local humanoidRootPart2 = visualModel:FindFirstChild("HumanoidRootPart")
+	local currentEmoteTrack = getSkinVisualFolder()
+	if not (humanoidRootPart and humanoidRootPart2 and currentEmoteTrack) then
+		visualModel:Destroy()
 		return false
 	end
-	local humanoid = modelo:FindFirstChildOfClass("Humanoid")
-	char:FindFirstChildOfClass("Humanoid")
-	local cframe = CFrame.new(0, (humanoid and humanoid.HipHeight > 0 and humanoid.HipHeight + humanoidRootPart2.Size.Y / 2 or fn30(modelo, humanoidRootPart2)) - fn30(char, humanoidRootPart), 0)
+	local humanoid = visualModel:FindFirstChildOfClass("Humanoid")
+	character:FindFirstChildOfClass("Humanoid")
+	local cframe = CFrame.new(0, (humanoid and humanoid.HipHeight > 0 and humanoid.HipHeight + humanoidRootPart2.Size.Y / 2 or getModelFootOffset(visualModel, humanoidRootPart2)) - getModelFootOffset(character, humanoidRootPart), 0)
 	local tbl18 = {}
 
-	local function fn33(arg)
-		local insideAccessory = arg:FindFirstAncestorOfClass("Accessory") ~= nil
-		local insideTool = arg:FindFirstAncestorOfClass("Tool") ~= nil
-		arg.Anchored = not insideAccessory and not insideTool and arg == humanoidRootPart2
-		arg.CanCollide = false
-		arg.CanTouch = false
-		arg.CanQuery = false
-		arg.Massless = true
-		table.insert(tbl18, arg)
+	local function configureVisualPart(part)
+		local insideAccessory = part:FindFirstAncestorOfClass("Accessory") ~= nil
+		local insideTool = part:FindFirstAncestorOfClass("Tool") ~= nil
+		part.Anchored = not insideAccessory and not insideTool and part == humanoidRootPart2
+		part.CanCollide = false
+		part.CanTouch = false
+		part.CanQuery = false
+		part.Massless = true
+		table.insert(tbl18, part)
 	end
 
-	for _, descendant in ipairs(modelo:GetDescendants()) do
+	for _, descendant in ipairs(visualModel:GetDescendants()) do
 		if descendant:IsA("BaseScript") then
 			descendant.Disabled = true
 		elseif descendant:IsA("BasePart") then
-			fn33(descendant)
+			configureVisualPart(descendant)
 		end
 	end
 
@@ -1507,62 +1507,62 @@ local function fn32(char, modelo)
 		end
 	end
 
-	modelo.Name = "SnowX_SkinsVisuals_R15"
-	modelo.PrimaryPart = humanoidRootPart2
-	modelo:PivotTo(humanoidRootPart.CFrame * cframe)
-	modelo.Parent = v2
+	visualModel.Name = "SnowX_SkinsVisuals_R15"
+	visualModel.PrimaryPart = humanoidRootPart2
+	visualModel:PivotTo(humanoidRootPart.CFrame * cframe)
+	visualModel.Parent = currentEmoteTrack
 
-	local v3 = fn23(char)
+	local v3 = indexCharacterJoints(character)
 	local cadena = {}
 
-	local function fn34(arg)
+	local function configureVisualJoint(joint)
 
-		if arg:FindFirstAncestorOfClass("Accessory") then
+		if joint:FindFirstAncestorOfClass("Accessory") then
 			return
 		end
 
-		if arg:IsA("BallSocketConstraint") then
-			arg.Enabled = false
-		elseif arg:IsA("AnimationConstraint") or arg:IsA("Motor6D") then
+		if joint:IsA("BallSocketConstraint") then
+			joint.Enabled = false
+		elseif joint:IsA("AnimationConstraint") or joint:IsA("Motor6D") then
 			pcall(function()
-				arg.IsKinematic = true
+				joint.IsKinematic = true
 			end)
 
-			local v4 = v3[arg.Name]
+			local v4 = v3[joint.Name]
 
 			if v4 then
-				table.insert(cadena, { src = v4, tgt = arg })
+				table.insert(cadena, { src = v4, tgt = joint })
 			end
 		end
 	end
 
-	for _, descendant in ipairs(modelo:GetDescendants()) do
-		fn34(descendant)
+	for _, descendant in ipairs(visualModel:GetDescendants()) do
+		configureVisualJoint(descendant)
 	end
 
-	if tbl17.connDescendant then tbl17.connDescendant:Disconnect() end
-	tbl17.connDescendant = modelo.DescendantAdded:Connect(function(descendant)
+	if visualModelState.connDescendant then visualModelState.connDescendant:Disconnect() end
+	visualModelState.connDescendant = visualModel.DescendantAdded:Connect(function(descendant)
 		if descendant:IsA("BasePart") then
-			fn33(descendant)
+			configureVisualPart(descendant)
 		else
-			fn34(descendant)
+			configureVisualJoint(descendant)
 		end
 	end)
 
-	local v4 = tbl17
-	local v5 = tbl17
-	tbl17.modelo = modelo
-	v4.char = char
+	local v4 = visualModelState
+	local v5 = visualModelState
+	visualModelState.visualModel = visualModel
+	v4.character = character
 	v5.cadena = cadena
-	fn28(char, true)
+	setOriginalCharacterHidden(character, true)
 
 	local updateCameraTransparency, cameraDescendantConnection, cameraDescendantRemovingConnection =
-		createNativeCameraTransparencyUpdater(char, modelo)
-	tbl17.connCamera = cameraDescendantConnection
-	tbl17.connCameraRemoving = cameraDescendantRemovingConnection
-	tbl17.folder = v2
+		createNativeCameraTransparencyUpdater(character, visualModel)
+	visualModelState.connCamera = cameraDescendantConnection
+	visualModelState.connCameraRemoving = cameraDescendantRemovingConnection
+	visualModelState.folder = currentEmoteTrack
 
-	local function fn35()
+	local function updateVisualPose()
 		humanoidRootPart2.CFrame = humanoidRootPart.CFrame * cframe
 
 		for _, v6 in ipairs(cadena) do
@@ -1572,8 +1572,8 @@ local function fn32(char, modelo)
 		end
 	end
 
-	tbl17.connFisica = RunService.Stepped:Connect(function()
-		if tbl17.modelo ~= modelo then
+	visualModelState.connFisica = RunService.Stepped:Connect(function()
+		if visualModelState.visualModel ~= visualModel then
 			return
 		end
 		for _, part in ipairs(tbl18) do
@@ -1582,28 +1582,28 @@ local function fn32(char, modelo)
 				if part.CanTouch then part.CanTouch = false end
 			end
 		end
-		fn35()
+		updateVisualPose()
 	end)
 
 	local n3 = 0
 
-	tbl17.conn = RunService.RenderStepped:Connect(function(deltaTime)
-		if tbl17.modelo ~= modelo then
+	visualModelState.conn = RunService.RenderStepped:Connect(function(deltaTime)
+		if visualModelState.visualModel ~= visualModel then
 			return
 		end
         local currentCamera = workspace.CurrentCamera
-        if not v2 or v2.Parent ~= currentCamera then
-            local previousFolder = v2
-            v2 = fn27()
-            if previousFolder and previousFolder ~= v2 and previousFolder.Parent
+        if not currentEmoteTrack or currentEmoteTrack.Parent ~= currentCamera then
+            local previousFolder = currentEmoteTrack
+            currentEmoteTrack = getSkinVisualFolder()
+            if previousFolder and previousFolder ~= currentEmoteTrack and previousFolder.Parent
                 and #previousFolder:GetChildren() == 0 then
                 pcall(function() previousFolder:Destroy() end)
             end
-            tbl17.folder = v2
+            visualModelState.folder = currentEmoteTrack
         end
         if not currentCamera then return end
-        if v2 and modelo.Parent ~= v2 then modelo.Parent = v2 end
-        fn35()
+        if currentEmoteTrack and visualModel.Parent ~= currentEmoteTrack then visualModel.Parent = currentEmoteTrack end
+        updateVisualPose()
         updateCameraTransparency()
 		n3 += deltaTime
 
@@ -1616,23 +1616,23 @@ local function fn32(char, modelo)
 	return true
 end
 
-local function fn33(char, modelo)
-	fn29()
-	local humanoid = modelo:FindFirstChildOfClass("Humanoid")
+local function buildSkinVisual(character, visualModel)
+	destroySkinVisuals()
+	local humanoid = visualModel:FindFirstChildOfClass("Humanoid")
 	humanoid = humanoid and humanoid.RigType == Enum.HumanoidRigType.R6 and "R6" or "R15"
 	if humanoid ~= "R6" then
-		return fn32(char, modelo)
+		return buildR15SkinVisual(character, visualModel)
 	end
-	local humanoidRootPart = char:FindFirstChild("HumanoidRootPart")
-	local humanoidRootPart2 = modelo:FindFirstChild("HumanoidRootPart")
-	local v2 = fn27()
-	if not (humanoidRootPart and humanoidRootPart2 and v2) then
-		modelo:Destroy()
+	local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+	local humanoidRootPart2 = visualModel:FindFirstChild("HumanoidRootPart")
+	local currentEmoteTrack = getSkinVisualFolder()
+	if not (humanoidRootPart and humanoidRootPart2 and currentEmoteTrack) then
+		visualModel:Destroy()
 		return false
 	end
-	local humanoid2 = modelo:FindFirstChildOfClass("Humanoid")
-	char:FindFirstChildOfClass("Humanoid")
-	local flag = humanoid == "R6" and fn30(modelo, humanoidRootPart2)
+	local humanoid2 = visualModel:FindFirstChildOfClass("Humanoid")
+	character:FindFirstChildOfClass("Humanoid")
+	local flag = humanoid == "R6" and getModelFootOffset(visualModel, humanoidRootPart2)
 	local n3
 
 	if flag then
@@ -1641,10 +1641,10 @@ local function fn33(char, modelo)
 		n3 = (humanoid2 and humanoid2.HipHeight or 2) + humanoidRootPart2.Size.Y / 2
 	end
 
-	local cframe = CFrame.new(0, n3 - fn30(char, humanoidRootPart), 0)
+	local cframe = CFrame.new(0, n3 - getModelFootOffset(character, humanoidRootPart), 0)
 	local tbl18 = {}
 
-	for _, descendant in ipairs(modelo:GetDescendants()) do
+	for _, descendant in ipairs(visualModel:GetDescendants()) do
 		if descendant:IsA("BaseScript") then
 			descendant.Disabled = true
 		elseif descendant:IsA("BasePart") then
@@ -1677,13 +1677,13 @@ local function fn33(char, modelo)
 		end
 	end
 
-	modelo.Name = "SnowX_SkinsVisuals_" .. humanoid
-	modelo.PrimaryPart = humanoidRootPart2
-	local v3 = fn26(char, modelo, humanoidRootPart2, humanoid)
-	fn31(humanoidRootPart, humanoidRootPart2, v3, cframe)
-	modelo.Parent = v2
+	visualModel.Name = "SnowX_SkinsVisuals_" .. humanoid
+	visualModel.PrimaryPart = humanoidRootPart2
+	local v3 = buildJointMappings(character, visualModel, humanoidRootPart2, humanoid)
+	updateJointMappings(humanoidRootPart, humanoidRootPart2, v3, cframe)
+	visualModel.Parent = currentEmoteTrack
 
-	for _, descendant in ipairs(modelo:GetDescendants()) do
+	for _, descendant in ipairs(visualModel:GetDescendants()) do
 		if (descendant:IsA("Constraint") or descendant:IsA("JointInstance"))
 			and not descendant:FindFirstAncestorOfClass("Accessory")
 			and not descendant:FindFirstAncestorOfClass("Tool") then
@@ -1691,8 +1691,8 @@ local function fn33(char, modelo)
 		end
 	end
 
-	if tbl17.connDescendant then tbl17.connDescendant:Disconnect() end
-	tbl17.connDescendant = modelo.DescendantAdded:Connect(function(descendant)
+	if visualModelState.connDescendant then visualModelState.connDescendant:Disconnect() end
+	visualModelState.connDescendant = visualModel.DescendantAdded:Connect(function(descendant)
 		if (descendant:IsA("Constraint") or descendant:IsA("JointInstance"))
 			and not descendant:FindFirstAncestorOfClass("Accessory")
 			and not descendant:FindFirstAncestorOfClass("Tool") then
@@ -1713,20 +1713,20 @@ local function fn33(char, modelo)
 		end
 	end)
 
-	local v4 = tbl17
-	local v5 = tbl17
-	tbl17.modelo = modelo
-	v4.char = char
+	local v4 = visualModelState
+	local v5 = visualModelState
+	visualModelState.visualModel = visualModel
+	v4.character = character
 	v5.cadena = v3
-	fn28(char, true)
+	setOriginalCharacterHidden(character, true)
 	local updateCameraTransparency, cameraDescendantConnection, cameraDescendantRemovingConnection =
-		createNativeCameraTransparencyUpdater(char, modelo)
-	tbl17.connCamera = cameraDescendantConnection
-	tbl17.connCameraRemoving = cameraDescendantRemovingConnection
-	tbl17.folder = v2
+		createNativeCameraTransparencyUpdater(character, visualModel)
+	visualModelState.connCamera = cameraDescendantConnection
+	visualModelState.connCameraRemoving = cameraDescendantRemovingConnection
+	visualModelState.folder = currentEmoteTrack
 
-	tbl17.connFisica = RunService.Stepped:Connect(function()
-		if tbl17.modelo ~= modelo then return end
+	visualModelState.connFisica = RunService.Stepped:Connect(function()
+		if visualModelState.visualModel ~= visualModel then return end
 		for _, part in ipairs(tbl18) do
 			if part.Parent then
 				if part.CanCollide then part.CanCollide = false end
@@ -1737,23 +1737,23 @@ local function fn33(char, modelo)
 
 	local n4 = 0
 
-	tbl17.conn = RunService.RenderStepped:Connect(function(deltaTime)
-		if tbl17.modelo ~= modelo then
+	visualModelState.conn = RunService.RenderStepped:Connect(function(deltaTime)
+		if visualModelState.visualModel ~= visualModel then
 			return
 		end
         local currentCamera = workspace.CurrentCamera
-        if not v2 or v2.Parent ~= currentCamera then
-            local previousFolder = v2
-            v2 = fn27()
-            if previousFolder and previousFolder ~= v2 and previousFolder.Parent
+        if not currentEmoteTrack or currentEmoteTrack.Parent ~= currentCamera then
+            local previousFolder = currentEmoteTrack
+            currentEmoteTrack = getSkinVisualFolder()
+            if previousFolder and previousFolder ~= currentEmoteTrack and previousFolder.Parent
                 and #previousFolder:GetChildren() == 0 then
                 pcall(function() previousFolder:Destroy() end)
             end
-            tbl17.folder = v2
+            visualModelState.folder = currentEmoteTrack
         end
         if not currentCamera then return end
-        if v2 and modelo.Parent ~= v2 then modelo.Parent = v2 end
-        fn31(humanoidRootPart, humanoidRootPart2, v3, cframe)
+        if currentEmoteTrack and visualModel.Parent ~= currentEmoteTrack then visualModel.Parent = currentEmoteTrack end
+        updateJointMappings(humanoidRootPart, humanoidRootPart2, v3, cframe)
         updateCameraTransparency()
 		n4 += deltaTime
 
@@ -1766,55 +1766,55 @@ local function fn33(char, modelo)
 	return true
 end
 
-local function fn34(arg, arg2, arg3, arg4)
-	if not arg then
+local function attachSkinVisual(character, visualModel, _unused, rigName)
+	if not character then
 		return 0
 	end
-	local v2 = fn14(arg)
-	fn15(arg, v2)
-	local v3 = arg2 and fn33(arg, arg2, arg4)
-	if arg2 and not v3 then
+	local currentEmoteTrack = captureCharacterState(character)
+	noopCharacterStateHook(character, currentEmoteTrack)
+	local v3 = visualModel and buildSkinVisual(character, visualModel, rigName)
+	if visualModel and not v3 then
 		return nil
 	end
 	local n3 = 0
 
 	if v3 then
-		n3 = 0 + #tbl17.cadena + 1
+		n3 = 0 + #visualModelState.cadena + 1
 	end
 
 	return n3
 end
 
-local function fn35(arg)
-	if not arg then
+local function restoreCharacterAppearance(character)
+	if not character then
 		return
 	end
-	fn29()
-	local v2 = obj[arg]
-	if not v2 then
+	destroySkinVisuals()
+	local currentEmoteTrack = originalCharacterStateCache[character]
+	if not currentEmoteTrack then
 		return
 	end
-	fn15(arg, v2)
-	fn18(arg, v2)
+	noopCharacterStateHook(character, currentEmoteTrack)
+	restoreAnimationSet(character, currentEmoteTrack)
 end
 
-local v2 = nil
-local connection2 = nil
+local currentEmoteTrack = nil
+local emoteMonitorConnection = nil
 
-local function fn41()
-	if v2 then
-		pcall(v2.Stop, v2, 0.2)
-		v2 = nil
+local function stopCurrentEmote()
+	if currentEmoteTrack then
+		pcall(currentEmoteTrack.Stop, currentEmoteTrack, 0.2)
+		currentEmoteTrack = nil
 	end
 
-	if connection2 then
-		connection2:Disconnect()
-		connection2 = nil
+	if emoteMonitorConnection then
+		emoteMonitorConnection:Disconnect()
+		emoteMonitorConnection = nil
 	end
 end
 
-local function fn42(arg)
-	local v3 = fn10(arg)
+local function findAnimationInAsset(assetId)
+	local v3 = loadAssetObjects(assetId)
 	local v4 = ipairs
 	local tbl20 = v3 or {}
 
@@ -1833,28 +1833,28 @@ local function fn42(arg)
 	return nil
 end
 
-local function fn43(arg)
-	fn41()
-	local v3 = fn5()
+local function playEmote(emote)
+	stopCurrentEmote()
+	local v3 = getLocalCharacter()
 	local humanoid = v3 and v3:FindFirstChildOfClass("Humanoid")
 	local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
 	if not animator then
 		return false
 	end
-	local v4 = fn19(v3)
+	local v4 = getCharacterHumanoidDescription(v3)
 
 	if v4 then
 		local ok, result = pcall(v4.GetEmotes, v4)
 
-		if ok and result[arg.nombre] then
-			local ok2, result2 = pcall(humanoid.PlayEmote, humanoid, arg.nombre)
+		if ok and result[emote.nombre] then
+			local ok2, result2 = pcall(humanoid.PlayEmote, humanoid, emote.nombre)
 			if ok2 and result2 then
 				return true
 			end
 		end
 	end
 
-	local v5 = fn42(arg.id)
+	local v5 = findAnimationInAsset(emote.id)
 	if not v5 then
 		return false
 	end
@@ -1865,11 +1865,11 @@ local function fn43(arg)
 	result.Priority = Enum.AnimationPriority.Action
 	result.Looped = true
 	result:Play(0.2)
-	v2 = result
+	currentEmoteTrack = result
 
-	connection2 = RunService.Heartbeat:Connect(function()
-		if not (humanoid.Parent and v2 == result) then
-			fn41()
+	emoteMonitorConnection = RunService.Heartbeat:Connect(function()
+		if not (humanoid.Parent and currentEmoteTrack == result) then
+			stopCurrentEmote()
 			return
 		end
 		local flag = humanoid.MoveDirection.Magnitude > 0
@@ -1885,21 +1885,21 @@ local function fn43(arg)
 		end
 
 		if flag then
-			fn41()
+			stopCurrentEmote()
 		end
 	end)
 
 	return true
 end
 
-local v3 = nil
+local guiParent = nil
 
 if gethui then
 	local ok, result = pcall(gethui)
-	v3 = ok and result or nil
+	guiParent = ok and result or nil
 end
 
-v3 = v3 or CoreGui
+guiParent = guiParent or CoreGui
 local function removeOldGui(root, name)
 	if root then
 		local existing = root:FindFirstChild(name)
@@ -1909,12 +1909,12 @@ local function removeOldGui(root, name)
 	end
 end
 
-removeOldGui(v3, "snowx-skins")
+removeOldGui(guiParent, "snowx-skins")
 local playerGui = localPlayer:FindFirstChild("PlayerGui")
 removeOldGui(playerGui, "snowx-skins")
 
-fn()
-task.spawn(fn21)
+loadConfiguration()
+task.spawn(getLocalPlayerEmoteData)
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "snowx-skins"
 screenGui.ResetOnSpawn = false
@@ -1923,7 +1923,7 @@ screenGui.DisplayOrder = 2147483647
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 if not pcall(function()
-	screenGui.Parent = v3
+	screenGui.Parent = guiParent
 end) then
 	screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
 end
@@ -1954,21 +1954,21 @@ local function loadBackgroundAsset()
 end
 
 local bgAsset = loadBackgroundAsset()
-local Frame = fn3("Frame", {
+local mainFrame = createGuiInstance("Frame", {
 	AnchorPoint = Vector2.new(0.5, 0.5),
 	Position = UDim2.fromScale(0.5, 0.5),
 	Size = UDim2.fromOffset(590, 274),
-	BackgroundColor3 = tbl.Background,
+	BackgroundColor3 = theme.Background,
 	BorderSizePixel = 0,
 	Active = true,
 	ClipsDescendants = true,
 }, screenGui, 16)
 
-fn3("UIStroke", { Color = tbl.Border, Thickness = 1, Transparency = 0.2 }, Frame)
+createGuiInstance("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.2 }, mainFrame)
 local uiGradient = Instance.new("UIGradient")
-uiGradient.Color = ColorSequence.new(tbl.BackgroundAlt, tbl.Background)
+uiGradient.Color = ColorSequence.new(theme.BackgroundAlt, theme.Background)
 uiGradient.Rotation = 90
-uiGradient.Parent = Frame
+uiGradient.Parent = mainFrame
 
 local backgroundImage = Instance.new("ImageLabel")
 backgroundImage.Name = "ReferenceBackground"
@@ -1978,18 +1978,18 @@ backgroundImage.Image = bgAsset or ""
 backgroundImage.ImageTransparency = bgAsset and 0.38 or 1
 backgroundImage.ScaleType = Enum.ScaleType.Crop
 backgroundImage.ZIndex = 1
-backgroundImage.Parent = Frame
-fn3("UICorner", { CornerRadius = UDim.new(0, 16) }, backgroundImage)
-fn3("Frame", {
+backgroundImage.Parent = mainFrame
+createGuiInstance("UICorner", { CornerRadius = UDim.new(0, 16) }, backgroundImage)
+createGuiInstance("Frame", {
     Name = "ReferenceBackgroundOverlay",
     Size = UDim2.fromScale(1, 1),
     BackgroundColor3 = Color3.fromRGB(0, 0, 0),
     BackgroundTransparency = bgAsset and 0.58 or 1,
     BorderSizePixel = 0,
     ZIndex = 1,
-}, Frame)
+}, mainFrame)
 
-fn3("TextButton", {
+createGuiInstance("TextButton", {
 	Text = "",
 	Size = UDim2.new(1, 0, 1, 0),
 	BackgroundTransparency = 1,
@@ -1997,38 +1997,16 @@ fn3("TextButton", {
 	Active = true,
 	Selectable = false,
 	ZIndex = 0,
-}, Frame)
+}, mainFrame)
 
 local uiScale = Instance.new("UIScale")
-uiScale.Parent = Frame
+uiScale.Parent = mainFrame
 local flag = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
-local function getViewportSize()
+local function clampFrameCenter(position)
 	local camera = Workspace.CurrentCamera
-	return camera and camera.ViewportSize or Vector2.new(1280, 720)
-end
-
-local function getGuiCenter(guiObject)
-	local viewport = getViewportSize()
-	local position = guiObject.Position
-	local anchorPoint = guiObject.AnchorPoint
-	local size = guiObject.AbsoluteSize
-	local anchorPosition = Vector2.new(
-		position.X.Scale * viewport.X + position.X.Offset,
-		position.Y.Scale * viewport.Y + position.Y.Offset
-	)
-	return anchorPosition + Vector2.new(
-		(0.5 - anchorPoint.X) * size.X,
-		(0.5 - anchorPoint.Y) * size.Y
-	)
-end
-
-local function clampGuiCenter(guiObject, position)
-	local viewport = getViewportSize()
-	local halfSize = Vector2.new(
-		guiObject.AbsoluteSize.X * 0.5 + 2,
-		guiObject.AbsoluteSize.Y * 0.5 + 2
-	)
+	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	local halfSize = Vector2.new(mainFrame.AbsoluteSize.X * 0.5 + 2, mainFrame.AbsoluteSize.Y * 0.5 + 2)
 	local maxX, maxY = viewport.X - halfSize.X, viewport.Y - halfSize.Y
 	if maxX < halfSize.X or maxY < halfSize.Y then
 		return Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
@@ -2039,27 +2017,18 @@ local function clampGuiCenter(guiObject, position)
 	)
 end
 
-local function setGuiCenter(guiObject, position)
-	local target = clampGuiCenter(guiObject, position)
-	local anchorPoint = guiObject.AnchorPoint
-	local size = guiObject.AbsoluteSize
-	local anchorPosition = target - Vector2.new(
-		(0.5 - anchorPoint.X) * size.X,
-		(0.5 - anchorPoint.Y) * size.Y
-	)
-	guiObject.Position = UDim2.fromOffset(anchorPosition.X, anchorPosition.Y)
-end
-
-local function clampFrameCenter(position)
-	return clampGuiCenter(Frame, position)
-end
-
 local function keepFrameInsideViewport()
-	if not Frame.Parent then return end
-	setGuiCenter(Frame, getGuiCenter(Frame))
+	if not mainFrame.Parent then return end
+	local absolute = mainFrame.AbsolutePosition
+	local center = Vector2.new(
+		absolute.X + mainFrame.AbsoluteSize.X * 0.5,
+		absolute.Y + mainFrame.AbsoluteSize.Y * 0.5
+	)
+	local target = clampFrameCenter(center)
+	mainFrame.Position = UDim2.fromOffset(target.X, target.Y)
 end
 
-local function fn44()
+local function updateUiScale()
 	local currentCamera = workspace.CurrentCamera
 	currentCamera = currentCamera and currentCamera.ViewportSize or Vector2.new(1280, 720)
 	local n3 = 0.92
@@ -2070,24 +2039,24 @@ local function fn44()
 		n4 = 0.9
 	end
 
-	uiScale.Scale = math.clamp(math.min(currentCamera.X * n4 / n, currentCamera.Y * n3 / n2), 0.01, 1)
+	uiScale.Scale = math.clamp(math.min(currentCamera.X * n4 / PANEL_WIDTH, currentCamera.Y * n3 / PANEL_HEIGHT), 0.01, 1)
 	task.defer(keepFrameInsideViewport)
 end
 
-fn44()
-local Frame2 = fn3("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52) }, Frame)
+updateUiScale()
+local windowHeader = createGuiInstance("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52) }, mainFrame)
 
-local titleLabel = fn3("TextLabel", {
+local titleLabel = createGuiInstance("TextLabel", {
 	BackgroundTransparency = 1,
 	Position = UDim2.fromOffset(18, 15),
 	Size = UDim2.fromOffset(166, 22),
 	Font = Enum.Font.GothamBold,
 	Text = "SnowX",
 	TextSize = 16,
-	TextColor3 = tbl.Text,
+	TextColor3 = theme.Text,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextTruncate = Enum.TextTruncate.AtEnd,
-}, Frame)
+}, mainFrame)
 local titleGradient = Instance.new("UIGradient")
 titleGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(145, 145, 145)),
@@ -2105,226 +2074,226 @@ task.spawn(function()
         titleGradient.Offset = Vector2.new(offset * 2 - 1, 0)
     end
 end)
-fn3("TextLabel", {
+createGuiInstance("TextLabel", {
 	BackgroundTransparency = 1,
 	Position = UDim2.fromOffset(19, 32),
 	Size = UDim2.fromOffset(150, 12),
 	Font = Enum.Font.Gotham,
 	Text = "By Fabnx1",
 	TextSize = 9,
-	TextColor3 = tbl.Faint,
+	TextColor3 = theme.Faint,
 	TextXAlignment = Enum.TextXAlignment.Left,
-}, Frame)
+}, mainFrame)
 
-local TextButton = fn3("TextButton", {
+local minimizeButton = createGuiInstance("TextButton", {
 	AnchorPoint = Vector2.new(1, 0),
 	Position = UDim2.new(1, -44, 0, 13),
 	Size = UDim2.fromOffset(26, 26),
-	BackgroundColor3 = tbl.Surface,
+	BackgroundColor3 = theme.Surface,
 	BorderSizePixel = 0,
 	AutoButtonColor = true,
 	Font = Enum.Font.GothamBold,
 	Text = "−",
 	TextSize = 21,
-	TextColor3 = tbl.Icon,
-}, Frame, 8)
+	TextColor3 = theme.Icon,
+}, mainFrame, 8)
 
-local TextButton2 = fn3("TextButton", {
+local closeButton = createGuiInstance("TextButton", {
 	AnchorPoint = Vector2.new(1, 0),
 	Position = UDim2.new(1, -14, 0, 13),
 	Size = UDim2.fromOffset(26, 26),
-	BackgroundColor3 = tbl.Surface,
+	BackgroundColor3 = theme.Surface,
 	BorderSizePixel = 0,
 	AutoButtonColor = true,
 	Font = Enum.Font.GothamBold,
 	Text = "×",
 	TextSize = 16,
-	TextColor3 = tbl.Icon,
-}, Frame, 8)
+	TextColor3 = theme.Icon,
+}, mainFrame, 8)
 
-fn3("Frame", {
+createGuiInstance("Frame", {
 	Position = UDim2.fromOffset(0, 52),
 	Size = UDim2.new(1, 0, 0, 1),
-	BackgroundColor3 = tbl.Line,
+	BackgroundColor3 = theme.Line,
 	BorderSizePixel = 0,
-}, Frame)
+}, mainFrame)
 
-fn3("Frame", {
+createGuiInstance("Frame", {
 	Position = UDim2.fromOffset(176, 52),
 	Size = UDim2.new(0, 1, 1, -52),
-	BackgroundColor3 = tbl.Line,
+	BackgroundColor3 = theme.Line,
 	BorderSizePixel = 0,
-}, Frame)
+}, mainFrame)
 
-fn3("TextLabel", {
+createGuiInstance("TextLabel", {
 	BackgroundTransparency = 1,
 	Position = UDim2.fromOffset(14, 60),
 	Size = UDim2.fromOffset(152, 26),
 	Font = Enum.Font.GothamBold,
 	Text = "Jugadores",
 	TextSize = 12,
-	TextColor3 = tbl.Faint,
+	TextColor3 = theme.Faint,
 	TextXAlignment = Enum.TextXAlignment.Left,
-}, Frame)
+}, mainFrame)
 
-local ScrollingFrame = fn3("ScrollingFrame", {
+local playerListContainer = createGuiInstance("ScrollingFrame", {
 	Position = UDim2.fromOffset(8, 92),
 	Size = UDim2.new(0, 164, 1, -100),
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
 	ScrollBarThickness = 3,
-	ScrollBarImageColor3 = tbl.Soft,
+	ScrollBarImageColor3 = theme.Soft,
 	CanvasSize = UDim2.new(),
 	AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, Frame)
+}, mainFrame)
 
-fn3("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, ScrollingFrame)
-fn3("UIPadding", { PaddingTop = UDim.new(0, 1), PaddingBottom = UDim.new(0, 4) }, ScrollingFrame)
-local n3 = n - 176 - 28 - 4
+createGuiInstance("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, playerListContainer)
+createGuiInstance("UIPadding", { PaddingTop = UDim.new(0, 1), PaddingBottom = UDim.new(0, 4) }, playerListContainer)
+local n3 = PANEL_WIDTH - 176 - 28 - 4
 
-local Frame3 = fn3("Frame", {
+local playerSearchFrame = createGuiInstance("Frame", {
 	Position = UDim2.fromOffset(194, 64),
 	Size = UDim2.fromOffset(n3 - 44, 36),
-	BackgroundColor3 = tbl.Surface,
+	BackgroundColor3 = theme.Surface,
 	BorderSizePixel = 0,
-}, Frame, 8)
+}, mainFrame, 8)
 
-local TextBox = fn3("TextBox", {
+local playerSearchBox = createGuiInstance("TextBox", {
 	BackgroundTransparency = 1,
 	Position = UDim2.fromOffset(10, 0),
 	Size = UDim2.new(1, -20, 1, 0),
 	Font = Enum.Font.Gotham,
 	PlaceholderText = "Usuario o ID",
-	PlaceholderColor3 = tbl.Faint,
+	PlaceholderColor3 = theme.Faint,
 	Text = "",
 	TextSize = 13,
-	TextColor3 = tbl.Text,
+	TextColor3 = theme.Text,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	ClearTextOnFocus = false,
-}, Frame3)
+}, playerSearchFrame)
 
-local TextButton3 = fn3("TextButton", {
+local searchButton = createGuiInstance("TextButton", {
 	Position = UDim2.fromOffset(194 + n3 - 38, 64),
 	Size = UDim2.fromOffset(38, 36),
-	BackgroundColor3 = tbl.Surface,
+	BackgroundColor3 = theme.Surface,
 	BorderSizePixel = 0,
 	AutoButtonColor = true,
 	Font = Enum.Font.GothamBold,
 	Text = "→",
 	TextSize = 22,
-	TextColor3 = tbl.Faint,
-}, Frame, 8)
+	TextColor3 = theme.Faint,
+}, mainFrame, 8)
 local n4 = n3 - 166
 
-local Frame4 = fn3("Frame", {
+local avatarPreviewCard = createGuiInstance("Frame", {
 	Position = UDim2.fromOffset(194, 108),
 	Size = UDim2.fromOffset(150, 150),
-	BackgroundColor3 = tbl.Surface,
+	BackgroundColor3 = theme.Surface,
 	BorderSizePixel = 0,
-}, Frame, 12)
+}, mainFrame, 12)
 
-local ImageLabel = fn3("ImageLabel", {
+local avatarPreviewImage = createGuiInstance("ImageLabel", {
 	BackgroundTransparency = 1,
 	Position = UDim2.fromOffset(6, 6),
 	Size = UDim2.new(1, -12, 1, -12),
 	Image = "",
 	ScaleType = Enum.ScaleType.Fit,
-}, Frame4)
+}, avatarPreviewCard)
 
-local TextButton4 = fn3("TextButton", {
+local favoriteButton = createGuiInstance("TextButton", {
 	AnchorPoint = Vector2.new(1, 0),
 	Position = UDim2.new(1, -6, 0, 6),
 	Size = UDim2.fromOffset(28, 28),
-	BackgroundColor3 = tbl.Background,
+	BackgroundColor3 = theme.Background,
 	BackgroundTransparency = 0.25,
 	BorderSizePixel = 0,
 	AutoButtonColor = true,
 	Font = Enum.Font.GothamBold,
 	Text = "☆",
 	TextSize = 19,
-	TextColor3 = tbl.Faint,
+	TextColor3 = theme.Faint,
 	ZIndex = 3,
-}, Frame4, 14)
+}, avatarPreviewCard, 14)
 
-local TextLabel2 = fn3("TextLabel", {
+local selectedPlayerNameLabel = createGuiInstance("TextLabel", {
 	Position = UDim2.fromOffset(360, 110),
 	Size = UDim2.fromOffset(n4, 22),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamBold,
 	Text = "Selecciona un jugador",
 	TextSize = 15,
-	TextColor3 = tbl.Text,
+	TextColor3 = theme.Text,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextTruncate = Enum.TextTruncate.AtEnd,
-}, Frame)
+}, mainFrame)
 
-local TextLabel3 = fn3("TextLabel", {
+local selectedPlayerUsernameLabel = createGuiInstance("TextLabel", {
 	Position = UDim2.fromOffset(360, 132),
 	Size = UDim2.fromOffset(n4, 16),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.Gotham,
 	Text = "",
 	TextSize = 10,
-	TextColor3 = tbl.Faint,
+	TextColor3 = theme.Faint,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextTruncate = Enum.TextTruncate.AtEnd,
-}, Frame)
+}, mainFrame)
 
-local StatusLabel = fn3("TextLabel", {
+local skinStatusLabel = createGuiInstance("TextLabel", {
 	Position = UDim2.fromOffset(360, 145),
 	Size = UDim2.fromOffset(n4, 12),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.Gotham,
 	Text = "",
 	TextSize = 9,
-	TextColor3 = tbl.Faint,
+	TextColor3 = theme.Faint,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextTruncate = Enum.TextTruncate.AtEnd,
-}, Frame)
+}, mainFrame)
 
-local obj3 = setmetatable({}, { __newindex = function(_, key, value)
+local statusTextProxy = setmetatable({}, { __newindex = function(_, key, value)
 	if key ~= "Text" then
 		return
 	end
 	local status = tostring(value or "")
 	if status == "Aplicado" or status == "Retirado" or status == "Fallo" then
-		StatusLabel.Text = status
-		StatusLabel.TextColor3 = status == "Fallo" and tbl.Danger or tbl.OnFill
+		skinStatusLabel.Text = status
+		skinStatusLabel.TextColor3 = status == "Fallo" and theme.Danger or theme.OnFill
 	else
-		StatusLabel.Text = ""
-		StatusLabel.TextColor3 = tbl.Faint
+		skinStatusLabel.Text = ""
+		skinStatusLabel.TextColor3 = theme.Faint
 	end
 end })
 
-local function fn45(arg, arg2, arg3, arg4, arg5, arg6, arg7, arg8)
-	local TextButton5 = fn3("TextButton", {
-		Position = UDim2.fromOffset(arg, arg2),
-		Size = UDim2.fromOffset(arg3, arg4),
-		BackgroundColor3 = arg7,
+local function createSkinActionButton(x, y, width, height, label, iconName, backgroundColor, textColor)
+	local createdButton = createGuiInstance("TextButton", {
+		Position = UDim2.fromOffset(x, y),
+		Size = UDim2.fromOffset(width, height),
+		BackgroundColor3 = backgroundColor,
 		BorderSizePixel = 0,
 		AutoButtonColor = true,
 		Font = Enum.Font.GothamBold,
-		Text = arg5,
+		Text = label,
 		TextSize = 12,
-		TextColor3 = arg8,
-	}, Frame, 8)
+		TextColor3 = textColor,
+	}, mainFrame, 8)
 
 	local v5 = nil
 
-	if arg6 then
-		fn3("UIPadding", { PaddingLeft = UDim.new(0, 18) }, TextButton5)
-		v5 = createImageLabel(TextButton5, arg6, 14, arg8, UDim2.new(0, 2, 0.5, 0))
+	if iconName then
+		createGuiInstance("UIPadding", { PaddingLeft = UDim.new(0, 18) }, createdButton)
+		v5 = createImageLabel(createdButton, iconName, 14, textColor, UDim2.new(0, 2, 0.5, 0))
 	end
 
-	return TextButton5, v5
+	return createdButton, v5
 end
 
-local aplicar = fn45(360, 158, 112, 30, "APLICAR", nil, tbl.AccentFill, tbl.On)
-local quitar = fn45(480, 158, n4 - 120, 30, "QUITAR", nil, tbl.Surface, tbl.Icon)
-local v5, v6 = fn45(360, 196, n4, 28, "Animaciones: On", nil, tbl.Surface, tbl.Faint)
+local aplicar = createSkinActionButton(360, 158, 112, 30, "APLICAR", nil, theme.AccentFill, theme.On)
+local quitar = createSkinActionButton(480, 158, n4 - 120, 30, "QUITAR", nil, theme.Surface, theme.Icon)
+local animationToggleButton, animationToggleIcon = createSkinActionButton(360, 196, n4, 28, "Animaciones: On", nil, theme.Surface, theme.Faint)
 v5.TextSize = 11
-local r15 = fn45(360, 232, 112, 26, "R15", nil, tbl.Surface, tbl.Faint)
-local r6 = fn45(480, 232, n4 - 120, 26, "R6", nil, tbl.Surface, tbl.Faint)
+local r15 = createSkinActionButton(360, 232, 112, 26, "R15", nil, theme.Surface, theme.Faint)
+local r6 = createSkinActionButton(480, 232, n4 - 120, 26, "R6", nil, theme.Surface, theme.Faint)
 
 local function notifyAccessoryInventory()
     bumpSkinRevision()
@@ -2333,36 +2302,36 @@ local function notifyAccessoryInventory()
 	end
 end
 
-local function fn46()
-	tbl3.feMode = "ON"
-	for k, v7 in pairs({ [r15] = tbl3.rig == "R15", [r6] = tbl3.rig == "R6" }) do
-		k.BackgroundColor3 = v7 and tbl.OnFill or tbl.Surface
-		v7 = v7 and tbl.On or tbl.Faint
+local function updateSkinControls()
+	skinState.feMode = "ON"
+	for k, v7 in pairs({ [r15] = skinState.rig == "R15", [r6] = skinState.rig == "R6" }) do
+		k.BackgroundColor3 = v7 and theme.OnFill or theme.Surface
+		v7 = v7 and theme.On or theme.Faint
 		k.TextColor3 = v7
 	end
 
-	local skinEquipped = avatarBridge.skin.active == true and tonumber(tbl3.aplicado) ~= nil
-	local useRobloxAnimations = tbl3.rig == "R6"
-	local animationsEnabled = tbl3.animationsEnabled == true
-	v5.Text = useRobloxAnimations and "Animaciones: Roblox"
+	local skinEquipped = avatarBridge.skin.active == true and tonumber(skinState.aplicado) ~= nil
+	local useRobloxAnimations = skinState.rig == "R6"
+	local animationsEnabled = skinState.animationsEnabled == true
+	animationToggleButton.Text = useRobloxAnimations and "Animaciones: Roblox"
 		or (animationsEnabled and "Animaciones: On" or "Animaciones: Off")
 	local animationControlEnabled = skinEquipped and not useRobloxAnimations
-	v5.BackgroundColor3 = not animationControlEnabled and tbl.BackgroundAlt
-		or (animationsEnabled and tbl.AccentFill or tbl.Surface)
-	v5.TextColor3 = animationControlEnabled and (animationsEnabled and tbl.Accent or tbl.Faint) or tbl.Faint
-	v5.TextTransparency = animationControlEnabled and 0 or 0.35
-	v5.Active = animationControlEnabled
-	v5.Selectable = animationControlEnabled
-	v5.AutoButtonColor = animationControlEnabled
-	if v6 then v6.ImageColor3 = v5.TextColor3 end
+	animationToggleButton.BackgroundColor3 = not animationControlEnabled and theme.BackgroundAlt
+		or (animationsEnabled and theme.AccentFill or theme.Surface)
+	animationToggleButton.TextColor3 = animationControlEnabled and (animationsEnabled and theme.Accent or theme.Faint) or theme.Faint
+	animationToggleButton.TextTransparency = animationControlEnabled and 0 or 0.35
+	animationToggleButton.Active = animationControlEnabled
+	animationToggleButton.Selectable = animationControlEnabled
+	animationToggleButton.AutoButtonColor = animationControlEnabled
+	if animationToggleIcon then animationToggleIcon.ImageColor3 = animationToggleButton.TextColor3 end
 end
 
-local flag2 = false
+local isWindowMinimized = false
 
-local TextButton5 = fn3("Frame", {
+local floatingButtonFrame = createGuiInstance("Frame", {
 	AnchorPoint = Vector2.new(0.5, 0.5),
 	Size = UDim2.fromOffset(150, 46),
-	BackgroundColor3 = tbl.BackgroundAlt,
+	BackgroundColor3 = theme.BackgroundAlt,
 	BackgroundTransparency = 0.05,
 	BorderSizePixel = 0,
 	ClipsDescendants = true,
@@ -2370,7 +2339,7 @@ local TextButton5 = fn3("Frame", {
 	ZIndex = 50,
 }, screenGui, 12)
 
-fn3("UIStroke", { Color = tbl.Text, Thickness = 1.5, Transparency = 0.45 }, TextButton5)
+createGuiInstance("UIStroke", { Color = theme.Text, Thickness = 1.5, Transparency = 0.45 }, floatingButtonFrame)
 local reopenBackground = Instance.new("ImageLabel")
 reopenBackground.Size = UDim2.fromScale(1, 1)
 reopenBackground.BackgroundTransparency = 1
@@ -2378,36 +2347,36 @@ reopenBackground.Image = bgAsset or ""
 reopenBackground.ImageTransparency = bgAsset and 0.5 or 1
 reopenBackground.ScaleType = Enum.ScaleType.Crop
 reopenBackground.ZIndex = 50
-reopenBackground.Parent = TextButton5
-fn3("UICorner", { CornerRadius = UDim.new(0, 12) }, reopenBackground)
-local reopenOverlay = fn3("Frame", {
+reopenBackground.Parent = floatingButtonFrame
+createGuiInstance("UICorner", { CornerRadius = UDim.new(0, 12) }, reopenBackground)
+local reopenOverlay = createGuiInstance("Frame", {
     Size = UDim2.fromScale(1, 1),
     BackgroundColor3 = Color3.fromRGB(0, 0, 0),
     BackgroundTransparency = bgAsset and 0.55 or 0.82,
     BorderSizePixel = 0,
     ZIndex = 51,
-}, TextButton5)
-fn3("UICorner", { CornerRadius = UDim.new(0, 12) }, reopenOverlay)
-local reopenDot = fn3("Frame", {
+}, floatingButtonFrame)
+createGuiInstance("UICorner", { CornerRadius = UDim.new(0, 12) }, reopenOverlay)
+local reopenDot = createGuiInstance("Frame", {
     AnchorPoint = Vector2.new(0.5, 0.5),
     Position = UDim2.new(1, -12, 0, 10),
     Size = UDim2.fromOffset(8, 8),
-    BackgroundColor3 = tbl.Text,
+    BackgroundColor3 = theme.Text,
     BorderSizePixel = 0,
     ZIndex = 53,
-}, TextButton5, 4)
-fn3("TextLabel", {
+}, floatingButtonFrame, 4)
+createGuiInstance("TextLabel", {
     BackgroundTransparency = 1,
     Position = UDim2.fromOffset(14, 0),
     Size = UDim2.new(1, -24, 1, 0),
     Font = Enum.Font.GothamBold,
     Text = "Open Skins",
     TextSize = 13,
-    TextColor3 = tbl.Text,
+    TextColor3 = theme.Text,
     TextXAlignment = Enum.TextXAlignment.Left,
     ZIndex = 53,
-}, TextButton5)
-local openClick = fn3("TextButton", {
+}, floatingButtonFrame)
+local openClick = createGuiInstance("TextButton", {
     Size = UDim2.fromScale(1, 1),
     BackgroundTransparency = 1,
     AutoButtonColor = false,
@@ -2415,7 +2384,7 @@ local openClick = fn3("TextButton", {
     Selectable = false,
     Text = "",
     ZIndex = 54,
-}, TextButton5)
+}, floatingButtonFrame)
 task.spawn(function()
     while reopenDot.Parent do
         reopenDot.BackgroundTransparency = 0.65
@@ -2432,8 +2401,8 @@ local function clampFloatingPosition(position)
     local camera = workspace.CurrentCamera
     local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
     local halfSize = Vector2.new(
-        TextButton5.AbsoluteSize.X * 0.5 + 1,
-        TextButton5.AbsoluteSize.Y * 0.5 + 1
+        floatingButtonFrame.AbsoluteSize.X * 0.5 + 1,
+        floatingButtonFrame.AbsoluteSize.Y * 0.5 + 1
     )
     local maxX, maxY = viewport.X - halfSize.X, viewport.Y - halfSize.Y
     if maxX < halfSize.X or maxY < halfSize.Y then
@@ -2446,236 +2415,221 @@ local function clampFloatingPosition(position)
 end
 
 local function getFloatingCenter()
-	return getGuiCenter(TextButton5)
+    local absolute = floatingButtonFrame.AbsolutePosition
+    return Vector2.new(
+        absolute.X + floatingButtonFrame.AbsoluteSize.X * 0.5,
+        absolute.Y + floatingButtonFrame.AbsoluteSize.Y * 0.5
+    )
 end
 
 local function setFloatingCenter(position)
-	setGuiCenter(TextButton5, clampFloatingPosition(position))
+    local target = clampFloatingPosition(position)
+    floatingButtonFrame.Position = UDim2.fromOffset(target.X, target.Y)
 end
 
-local function fn47(visible)
-    flag2 = visible
+local function setWindowMinimized(visible)
+    isWindowMinimized = visible
     if visible and not floatingPositionInitialized then
-        setFloatingCenter(getGuiCenter(Frame) + Vector2.new(26, 26))
+        local absolutePosition = mainFrame.AbsolutePosition
+        setFloatingCenter(Vector2.new(absolutePosition.X + 26, absolutePosition.Y + 26))
         floatingPositionInitialized = true
     end
-    Frame.Visible = not visible
-    TextButton5.Visible = visible
+    mainFrame.Visible = not visible
+    floatingButtonFrame.Visible = visible
     task.defer(keepFrameInsideViewport)
+    if visible and floatingPositionInitialized then
+        task.defer(function() setFloatingCenter(getFloatingCenter()) end)
+    end
 end
 
-TextButton.Activated:Connect(function()
-	fn47(true)
+minimizeButton.Activated:Connect(function()
+	setWindowMinimized(true)
 end)
 
-local tbl20 = nil
+local floatingButtonDragState = nil
 
-local function beginFloatingDrag(input)
-	local inputType = input.UserInputType
-	if inputType ~= Enum.UserInputType.MouseButton1
-		and inputType ~= Enum.UserInputType.Touch then return end
-	tbl20 = {
-		input = input,
-		inputType = inputType,
-		desde = Vector2.new(input.Position.X, input.Position.Y),
-		origen = getFloatingCenter(),
-		movio = false,
-	}
-end
+openClick.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        floatingButtonDragState = {
+            input = input,
+            desde = Vector2.new(input.Position.X, input.Position.Y),
+            origen = getFloatingCenter(),
+            movio = false,
+        }
+    end
+end)
 
-local function moveFloatingDrag(input, isTouch)
-	local drag = tbl20
-	if not drag then return end
-	if isTouch then
-		if drag.inputType ~= Enum.UserInputType.Touch or input ~= drag.input then return end
-	elseif drag.inputType ~= Enum.UserInputType.MouseButton1
-		or input.UserInputType ~= Enum.UserInputType.MouseMovement then
-		return
-	end
-	local pointer = Vector2.new(input.Position.X, input.Position.Y)
-	local delta = pointer - drag.desde
-	if delta.Magnitude > 6 then drag.movio = true end
-	if drag.movio then setFloatingCenter(drag.origen + delta) end
-end
-
-local function finishFloatingDrag(input, isTouch)
-	local drag = tbl20
-	if not drag then return end
-	local ended
-	if isTouch then
-		ended = drag.inputType == Enum.UserInputType.Touch and input == drag.input
-	else
-		ended = drag.inputType == Enum.UserInputType.MouseButton1
-			and input.UserInputType == Enum.UserInputType.MouseButton1
-	end
-	if not ended then return end
-	tbl20 = nil
-	if not drag.movio then fn47(false) end
-end
-
-table.insert(tbl21, openClick.InputBegan:Connect(beginFloatingDrag))
 local connection3 = UserInputService.InputChanged:Connect(function(input)
-	moveFloatingDrag(input, false)
+    local drag = floatingButtonDragState
+    if not drag then return end
+    local isMouseMove = drag.input.UserInputType == Enum.UserInputType.MouseButton1
+        and input.UserInputType == Enum.UserInputType.MouseMovement
+    if not isMouseMove and input ~= drag.input then return end
+    local pointer = Vector2.new(input.Position.X, input.Position.Y)
+    local delta = pointer - drag.desde
+    if delta.Magnitude > 6 then drag.movio = true end
+    if drag.movio then setFloatingCenter(drag.origen + delta) end
 end)
-local connection4 = UserInputService.InputEnded:Connect(function(input)
-	finishFloatingDrag(input, false)
-end)
-table.insert(tbl21, connection3)
-table.insert(tbl21, connection4)
-table.insert(tbl21, UserInputService.TouchMoved:Connect(function(input)
-	moveFloatingDrag(input, true)
-end))
-table.insert(tbl21, UserInputService.TouchEnded:Connect(function(input)
-	finishFloatingDrag(input, true)
-end))
 
-local Frame5 = fn3("Frame", {
+local connection4 = UserInputService.InputEnded:Connect(function(input)
+    local drag = floatingButtonDragState
+    if not drag then return end
+    local ended = input == drag.input
+        or (drag.input.UserInputType == Enum.UserInputType.MouseButton1
+            and input.UserInputType == Enum.UserInputType.MouseButton1)
+    if not ended then return end
+    floatingButtonDragState = nil
+    if not drag.movio then setWindowMinimized(false) end
+end)
+
+local closeConfirmationOverlay = createGuiInstance("Frame", {
 	Size = UDim2.fromScale(1, 1),
-	BackgroundColor3 = tbl.Background,
+	BackgroundColor3 = theme.Background,
 	BackgroundTransparency = 0.3,
 	BorderSizePixel = 0,
 	Visible = false,
 	ZIndex = 20,
 	Active = true,
-}, Frame, 16)
+}, mainFrame, 16)
 
-fn3("TextButton", {
+createGuiInstance("TextButton", {
 	Text = "",
 	Size = UDim2.fromScale(1, 1),
 	BackgroundTransparency = 1,
 	AutoButtonColor = false,
 	ZIndex = 20,
-}, Frame5)
+}, closeConfirmationOverlay)
 
-local Frame6 = fn3("Frame", {
+local closeConfirmationDialog = createGuiInstance("Frame", {
 	AnchorPoint = Vector2.new(0.5, 0.5),
 	Position = UDim2.fromScale(0.5, 0.5),
 	Size = UDim2.fromOffset(300, 132),
-	BackgroundColor3 = tbl.Surface,
+	BackgroundColor3 = theme.Surface,
 	BorderSizePixel = 0,
 	ZIndex = 21,
-}, Frame5, 12)
+}, closeConfirmationOverlay, 12)
 
-fn3("UIStroke", { Color = tbl.Line, Thickness = 1 }, Frame6)
+createGuiInstance("UIStroke", { Color = theme.Line, Thickness = 1 }, closeConfirmationDialog)
 
-fn3("TextLabel", {
+createGuiInstance("TextLabel", {
 	BackgroundTransparency = 1,
 	Position = UDim2.fromOffset(16, 16),
 	Size = UDim2.new(1, -32, 0, 22),
 	Font = Enum.Font.GothamBold,
 	Text = "¿Cerrar SnowX?",
 	TextSize = 15,
-	TextColor3 = tbl.Text,
+	TextColor3 = theme.Text,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	ZIndex = 22,
-}, Frame6)
+}, closeConfirmationDialog)
 
-fn3("TextLabel", {
+createGuiInstance("TextLabel", {
 	BackgroundTransparency = 1,
 	Position = UDim2.fromOffset(16, 40),
 	Size = UDim2.new(1, -32, 0, 32),
 	Font = Enum.Font.Gotham,
 	Text = "Se cerrará SnowX.",
 	TextSize = 11,
-	TextColor3 = tbl.Faint,
+	TextColor3 = theme.Faint,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextWrapped = true,
 	ZIndex = 22,
-}, Frame6)
+}, closeConfirmationDialog)
 
-local TextButton6 = fn3("TextButton", {
+local confirmCloseButton = createGuiInstance("TextButton", {
 	AnchorPoint = Vector2.new(1, 1),
 	Position = UDim2.new(1, -16, 1, -14),
 	Size = UDim2.fromOffset(96, 30),
-	BackgroundColor3 = tbl.DangerFill,
+	BackgroundColor3 = theme.DangerFill,
 	BorderSizePixel = 0,
 	AutoButtonColor = true,
 	Font = Enum.Font.GothamBold,
 	Text = "Cerrar",
 	TextSize = 12,
-	TextColor3 = tbl.Danger,
+	TextColor3 = theme.Danger,
 	ZIndex = 22,
-}, Frame6, 8)
+}, closeConfirmationDialog, 8)
 
-fn3("TextButton", {
+createGuiInstance("TextButton", {
 	AnchorPoint = Vector2.new(1, 1),
 	Position = UDim2.new(1, -120, 1, -14),
 	Size = UDim2.fromOffset(96, 30),
-	BackgroundColor3 = tbl.SurfaceUp,
+	BackgroundColor3 = theme.SurfaceUp,
 	BorderSizePixel = 0,
 	AutoButtonColor = true,
 	Font = Enum.Font.GothamBold,
 	Text = "Cancelar",
 	TextSize = 12,
-	TextColor3 = tbl.Icon,
+	TextColor3 = theme.Icon,
 	ZIndex = 22,
-}, Frame6, 8).Activated:Connect(function()
-	Frame5.Visible = false
+}, closeConfirmationDialog, 8).Activated:Connect(function()
+	closeConfirmationOverlay.Visible = false
 end)
 
-local function fn48()
-	if not tbl3.userId then
+local function preloadSelectedPlayerAnimations()
+	if not skinState.userId then
 		return
 	end
-	local userId = tbl3.userId
+	local userId = skinState.userId
 
 	task.spawn(function()
-		local v7 = fn9(userId)
-		if tbl3.userId ~= userId or not v7 then
+		local v7 = getUserHumanoidDescription(userId)
+		if skinState.userId ~= userId or not v7 then
 			return
 		end
-		task.spawn(fn11, v7)
+		task.spawn(preloadAnimationAssets, v7)
 	end)
 end
 
-local fn49 = nil
+local findFavoriteIndex = nil
 
-local function fn50()
-	local isFavorite = tbl3.userId and fn49(tbl3.userId) ~= nil or false
-	TextButton4.Visible = tbl3.userId ~= nil
-	TextButton4.Text = isFavorite and "★" or "☆"
-	TextButton4.TextColor3 = isFavorite and Color3.fromRGB(250, 204, 21) or tbl.Faint
-	TextButton4.BackgroundColor3 = isFavorite and Color3.fromRGB(49, 42, 25) or tbl.Background
+local function updateFavoriteButton()
+	local isFavorite = skinState.userId and findFavoriteIndex(skinState.userId) ~= nil or false
+	favoriteButton.Visible = skinState.userId ~= nil
+	favoriteButton.Text = isFavorite and "★" or "☆"
+	favoriteButton.TextColor3 = isFavorite and Color3.fromRGB(250, 204, 21) or theme.Faint
+	favoriteButton.BackgroundColor3 = isFavorite and Color3.fromRGB(49, 42, 25) or theme.Background
 end
 
-local function fn51()
-	fn50()
+local function updateSelectedPlayerCard()
+	updateFavoriteButton()
 
-	if not tbl3.userId then
-		TextLabel2.Text = "Selecciona un jugador"
-		TextLabel3.Text = "Apariencias de jugadores"
-		StatusLabel.Text = ""
-		ImageLabel.Image = ""
+	if not skinState.userId then
+		selectedPlayerNameLabel.Text = "Selecciona un jugador"
+		selectedPlayerUsernameLabel.Text = "Apariencias de jugadores"
+		skinStatusLabel.Text = ""
+		avatarPreviewImage.Image = ""
 		return
 	end
 
-	TextLabel2.Text = tbl3.nombre or "..."
-	TextLabel3.Text = tbl3.usuario and "@" .. tbl3.usuario or ("ID " .. tostring(tbl3.userId))
-	StatusLabel.Text = ""
-	ImageLabel.Image = ("rbxthumb://type=Avatar&id=%d&w=352&h=352"):format(tbl3.userId)
-	fn48()
+	selectedPlayerNameLabel.Text = skinState.nombre or "..."
+	selectedPlayerUsernameLabel.Text = skinState.usuario and "@" .. skinState.usuario or ("ID " .. tostring(skinState.userId))
+	skinStatusLabel.Text = ""
+	avatarPreviewImage.Image = ("rbxthumb://type=Avatar&id=%d&w=352&h=352"):format(skinState.userId)
+	preloadSelectedPlayerAnimations()
 end
 
-local fn52 = nil
+local refreshPlayerList = nil
 
-local function fn53(arg)
-	local v7, v8 = fn7(arg)
+local function updateCachedUserInfo(userId)
+	local v7, v8 = getUserNames(userId)
 	if not v8 then
 		return false
 	end
 	local flag3 = false
 
-	for _, favorito in ipairs(tbl3.favoritos) do
-		if favorito.userId == arg and (favorito.nombre ~= v7 or favorito.usuario ~= v8) then
+	for _, favorito in ipairs(skinState.favoritos) do
+		if favorito.userId == userId and (favorito.nombre ~= v7 or favorito.usuario ~= v8) then
 			favorito.nombre = v7
 			favorito.usuario = v8
 			flag3 = true
 		end
 	end
 
-	if tbl3.userId == arg and (tbl3.nombre ~= v7 or tbl3.usuario ~= v8) then
-		local v9 = tbl3
-		tbl3.nombre = v7
+	if skinState.userId == userId and (skinState.nombre ~= v7 or skinState.usuario ~= v8) then
+		local v9 = skinState
+		skinState.nombre = v7
 		v9.usuario = v8
 		flag3 = true
 	end
@@ -2683,92 +2637,92 @@ local function fn53(arg)
 	return flag3
 end
 
-local function fn54(arg)
-	local userId = tonumber(arg)
-	local v7 = tbl5[userId]
-	tbl3.userId = userId
-	tbl3.nombre = v7 and v7.nombre or nil
-	tbl3.usuario = v7 and v7.usuario or nil
+local function selectPlayer(targetUserId)
+	local userId = tonumber(targetUserId)
+	local v7 = userInfoCache[userId]
+	skinState.userId = userId
+	skinState.nombre = v7 and v7.nombre or nil
+	skinState.usuario = v7 and v7.usuario or nil
 
-	for _, favorito in ipairs(tbl3.favoritos) do
+	for _, favorito in ipairs(skinState.favoritos) do
 		if favorito.userId == userId and not v7 then
-			local v8 = tbl3
+			local v8 = skinState
 			local usuario = favorito.usuario
-			tbl3.nombre = favorito.nombre
+			skinState.nombre = favorito.nombre
 			v8.usuario = usuario
 		end
 	end
 
-	fn51()
-	obj3.Text = ""
-	fn2()
-	fn52()
+	updateSelectedPlayerCard()
+	statusTextProxy.Text = ""
+	saveConfiguration()
+	refreshPlayerList()
 
 	task.spawn(function()
-		if fn53(userId) and tbl3.userId == userId then
-			fn51()
-			fn2()
-			fn52()
+		if updateCachedUserInfo(userId) and skinState.userId == userId then
+			updateSelectedPlayerCard()
+			saveConfiguration()
+			refreshPlayerList()
 		end
 	end)
 
 	task.spawn(function()
-		local v8 = fn8(userId)
+		local v8 = getUserRigType(userId)
 
-		if v8 and tbl3.userId == userId and tbl3.rig ~= v8 then
-			tbl3.rig = v8
-			fn2()
-			fn46()
+		if v8 and skinState.userId == userId and skinState.rig ~= v8 then
+			skinState.rig = v8
+			saveConfiguration()
+			updateSkinControls()
 		end
 	end)
 end
 
-local function fn55(arg, arg2, arg3, arg4, arg5)
-	local TextButton7 = fn3("TextButton", {
+local function createPlayerListItem(displayName, username, layoutOrder, onActivated, isSelected)
+	local playerListItemButton = createGuiInstance("TextButton", {
 		Size = UDim2.new(1, -6, 0, 34),
-		BackgroundColor3 = arg5 and tbl.OnFill or tbl.Surface,
+		BackgroundColor3 = isSelected and theme.OnFill or theme.Surface,
 		BorderSizePixel = 0,
 		AutoButtonColor = false,
 		Font = Enum.Font.Gotham,
 		Text = "",
-		LayoutOrder = arg3,
-	}, ScrollingFrame, 7)
+		LayoutOrder = layoutOrder,
+	}, playerListContainer, 7)
 
-	fn3("TextLabel", {
+	createGuiInstance("TextLabel", {
 		BackgroundTransparency = 1,
 		Position = UDim2.fromOffset(9, 3),
 		Size = UDim2.new(1, -18, 0, 15),
 		Font = Enum.Font.Gotham,
-		Text = tostring(arg or "Jugador"),
+		Text = tostring(displayName or "Jugador"),
 		TextSize = 10,
-		TextColor3 = arg5 and tbl.On or tbl.Text,
+		TextColor3 = isSelected and theme.On or theme.Text,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
-	}, TextButton7)
+	}, playerListItemButton)
 
-	if arg2 and arg2 ~= "" then
-		fn3("TextLabel", {
+	if username and username ~= "" then
+		createGuiInstance("TextLabel", {
 			BackgroundTransparency = 1,
 			Position = UDim2.fromOffset(9, 18),
 			Size = UDim2.new(1, -18, 0, 12),
 			Font = Enum.Font.Gotham,
-			Text = arg2,
+			Text = username,
 			TextSize = 8,
-			TextColor3 = arg5 and tbl.Text or tbl.Faint,
+			TextColor3 = isSelected and theme.Text or theme.Faint,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd,
-		}, TextButton7)
+		}, playerListItemButton)
 	end
 
-	if arg4 then
-		TextButton7.Activated:Connect(arg4)
+	if onActivated then
+		playerListItemButton.Activated:Connect(onActivated)
 	end
 
-	return TextButton7
+	return playerListItemButton
 end
 
-fn49 = function(arg)
-	for i, favorito in ipairs(tbl3.favoritos) do
+findFavoriteIndex = function(arg)
+	for i, favorito in ipairs(skinState.favoritos) do
 		if favorito.userId == arg then
 			return i
 		end
@@ -2777,8 +2731,8 @@ fn49 = function(arg)
 	return nil
 end
 
-fn52 = function()
-	for _, child in ipairs(ScrollingFrame:GetChildren()) do
+refreshPlayerList = function()
+	for _, child in ipairs(playerListContainer:GetChildren()) do
 		if not child:IsA("UIListLayout") then
 			child:Destroy()
 		end
@@ -2788,44 +2742,44 @@ fn52 = function()
 	local seen = {}
 	local function addSection(title)
 		order += 1
-		fn3("TextLabel", {
+		createGuiInstance("TextLabel", {
 			Size = UDim2.new(1, -6, 0, 21),
 			BackgroundTransparency = 1,
 			Font = Enum.Font.GothamBold,
 			Text = string.upper(title),
-			TextColor3 = tbl.Faint,
+			TextColor3 = theme.Faint,
 			TextSize = 9,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			LayoutOrder = order,
-		}, ScrollingFrame)
+		}, playerListContainer)
 	end
 
 	local function addEmpty(text)
 		order += 1
-		fn3("TextLabel", {
+		createGuiInstance("TextLabel", {
 			Size = UDim2.new(1, -8, 0, 28),
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
 			Text = text,
-			TextColor3 = tbl.Faint,
+			TextColor3 = theme.Faint,
 			TextSize = 9,
 			TextWrapped = true,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			LayoutOrder = order,
-		}, ScrollingFrame)
+		}, playerListContainer)
 	end
 
 	addSection("Favoritos")
 	local favoriteCount = 0
-	for _, favorito in ipairs(tbl3.favoritos) do
+	for _, favorito in ipairs(skinState.favoritos) do
 		local userId = tonumber(favorito.userId)
 		if userId and not seen[userId] then
 			seen[userId] = true
 			favoriteCount += 1
 			order += 1
-			fn55(favorito.nombre, favorito.usuario and "@" .. favorito.usuario or ("ID " .. tostring(userId)), order, function()
-				fn54(userId)
-			end, tbl3.userId == userId)
+			createPlayerListItem(favorito.nombre, favorito.usuario and "@" .. favorito.usuario or ("ID " .. tostring(userId)), order, function()
+				selectPlayer(userId)
+			end, skinState.userId == userId)
 		end
 	end
 	if favoriteCount == 0 then
@@ -2846,9 +2800,9 @@ fn52 = function()
 			order += 1
 			local displayName = player.DisplayName
 			local username = player.Name
-			fn55(displayName, "@" .. username, order, function()
-				fn54(userId)
-			end, tbl3.userId == userId)
+			createPlayerListItem(displayName, "@" .. username, order, function()
+				selectPlayer(userId)
+			end, skinState.userId == userId)
 		end
 	end
 	if playerCount == 0 then
@@ -2856,7 +2810,7 @@ fn52 = function()
 	end
 end
 
-local flag3 = false
+local isApplyingSkin = false
 local pendingApply = false
 local applicationGeneration = 0
 local queuedSkinUserId = nil
@@ -2865,10 +2819,10 @@ local refreshAccessoryWhenIdle = false
 local characterRebuildPending = false
 local characterRebuildGeneration = 0
 
-local function fn56(arg, arg2)
-    local rigName = arg2 == "R6" and "R6" or "R15"
-    local templateKey = getSkinTemplateKey(arg, rigName)
-    local baseDescription = fn9(arg)
+local function createSkinModel(userId, rigName)
+    local rigName = rigName == "R6" and "R6" or "R15"
+    local templateKey = getSkinTemplateKey(userId, rigName)
+    local baseDescription = getUserHumanoidDescription(userId)
     if not baseDescription then
         return nil, nil
     end
@@ -2900,8 +2854,8 @@ local function fn56(arg, arg2)
         modelDescription = composed
     end
 
-    fn11(modelDescription)
-    local model = fn6(arg, modelDescription, rigName)
+    preloadAnimationAssets(modelDescription)
+    local model = createHumanoidModel(userId, modelDescription, rigName)
     pcall(function() modelDescription:Destroy() end)
     if model then
         storeSkinTemplate(templateKey, model)
@@ -2909,43 +2863,43 @@ local function fn56(arg, arg2)
     return baseDescription, model
 end
 
-local function fn57(arg, arg2, requestedRig, requestGeneration)
-	local rig = requestedRig or tbl3.rig
-	local v7, v8 = fn56(arg2, rig)
+local function applySkinVisualModel(character, userId, requestedRig, requestGeneration)
+	local rig = requestedRig or skinState.rig
+	local v7, v8 = createSkinModel(userId, rig)
 	if not v7 or not v8 then
 		if v8 then pcall(function() v8:Destroy() end) end
 		return nil
 	end
 
-	if (requestGeneration and requestGeneration ~= applicationGeneration) or fn5() ~= arg then
+	if (requestGeneration and requestGeneration ~= applicationGeneration) or getLocalCharacter() ~= character then
 		if v8 then v8:Destroy() end
 		return nil
 	end
 
-    local sourceHumanoid = arg:FindFirstChildOfClass("Humanoid")
-    if not waitForCharacterRig(arg, sourceHumanoid, rig, 2.5) then
+    local sourceHumanoid = character:FindFirstChildOfClass("Humanoid")
+    if not waitForCharacterRig(character, sourceHumanoid, rig, 2.5) then
         pcall(function() v8:Destroy() end)
         return nil
     end
-    if (requestGeneration and requestGeneration ~= applicationGeneration) or fn5() ~= arg then
+    if (requestGeneration and requestGeneration ~= applicationGeneration) or getLocalCharacter() ~= character then
         pcall(function() v8:Destroy() end)
         return nil
     end
 
-	fn14(arg)
-	fn41()
-	fn35(arg)
-	fn22(arg)
+	captureCharacterState(character)
+	stopCurrentEmote()
+	restoreCharacterAppearance(character)
+	restoreCharacterEmotes(character)
 
 	local animationData
 	if rig == "R15" then
-		animationData = fn12(v7)
+		animationData = extractAnimationSets(v7)
 	end
 
-	fn20(arg, fn13(v7))
-    local result = fn34(arg, v8, nil, rig)
+	applyEmotes(character, getDescriptionEmotes(v7))
+    local result = attachSkinVisual(character, v8, nil, rig)
     if requestGeneration and requestGeneration ~= applicationGeneration then
-        fn35(arg)
+        restoreCharacterAppearance(character)
         return nil
     end
     if not result then
@@ -2955,10 +2909,10 @@ local function fn57(arg, arg2, requestedRig, requestGeneration)
         return nil
     end
 	copiedSkinAnimationData = animationData
-	if rig == "R15" and tbl3.animationsEnabled then
-		applyCopiedSkinAnimations(arg, true)
+	if rig == "R15" and skinState.animationsEnabled then
+		applyCopiedSkinAnimations(character, true)
 	else
-		applyCopiedSkinAnimations(arg, false)
+		applyCopiedSkinAnimations(character, false)
 	end
     if type(avatarBridge.accessory.suspend) == "function" then
         pcall(avatarBridge.accessory.suspend)
@@ -2966,11 +2920,11 @@ local function fn57(arg, arg2, requestedRig, requestGeneration)
     return result
 end
 
-local function fn58(targetUserId, targetRig, fromRespawn)
-    local userId = tonumber(targetUserId) or tonumber(tbl3.userId)
-    local rig = (targetRig == "R6" or targetRig == "R15") and targetRig or tbl3.rig
+local function applySkin(targetUserId, targetRig, fromRespawn)
+    local userId = tonumber(targetUserId) or tonumber(skinState.userId)
+    local rig = (targetRig == "R6" or targetRig == "R15") and targetRig or skinState.rig
     if not userId then return false end
-    if rig ~= "R6" and rig ~= "R15" then rig = tbl3.rig end
+    if rig ~= "R6" and rig ~= "R15" then rig = skinState.rig end
 
     applicationGeneration += 1
     if not fromRespawn then
@@ -2986,11 +2940,11 @@ local function fn58(targetUserId, targetRig, fromRespawn)
     avatarBridge.skin.requestedUserId = userId
     avatarBridge.skin.requestedRig = rig
 
-    if flag3 then
+    if isApplyingSkin then
         pendingApply = true
         return true
     end
-    flag3 = true
+    isApplyingSkin = true
 
     task.spawn(function()
         local shouldRefreshAccessory = false
@@ -2998,19 +2952,19 @@ local function fn58(targetUserId, targetRig, fromRespawn)
             pendingApply = false
             local requestGeneration = applicationGeneration
             local currentUserId = queuedSkinUserId
-            local currentRig = queuedSkinRig or tbl3.rig
+            local currentRig = queuedSkinRig or skinState.rig
             avatarBridge.skin.requestedUserId = currentUserId
             avatarBridge.skin.requestedRig = currentRig
-            local character = fn5()
+            local character = getLocalCharacter()
             local result = nil
 
             if character and currentUserId then
-                result = fn57(character, currentUserId, currentRig, requestGeneration)
+                result = applySkinVisualModel(character, currentUserId, currentRig, requestGeneration)
             end
 
             if requestGeneration == applicationGeneration then
                 if result then
-                    tbl3.aplicado = currentUserId
+                    skinState.aplicado = currentUserId
                     avatarBridge.skin.active = true
                     bumpSkinRevision()
                     avatarBridge.skin.userId = currentUserId
@@ -3018,17 +2972,17 @@ local function fn58(targetUserId, targetRig, fromRespawn)
                     avatarBridge.skin.requestedUserId = nil
                     avatarBridge.skin.requestedRig = nil
                     shouldRefreshAccessory = false
-                    fn2()
-                    fn46()
+                    saveConfiguration()
+                    updateSkinControls()
                     notifyAccessoryInventory()
-                    obj3.Text = "Aplicado"
+                    statusTextProxy.Text = "Aplicado"
                 else
-                    local liveCharacter = fn5()
+                    local liveCharacter = getLocalCharacter()
                     if liveCharacter then
-                        fn35(liveCharacter)
-                        fn22(liveCharacter)
+                        restoreCharacterAppearance(liveCharacter)
+                        restoreCharacterEmotes(liveCharacter)
                     end
-                    tbl3.aplicado = nil
+                    skinState.aplicado = nil
                     avatarBridge.skin.active = false
                     bumpSkinRevision()
                     avatarBridge.skin.userId = nil
@@ -3036,15 +2990,15 @@ local function fn58(targetUserId, targetRig, fromRespawn)
                     avatarBridge.skin.requestedRig = nil
                     shouldRefreshAccessory = true
                     copiedSkinAnimationData = nil
-                    fn46()
+                    updateSkinControls()
                     notifyAccessoryInventory()
-                    obj3.Text = "Fallo"
-                    fn2()
+                    statusTextProxy.Text = "Fallo"
+                    saveConfiguration()
                 end
             end
         until not pendingApply
 
-        flag3 = false
+        isApplyingSkin = false
         avatarBridge.skin.pending = characterRebuildPending
         avatarBridge.skin.releasing = false
         avatarBridge.skin.requestedUserId = nil
@@ -3064,38 +3018,38 @@ local function fn58(targetUserId, targetRig, fromRespawn)
     return true
 end
 
-local function fn59()
+local function removeSkin()
     applicationGeneration += 1
     characterRebuildGeneration += 1
     characterRebuildPending = false
     pendingApply = false
     queuedSkinUserId = nil
     queuedSkinRig = nil
-    tbl3.aplicado = nil
+    skinState.aplicado = nil
     avatarBridge.skin.active = false
     bumpSkinRevision()
     avatarBridge.skin.userId = nil
     avatarBridge.skin.requestedUserId = nil
     avatarBridge.skin.requestedRig = nil
     copiedSkinAnimationData = nil
-    avatarBridge.skin.releasing = flag3
-    avatarBridge.skin.pending = flag3
-    refreshAccessoryWhenIdle = flag3
-    fn2()
-    fn41()
-    fn29()
+    avatarBridge.skin.releasing = isApplyingSkin
+    avatarBridge.skin.pending = isApplyingSkin
+    refreshAccessoryWhenIdle = isApplyingSkin
+    saveConfiguration()
+    stopCurrentEmote()
+    destroySkinVisuals()
     copiedSkinAnimationData = nil
-    local v7 = fn5()
+    local v7 = getLocalCharacter()
 
     if v7 then
-        fn35(v7)
-        fn22(v7)
+        restoreCharacterAppearance(v7)
+        restoreCharacterEmotes(v7)
     end
 
-    obj3.Text = "Retirado"
-    fn46()
+    statusTextProxy.Text = "Retirado"
+    updateSkinControls()
     notifyAccessoryInventory()
-    if not flag3 then
+    if not isApplyingSkin then
         avatarBridge.skin.pending = false
         avatarBridge.skin.releasing = false
         if type(avatarBridge.accessory.refresh) == "function" then
@@ -3112,107 +3066,107 @@ avatarBridge.skin.getBaseDescription = function()
     if avatarBridge.skin.pending and avatarBridge.skin.requestedUserId then
         userId = avatarBridge.skin.requestedUserId
     elseif avatarBridge.skin.active then
-        userId = avatarBridge.skin.userId or tbl3.aplicado
+        userId = avatarBridge.skin.userId or skinState.aplicado
     else
-        userId = tbl3.aplicado
+        userId = skinState.aplicado
     end
     if not tonumber(userId) then return nil end
-    return fn9(tonumber(userId))
+    return getUserHumanoidDescription(tonumber(userId))
 end
 avatarBridge.skin.refresh = function()
     if avatarBridge.skin.releasing then return false end
     if characterRebuildPending then return true end
     local userId = avatarBridge.skin.pending and avatarBridge.skin.requestedUserId
         or (avatarBridge.skin.active and avatarBridge.skin.userId)
-        or tbl3.aplicado
+        or skinState.aplicado
     local rig = avatarBridge.skin.pending and avatarBridge.skin.requestedRig
         or (avatarBridge.skin.active and avatarBridge.skin.rig)
-        or tbl3.rig
+        or skinState.rig
     if not tonumber(userId) then return false end
-    return fn58(tonumber(userId), rig)
+    return applySkin(tonumber(userId), rig)
 end
 
-aplicar.Activated:Connect(fn58)
-quitar.Activated:Connect(fn59)
+aplicar.Activated:Connect(applySkin)
+quitar.Activated:Connect(removeSkin)
 
-local function fn60(rig)
-	if tbl3.rig == rig then
+local function setRigType(rig)
+	if skinState.rig == rig then
 		return
 	end
-	tbl3.rig = rig
-	fn2()
-	fn46()
+	skinState.rig = rig
+	saveConfiguration()
+	updateSkinControls()
 
-	if (tbl3.aplicado or flag3) and fn5() then
-		tbl3.userId = tbl3.userId or tbl3.aplicado
-		fn58()
+	if (skinState.aplicado or isApplyingSkin) and getLocalCharacter() then
+		skinState.userId = skinState.userId or skinState.aplicado
+		applySkin()
 	end
 end
 
 r15.Activated:Connect(function()
-	fn60("R15")
+	setRigType("R15")
 end)
 
 r6.Activated:Connect(function()
-	fn60("R6")
+	setRigType("R6")
 end)
 
-v5.Activated:Connect(function()
-	if tbl3.rig == "R6" then
-		fn46()
+animationToggleButton.Activated:Connect(function()
+	if skinState.rig == "R6" then
+		updateSkinControls()
 		return
 	end
 
-	if avatarBridge.skin.active ~= true or not tonumber(tbl3.aplicado) then
-		fn46()
+	if avatarBridge.skin.active ~= true or not tonumber(skinState.aplicado) then
+		updateSkinControls()
 		return
 	end
-	local character = fn5()
+	local character = getLocalCharacter()
 	if not character then return end
-	tbl3.animationsEnabled = not (tbl3.animationsEnabled == true)
-	local applied = applyCopiedSkinAnimations(character, tbl3.animationsEnabled)
-	if not applied and tbl3.animationsEnabled then
-		tbl3.animationsEnabled = false
+	skinState.animationsEnabled = not (skinState.animationsEnabled == true)
+	local applied = applyCopiedSkinAnimations(character, skinState.animationsEnabled)
+	if not applied and skinState.animationsEnabled then
+		skinState.animationsEnabled = false
 		applyCopiedSkinAnimations(character, false)
-		obj3.Text = "La skin no tiene animaciones compatibles"
+		statusTextProxy.Text = "La skin no tiene animaciones compatibles"
 	else
-		obj3.Text = tbl3.animationsEnabled and "Aplicado" or "Retirado"
+		statusTextProxy.Text = skinState.animationsEnabled and "Aplicado" or "Retirado"
 	end
-	fn2()
-	fn46()
+	saveConfiguration()
+	updateSkinControls()
 end)
 
-TextButton4.Activated:Connect(function()
-	if not tbl3.userId then
+favoriteButton.Activated:Connect(function()
+	if not skinState.userId then
 		return
 	end
-	local v7 = fn49(tbl3.userId)
+	local v7 = findFavoriteIndex(skinState.userId)
 
 	if v7 then
-		table.remove(tbl3.favoritos, v7)
+		table.remove(skinState.favoritos, v7)
 	else
-		table.insert(tbl3.favoritos, { userId = tbl3.userId, nombre = tbl3.nombre or tostring(tbl3.userId), usuario = tbl3.usuario })
+		table.insert(skinState.favoritos, { userId = skinState.userId, nombre = skinState.nombre or tostring(skinState.userId), usuario = skinState.usuario })
 	end
 
-	fn2()
-	fn50()
-	fn52()
+	saveConfiguration()
+	updateFavoriteButton()
+	refreshPlayerList()
 end)
 
-local function fn61()
-	local str2 = TextBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
+local function searchPlayer()
+	local str2 = playerSearchBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
 	if str2 == "" then
 		return
 	end
 	local num = tonumber(str2)
 	if num then
-		fn54(num)
+		selectPlayer(num)
 		return
 	end
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player.Name:lower() == str2:lower() or player.DisplayName:lower() == str2:lower() then
-			fn54(player.UserId)
+			selectPlayer(player.UserId)
 			return
 		end
 	end
@@ -3221,22 +3175,22 @@ local function fn61()
 		local ok, result = pcall(Players.GetUserIdFromNameAsync, Players, str2)
 
 		if ok and result then
-			fn54(result)
+			selectPlayer(result)
 		else
-			obj3.Text = "Fallo"
+			statusTextProxy.Text = "Fallo"
 		end
 	end)
 end
 
-TextButton3.Activated:Connect(fn61)
+searchButton.Activated:Connect(searchPlayer)
 
-TextBox.FocusLost:Connect(function(enterPressed)
+playerSearchBox.FocusLost:Connect(function(enterPressed)
 	if enterPressed then
-		fn61()
+		searchPlayer()
 	end
 end)
 
-local tbl21 = {}
+local lifecycleConnections = {}
 local characterDeathConnection = nil
 local characterHealthConnection = nil
 local characterAppearanceConnection = nil
@@ -3256,21 +3210,21 @@ local function disconnectCharacterLifecycleConnections()
     end
 end
 
-table.insert(tbl21, Players.PlayerAdded:Connect(function()
-	task.defer(fn52)
+table.insert(lifecycleConnections, Players.PlayerAdded:Connect(function()
+	task.defer(refreshPlayerList)
 end))
-table.insert(tbl21, Players.PlayerRemoving:Connect(function()
-	task.defer(fn52)
+table.insert(lifecycleConnections, Players.PlayerRemoving:Connect(function()
+	task.defer(refreshPlayerList)
 end))
 
-table.insert(tbl21, localPlayer.CharacterRemoving:Connect(function(character)
+table.insert(lifecycleConnections, localPlayer.CharacterRemoving:Connect(function(character)
     disconnectCharacterLifecycleConnections()
     applicationGeneration += 1
     characterRebuildGeneration += 1
     pendingApply = false
-    fn41()
-    fn29()
-    local hasSavedSkin = tonumber(tbl3.aplicado) ~= nil
+    stopCurrentEmote()
+    destroySkinVisuals()
+    local hasSavedSkin = tonumber(skinState.aplicado) ~= nil
     characterRebuildPending = hasSavedSkin
     avatarBridge.skin.active = false
     avatarBridge.skin.pending = hasSavedSkin
@@ -3278,20 +3232,20 @@ table.insert(tbl21, localPlayer.CharacterRemoving:Connect(function(character)
     avatarBridge.skin.releasing = false
     avatarBridge.skin.userId = nil
     copiedSkinAnimationData = nil
-    fn46()
+    updateSkinControls()
     notifyAccessoryInventory()
 end))
 
-table.insert(tbl21, localPlayer.CharacterAdded:Connect(function(character)
+table.insert(lifecycleConnections, localPlayer.CharacterAdded:Connect(function(character)
     disconnectCharacterLifecycleConnections()
-    fn41()
-    fn29()
+    stopCurrentEmote()
+    destroySkinVisuals()
     applicationGeneration += 1
     characterRebuildGeneration += 1
     local respawnGeneration = characterRebuildGeneration
     pendingApply = false
 
-    local appliedUserId = tonumber(tbl3.aplicado)
+    local appliedUserId = tonumber(skinState.aplicado)
     if not appliedUserId then
         characterRebuildPending = false
         avatarBridge.skin.active = false
@@ -3301,7 +3255,7 @@ table.insert(tbl21, localPlayer.CharacterAdded:Connect(function(character)
         avatarBridge.skin.requestedUserId = nil
         avatarBridge.skin.requestedRig = nil
         copiedSkinAnimationData = nil
-        fn46()
+        updateSkinControls()
         notifyAccessoryInventory()
         return
     end
@@ -3313,7 +3267,7 @@ table.insert(tbl21, localPlayer.CharacterAdded:Connect(function(character)
     avatarBridge.skin.releasing = false
     avatarBridge.skin.userId = nil
     avatarBridge.skin.requestedUserId = appliedUserId
-    avatarBridge.skin.requestedRig = tbl3.rig
+    avatarBridge.skin.requestedRig = skinState.rig
 
     task.spawn(function()
         local humanoid = character:WaitForChild("Humanoid", 10)
@@ -3339,10 +3293,10 @@ table.insert(tbl21, localPlayer.CharacterAdded:Connect(function(character)
             didDie = true
             applicationGeneration += 1
             pendingApply = false
-            fn41()
-            fn29()
+            stopCurrentEmote()
+            destroySkinVisuals()
             copiedSkinAnimationData = nil
-            local savedUserId = tonumber(tbl3.aplicado)
+            local savedUserId = tonumber(skinState.aplicado)
             characterRebuildPending = savedUserId ~= nil
             avatarBridge.skin.active = false
             avatarBridge.skin.pending = characterRebuildPending
@@ -3350,20 +3304,20 @@ table.insert(tbl21, localPlayer.CharacterAdded:Connect(function(character)
             avatarBridge.skin.releasing = false
             avatarBridge.skin.userId = nil
             avatarBridge.skin.requestedUserId = savedUserId
-            avatarBridge.skin.requestedRig = savedUserId and tbl3.rig or nil
+            avatarBridge.skin.requestedRig = savedUserId and skinState.rig or nil
         end)
         characterHealthConnection = humanoid.HealthChanged:Connect(function(health)
             if not didDie or health <= 0 or character ~= localPlayer.Character then
                 return
             end
-            local savedUserId = tonumber(tbl3.aplicado)
+            local savedUserId = tonumber(skinState.aplicado)
             if not savedUserId then
                 didDie = false
                 return
             end
             didDie = false
             characterRebuildPending = false
-            fn58(savedUserId, tbl3.rig, true)
+            applySkin(savedUserId, skinState.rig, true)
         end)
 
         local appearanceSignalOk, appearanceSignal = pcall(function()
@@ -3371,28 +3325,28 @@ table.insert(tbl21, localPlayer.CharacterAdded:Connect(function(character)
         end)
         if appearanceSignalOk and appearanceSignal then
             characterAppearanceConnection = appearanceSignal:Connect(function()
-                local savedUserId = tonumber(tbl3.aplicado)
+                local savedUserId = tonumber(skinState.aplicado)
                 if not savedUserId or character ~= localPlayer.Character or appearanceRefreshQueued then
                     return
                 end
                 appearanceRefreshQueued = true
                 task.defer(function()
                     while character == localPlayer.Character
-                        and (flag3 or avatarBridge.skin.pending == true or characterRebuildPending) do
+                        and (isApplyingSkin or avatarBridge.skin.pending == true or characterRebuildPending) do
                         RunService.Heartbeat:Wait()
                     end
                     appearanceRefreshQueued = false
-                    if character == localPlayer.Character and tonumber(tbl3.aplicado) == savedUserId
-                        and not flag3 and not avatarBridge.skin.pending then
-                        fn58(savedUserId, tbl3.rig, true)
+                    if character == localPlayer.Character and tonumber(skinState.aplicado) == savedUserId
+                        and not isApplyingSkin and not avatarBridge.skin.pending then
+                        applySkin(savedUserId, skinState.rig, true)
                     end
                 end)
             end)
         end
 
-        if tbl3.aplicado and fn5() == character and humanoid.Health > 0 then
-            fn58(appliedUserId, tbl3.rig, true)
-        elseif tbl3.aplicado then
+        if skinState.aplicado and getLocalCharacter() == character and humanoid.Health > 0 then
+            applySkin(appliedUserId, skinState.rig, true)
+        elseif skinState.aplicado then
             characterRebuildPending = true
             avatarBridge.skin.pending = true
         else
@@ -3409,55 +3363,39 @@ end))
 
 local panelDrag = nil
 
-table.insert(tbl21, Frame2.InputBegan:Connect(function(input)
-	local inputType = input.UserInputType
-	if inputType ~= Enum.UserInputType.MouseButton1
-		and inputType ~= Enum.UserInputType.Touch then return end
-	panelDrag = {
-		input = input,
-		inputType = inputType,
-		start = Vector2.new(input.Position.X, input.Position.Y),
-		origin = getGuiCenter(Frame),
-	}
+windowHeader.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        local absolute = mainFrame.AbsolutePosition
+        panelDrag = {
+            input = input,
+            start = Vector2.new(input.Position.X, input.Position.Y),
+            origin = Vector2.new(
+                absolute.X + mainFrame.AbsoluteSize.X * 0.5,
+                absolute.Y + mainFrame.AbsoluteSize.Y * 0.5
+            ),
+        }
+    end
+end)
+
+table.insert(lifecycleConnections, UserInputService.InputChanged:Connect(function(input)
+    local drag = panelDrag
+    if not drag then return end
+    local isMouseMove = drag.input.UserInputType == Enum.UserInputType.MouseButton1
+        and input.UserInputType == Enum.UserInputType.MouseMovement
+    if not isMouseMove and input ~= drag.input then return end
+    local pointer = Vector2.new(input.Position.X, input.Position.Y)
+    local target = clampFrameCenter(drag.origin + pointer - drag.start)
+    mainFrame.Position = UDim2.fromOffset(target.X, target.Y)
 end))
 
-local function movePanelDrag(input, isTouch)
-	local drag = panelDrag
-	if not drag then return end
-	if isTouch then
-		if drag.inputType ~= Enum.UserInputType.Touch or input ~= drag.input then return end
-	elseif drag.inputType ~= Enum.UserInputType.MouseButton1
-		or input.UserInputType ~= Enum.UserInputType.MouseMovement then
-		return
-	end
-	local pointer = Vector2.new(input.Position.X, input.Position.Y)
-	setGuiCenter(Frame, drag.origin + pointer - drag.start)
-end
-
-local function finishPanelDrag(input, isTouch)
-	local drag = panelDrag
-	if not drag then return end
-	local ended
-	if isTouch then
-		ended = drag.inputType == Enum.UserInputType.Touch and input == drag.input
-	else
-		ended = drag.inputType == Enum.UserInputType.MouseButton1
-			and input.UserInputType == Enum.UserInputType.MouseButton1
-	end
-	if ended then panelDrag = nil end
-end
-
-table.insert(tbl21, UserInputService.InputChanged:Connect(function(input)
-	movePanelDrag(input, false)
-end))
-table.insert(tbl21, UserInputService.TouchMoved:Connect(function(input)
-	movePanelDrag(input, true)
-end))
-table.insert(tbl21, UserInputService.InputEnded:Connect(function(input)
-	finishPanelDrag(input, false)
-end))
-table.insert(tbl21, UserInputService.TouchEnded:Connect(function(input)
-	finishPanelDrag(input, true)
+table.insert(lifecycleConnections, UserInputService.InputEnded:Connect(function(input)
+    local drag = panelDrag
+    if not drag then return end
+    local ended = input == drag.input
+        or (drag.input.UserInputType == Enum.UserInputType.MouseButton1
+            and input.UserInputType == Enum.UserInputType.MouseButton1)
+    if ended then panelDrag = nil end
 end))
 
 local currentCameraViewportConnection = nil
@@ -3465,9 +3403,9 @@ local currentCameraViewportConnection = nil
 local function connectCurrentCameraViewport()
 	if currentCameraViewportConnection then
 		currentCameraViewportConnection:Disconnect()
-		for index = #tbl21, 1, -1 do
-			if tbl21[index] == currentCameraViewportConnection then
-				table.remove(tbl21, index)
+		for index = #lifecycleConnections, 1, -1 do
+			if lifecycleConnections[index] == currentCameraViewportConnection then
+				table.remove(lifecycleConnections, index)
 				break
 			end
 		end
@@ -3477,31 +3415,31 @@ local function connectCurrentCameraViewport()
 	local currentCamera = Workspace.CurrentCamera
 	if currentCamera then
 		currentCameraViewportConnection = currentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-			fn44()
+			updateUiScale()
 			task.defer(keepFrameInsideViewport)
-			if TextButton5.Visible and floatingPositionInitialized then
+			if floatingButtonFrame.Visible and floatingPositionInitialized then
 				task.defer(function() setFloatingCenter(getFloatingCenter()) end)
 			end
 		end)
-		table.insert(tbl21, currentCameraViewportConnection)
+		table.insert(lifecycleConnections, currentCameraViewportConnection)
 	end
-	fn44()
+	updateUiScale()
 	task.defer(keepFrameInsideViewport)
-	if TextButton5.Visible and floatingPositionInitialized then
+	if floatingButtonFrame.Visible and floatingPositionInitialized then
 		task.defer(function() setFloatingCenter(getFloatingCenter()) end)
 	end
 end
 
 connectCurrentCameraViewport()
-table.insert(tbl21, Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+table.insert(lifecycleConnections, Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
 	connectCurrentCameraViewport()
 	local currentCamera = Workspace.CurrentCamera
-	if currentCamera and tbl17.modelo then
-		local visualFolder = fn27()
+	if currentCamera and visualModelState.modelo then
+		local visualFolder = getSkinVisualFolder()
 		if visualFolder then
-			local previousFolder = tbl17.folder
-			tbl17.modelo.Parent = visualFolder
-			tbl17.folder = visualFolder
+			local previousFolder = visualModelState.folder
+			visualModelState.modelo.Parent = visualFolder
+			visualModelState.folder = visualFolder
 			if previousFolder and previousFolder ~= visualFolder and previousFolder.Parent
 				and #previousFolder:GetChildren() == 0 then
 				pcall(function() previousFolder:Destroy() end)
@@ -3510,29 +3448,27 @@ table.insert(tbl21, Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(
 	end
 end))
 
-TextButton2.Activated:Connect(function()
-	if flag2 then
-		fn47(false)
+closeButton.Activated:Connect(function()
+	if isWindowMinimized then
+		setWindowMinimized(false)
 	end
 
-	Frame5.Visible = true
+	closeConfirmationOverlay.Visible = true
 end)
 
-TextButton6.Activated:Connect(function()
-	Frame5.Visible = false
-	tbl20 = nil
-	panelDrag = nil
+confirmCloseButton.Activated:Connect(function()
+	closeConfirmationOverlay.Visible = false
     disconnectCharacterLifecycleConnections()
 	connection3:Disconnect()
 	connection4:Disconnect()
-    fn59()
+    removeSkin()
     if avatarBridge.skin.owner == skinBridgeToken then
         avatarBridge.skin.owner = nil
         avatarBridge.skin.getBaseDescription = nil
         avatarBridge.skin.refresh = nil
     end
 
-    for _, v9 in ipairs(tbl21) do
+    for _, v9 in ipairs(lifecycleConnections) do
 		pcall(function()
 			v9:Disconnect()
 		end)
@@ -3554,7 +3490,7 @@ local skinApi = {
         if not screenGui.Parent then return false end
         if enabled == true then
             screenGui.Enabled = true
-            fn47(true)
+            setWindowMinimized(true)
         else
             screenGui.Enabled = false
         end
@@ -3562,28 +3498,26 @@ local skinApi = {
     end,
 	open = function()
 		screenGui.Enabled = true
-		Frame.Visible = true
-		TextButton5.Visible = false
+		mainFrame.Visible = true
+		floatingButtonFrame.Visible = false
 		return screenGui.Parent ~= nil
 	end,
-	aplicar = fn58,
-	quitar = fn59,
-	elegir = fn54,
-	emote = fn43,
-	pararEmote = fn41,
+	aplicar = applySkin,
+	quitar = removeSkin,
+	elegir = selectPlayer,
+	emote = playEmote,
+	pararEmote = stopCurrentEmote,
 	destroy = function()
-		tbl20 = nil
-		panelDrag = nil
 		disconnectCharacterLifecycleConnections()
 		pcall(function() connection3:Disconnect() end)
         pcall(function() connection4:Disconnect() end)
-		fn59()
+		removeSkin()
 		if avatarBridge.skin.owner == skinBridgeToken then
 			avatarBridge.skin.owner = nil
 			avatarBridge.skin.getBaseDescription = nil
 			avatarBridge.skin.refresh = nil
 		end
-		for _, connection in ipairs(tbl21) do pcall(function() connection:Disconnect() end) end
+		for _, connection in ipairs(lifecycleConnections) do pcall(function() connection:Disconnect() end) end
 		for _, template in pairs(skinModelTemplates) do pcall(function() template:Destroy() end) end
 		table.clear(skinModelTemplates)
 		table.clear(skinModelTemplateOrder)
@@ -3591,47 +3525,47 @@ local skinApi = {
 	end,
 
 	setFEMode = function(mode)
-		tbl3.feMode = "ON"
-		fn2()
-		fn46()
+		skinState.feMode = "ON"
+		saveConfiguration()
+		updateSkinControls()
 		return mode == "ON"
 	end,
 	setAnimations = function(enabled)
-		if tbl3.rig == "R6" then
-			fn46()
+		if skinState.rig == "R6" then
+			updateSkinControls()
 			return false
 		end
-		if avatarBridge.skin.active ~= true or not tonumber(tbl3.aplicado) then return false end
-		local character = fn5()
+		if avatarBridge.skin.active ~= true or not tonumber(skinState.aplicado) then return false end
+		local character = getLocalCharacter()
 		if not character then return false end
 		local requested = enabled == true
 		local applied = applyCopiedSkinAnimations(character, requested)
 		if requested and not applied then return false end
-		tbl3.animationsEnabled = requested
-		fn2()
-		fn46()
+		skinState.animationsEnabled = requested
+		saveConfiguration()
+		updateSkinControls()
 		return true
 	end,
 }
-fn46()
-fn51()
-fn52()
+updateSkinControls()
+updateSelectedPlayerCard()
+refreshPlayerList()
 
 task.spawn(function()
 	local flag5 = false
 
-	for _, favorito in ipairs(tbl3.favoritos) do
-		flag5 = fn53(favorito.userId) or flag5
+	for _, favorito in ipairs(skinState.favoritos) do
+		flag5 = updateCachedUserInfo(favorito.userId) or flag5
 	end
 
-	if tbl3.userId then
-		flag5 = fn53(tbl3.userId) or flag5
+	if skinState.userId then
+		flag5 = updateCachedUserInfo(skinState.userId) or flag5
 	end
 
 	if flag5 then
-		fn2()
-		fn51()
-		fn52()
+		saveConfiguration()
+		updateSelectedPlayerCard()
+		refreshPlayerList()
 	end
 end)
 
