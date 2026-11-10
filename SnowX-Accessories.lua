@@ -19,6 +19,7 @@ avatarBridge.skin = type(avatarBridge.skin) == "table" and avatarBridge.skin or 
 avatarBridge.accessory = type(avatarBridge.accessory) == "table" and avatarBridge.accessory or {}
 avatarBridge.skin.revision = tonumber(avatarBridge.skin.revision) or 0
 avatarBridge.accessory.revision = tonumber(avatarBridge.accessory.revision) or 0
+avatarBridge.uiPanels = type(avatarBridge.uiPanels) == "table" and avatarBridge.uiPanels or {}
 local accessoryBridgeToken = {}
 local function isSkinRendererActive()
     return avatarBridge.skin.active == true or avatarBridge.skin.pending == true
@@ -182,6 +183,7 @@ local state = {
     busy = false,
     connections = {},
     uiConnections = {},
+    dragConnections = {},
     resultConnections = {},
     gui = nil,
     main = nil,
@@ -2459,9 +2461,16 @@ local function buildUI()
         return clampGuiCenter(main, position)
     end
 
+    local mainCenter = getGuiCenter(main)
+
+    local function setMainCenter(position)
+        mainCenter = clampMainCenter(position)
+        setGuiCenter(main, mainCenter)
+    end
+
     local function keepMainInsideViewport()
-        if not main.Parent then return end
-        setGuiCenter(main, getGuiCenter(main))
+        if not main.Parent or not main.Visible then return end
+        setMainCenter(mainCenter)
     end
 
     local function updateScale()
@@ -3938,20 +3947,45 @@ local function buildUI()
 
     local function initializeReopenPosition()
         if floatingPositionInitialized then return end
-        setReopenCenter(getGuiCenter(main) + Vector2.new(26, 26))
+        local viewport = getViewportSize()
+        local halfSize = minimizedButton.AbsoluteSize * 0.5
+        setReopenCenter(Vector2.new(viewport.X - halfSize.X - 16, viewport.Y * 0.5 - 28))
         floatingPositionInitialized = true
     end
 
     local function hideWindow()
+        keepMainInsideViewport()
         initializeReopenPosition()
         main.Visible = false
         minimizedButton.Visible = true
     end
+
+    local function closePanelForSwitch()
+        if state.disconnectDragConnections then state.disconnectDragConnections() end
+        screen.Enabled = false
+        main.Visible = false
+        minimizedButton.Visible = false
+        if avatarBridge.uiPanels.activePanel == "accessories" then
+            avatarBridge.uiPanels.activePanel = "none"
+        end
+    end
+
     local function showWindow()
+        local closeSkinsPanel = avatarBridge.uiPanels.closeSkinsPanel
+        if type(closeSkinsPanel) == "function" then pcall(closeSkinsPanel) end
+        avatarBridge.uiPanels.activePanel = "accessories"
+        screen.Enabled = true
         main.Visible = true
         minimizedButton.Visible = false
+        setMainCenter(mainCenter)
+        if state.connectDragConnections then state.connectDragConnections() end
         updateScale()
     end
+
+    state.showWindow = showWindow
+    state.initializeReopenPosition = initializeReopenPosition
+    state.closePanelForSwitch = closePanelForSwitch
+
     minimize.Activated:Connect(hideWindow)
 
     local reopenDrag = nil
@@ -3999,19 +4033,76 @@ local function buildUI()
         if not drag.moved then showWindow() end
     end
 
-    addConnection(state.uiConnections, minimizedClick.InputBegan:Connect(beginReopenDrag))
-    addConnection(state.uiConnections, UserInputService.InputChanged:Connect(function(input)
-        moveReopenDrag(input, false)
-    end))
-    addConnection(state.uiConnections, UserInputService.TouchMoved:Connect(function(input)
-        moveReopenDrag(input, true)
-    end))
-    addConnection(state.uiConnections, UserInputService.InputEnded:Connect(function(input)
-        finishReopenDrag(input, false)
-    end))
-    addConnection(state.uiConnections, UserInputService.TouchEnded:Connect(function(input)
-        finishReopenDrag(input, true)
-    end))
+    local mainDrag = nil
+
+    local function beginMainDrag(input)
+        local inputType = input.UserInputType
+        if inputType ~= Enum.UserInputType.MouseButton1
+            and inputType ~= Enum.UserInputType.Touch then return end
+        mainDrag = {
+            input = input,
+            inputType = inputType,
+            start = Vector2.new(input.Position.X, input.Position.Y),
+            origin = mainCenter,
+        }
+    end
+
+    local function moveMainDrag(input, isTouch)
+        local drag = mainDrag
+        if not drag then return end
+        if isTouch then
+            if drag.inputType ~= Enum.UserInputType.Touch or input ~= drag.input then return end
+        elseif drag.inputType ~= Enum.UserInputType.MouseButton1
+            or input.UserInputType ~= Enum.UserInputType.MouseMovement then
+            return
+        end
+        local pointer = Vector2.new(input.Position.X, input.Position.Y)
+        setMainCenter(drag.origin + pointer - drag.start)
+    end
+
+    local function finishMainDrag(input, isTouch)
+        local drag = mainDrag
+        if not drag then return end
+        local ended
+        if isTouch then
+            ended = drag.inputType == Enum.UserInputType.Touch and input == drag.input
+        else
+            ended = drag.inputType == Enum.UserInputType.MouseButton1
+                and input.UserInputType == Enum.UserInputType.MouseButton1
+        end
+        if ended then mainDrag = nil end
+    end
+
+    local function disconnectDragConnections()
+        reopenDrag = nil
+        mainDrag = nil
+        disconnectBucket(state.dragConnections)
+    end
+
+    local function connectDragConnections()
+        if #state.dragConnections > 0 then return end
+        addConnection(state.dragConnections, minimizedClick.InputBegan:Connect(beginReopenDrag))
+        addConnection(state.dragConnections, UserInputService.InputChanged:Connect(function(input)
+            moveReopenDrag(input, false)
+            moveMainDrag(input, false)
+        end))
+        addConnection(state.dragConnections, UserInputService.TouchMoved:Connect(function(input)
+            moveReopenDrag(input, true)
+            moveMainDrag(input, true)
+        end))
+        addConnection(state.dragConnections, UserInputService.InputEnded:Connect(function(input)
+            finishReopenDrag(input, false)
+            finishMainDrag(input, false)
+        end))
+        addConnection(state.dragConnections, UserInputService.TouchEnded:Connect(function(input)
+            finishReopenDrag(input, true)
+            finishMainDrag(input, true)
+        end))
+        addConnection(state.dragConnections, header.InputBegan:Connect(beginMainDrag))
+    end
+
+    state.connectDragConnections = connectDragConnections
+    state.disconnectDragConnections = disconnectDragConnections
 
     closeButton.Activated:Connect(function() closeOverlay.Visible = true end)
     cancelClose.Activated:Connect(function() closeOverlay.Visible = false end)
@@ -4034,7 +4125,7 @@ local function buildUI()
             input = input,
             inputType = inputType,
             start = Vector2.new(input.Position.X, input.Position.Y),
-            origin = getGuiCenter(main),
+            origin = mainCenter,
         }
     end
 
@@ -4048,7 +4139,7 @@ local function buildUI()
             return
         end
         local pointer = Vector2.new(input.Position.X, input.Position.Y)
-        setGuiCenter(main, drag.origin + pointer - drag.start)
+        setMainCenter(drag.origin + pointer - drag.start)
     end
 
     local function finishMainDrag(input, isTouch)
@@ -4260,6 +4351,13 @@ local accessoryApi = nil
 cleanup = function()
     state.generation += 1
     state.applying = false
+    if state.disconnectDragConnections then state.disconnectDragConnections() end
+    if avatarBridge.uiPanels.closeAccessoriesPanel == state.closePanelForSwitch then
+        avatarBridge.uiPanels.closeAccessoriesPanel = nil
+    end
+    if avatarBridge.uiPanels.activePanel == "accessories" then
+        avatarBridge.uiPanels.activePanel = "none"
+    end
     disconnectBucket(state.connections)
     disconnectBucket(state.characterConnections)
     disconnectBucket(state.uiConnections)
@@ -4322,6 +4420,7 @@ end
 
 loadFavoriteItems()
 buildUI()
+avatarBridge.uiPanels.closeAccessoriesPanel = state.closePanelForSwitch
 if state.gui then
     state.gui.Enabled = false
 end
@@ -4335,19 +4434,35 @@ accessoryApi = {
     SetEnabled = function(enabled)
         if not state.gui then return false end
         if enabled == true then
+            local closeSkinsPanel = avatarBridge.uiPanels.closeSkinsPanel
+            if type(closeSkinsPanel) == "function" then pcall(closeSkinsPanel) end
+            avatarBridge.uiPanels.activePanel = "accessories"
+            if state.initializeReopenPosition then state.initializeReopenPosition() end
             state.gui.Enabled = true
             if state.main then state.main.Visible = false end
             if state.reopen then state.reopen.Visible = true end
+            if state.connectDragConnections then state.connectDragConnections() end
         else
+            if state.disconnectDragConnections then state.disconnectDragConnections() end
             state.gui.Enabled = false
+            if state.main then state.main.Visible = false end
+            if state.reopen then state.reopen.Visible = false end
+            if avatarBridge.uiPanels.activePanel == "accessories" then
+                avatarBridge.uiPanels.activePanel = "none"
+            end
         end
         return true
     end,
     Open = function()
-        if state.gui then state.gui.Enabled = true end
-        if state.main then state.main.Visible = true end
-        if state.reopen then state.reopen.Visible = false end
-        return state.gui ~= nil
+        if not state.gui then return false end
+        if state.showWindow then
+            state.showWindow()
+        else
+            state.gui.Enabled = true
+            if state.main then state.main.Visible = true end
+            if state.reopen then state.reopen.Visible = false end
+        end
+        return true
     end,
     ApplyAsset = function(assetId, desired)
         local meta, metaError = getItemMeta(assetId)
