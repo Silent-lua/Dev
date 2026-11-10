@@ -2464,6 +2464,9 @@ local function hideWindow()
     isWindowMinimized = true
     mainFrame.Visible = false
     floatingButtonFrame.Visible = true
+    if avatarBridge.uiPanels.activePanel == "skins" then
+        avatarBridge.uiPanels.activePanel = "none"
+    end
 end
 
 local function showWindow()
@@ -2484,10 +2487,10 @@ local function setWindowMinimized(visible)
 end
 
 local function closePanelForSwitch()
-    if disconnectDragConnections then disconnectDragConnections() end
-    screenGui.Enabled = false
+    floatingButtonDragState = nil
+    mainWindowDragState = nil
     mainFrame.Visible = false
-    floatingButtonFrame.Visible = false
+    floatingButtonFrame.Visible = true
     isWindowMinimized = true
     if avatarBridge.uiPanels.activePanel == "skins" then
         avatarBridge.uiPanels.activePanel = "none"
@@ -3591,9 +3594,6 @@ local skinApi = {
     setEnabled = function(enabled)
         if not screenGui.Parent then return false end
         if enabled == true then
-            local closeAccessoriesPanel = avatarBridge.uiPanels.closeAccessoriesPanel
-            if type(closeAccessoriesPanel) == "function" then pcall(closeAccessoriesPanel) end
-            avatarBridge.uiPanels.activePanel = "skins"
             screenGui.Enabled = true
             initializeFloatingPosition()
             isWindowMinimized = true
