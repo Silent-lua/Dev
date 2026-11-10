@@ -3982,7 +3982,7 @@ local function buildUI()
         avatarBridge.uiPanels.activePanel = "accessories"
         screen.Enabled = true
         main.Visible = true
-        minimizedButton.Visible = false
+        minimizedButton.Visible = true
         setMainCenter(mainCenter)
         if state.connectDragConnections then state.connectDragConnections() end
         updateScale()
