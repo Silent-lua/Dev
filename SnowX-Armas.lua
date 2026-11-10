@@ -166,12 +166,12 @@ function UI.background(host, overlayT, backgroundAsset)
     })
     corner(img, 16)
     local sc = new("UIScale", { Parent = img, Scale = 1.14 })
-    new("Frame", {
+    local overlay = new("Frame", {
         Parent = host, Name = "ReferenceBackgroundOverlay", Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = BLACK, BackgroundTransparency = backgroundAsset and 0.58 or 1,
         BorderSizePixel = 0, ZIndex = 1,
     })
-    return sc
+    return sc, img, overlay
 end
 function UI.icon(kind, parent_, color, size)
     size = size or 16
@@ -468,8 +468,27 @@ local Window = new("CanvasGroup", {
 corner(Window, 16)
 local winStroke = stroke(Window, Color3.fromRGB(74, 74, 84), 1, 0.2)
 local winScale = new("UIScale", { Parent = Window, Scale = BASE })
-local bgAsset = loadBackgroundAsset()
-local bgScale = UI.background(Window, 0.58, bgAsset)
+local bgScale, bgImage, bgOverlay = UI.background(Window, 0.58, nil)
+local bgAsset = nil
+local floatingBackground, floatingOverlay
+-- The visual panel must not wait for an external image request.
+task.defer(function()
+    local asset = loadBackgroundAsset()
+    if not asset then return end
+    bgAsset = asset
+    if bgImage and bgImage.Parent then
+        bgImage.Image = asset
+        bgImage.ImageTransparency = 0.38
+        if bgOverlay and bgOverlay.Parent then bgOverlay.BackgroundTransparency = 0.58 end
+    end
+    if floatingBackground and floatingBackground.Parent then
+        floatingBackground.Image = asset
+        floatingBackground.ImageTransparency = 0.5
+    end
+    if floatingOverlay and floatingOverlay.Parent then
+        floatingOverlay.BackgroundTransparency = 0.55
+    end
+end)
 
 local mainCenter = Vector2.new(vp0.X * 0.5, vp0.Y * 0.5)
 local function clampWindowCenter(position)
@@ -695,18 +714,6 @@ local emptyLabel = new("TextLabel", {
 local Modal = UI.modal(Window)
 local PAGE = 18
 local Data = { knives = {}, guns = {}, effects = {} }
-local Favorites = env.SnowXArmasFavorites
-if type(Favorites) ~= "table" then
-    Favorites = {}
-    env.SnowXArmasFavorites = Favorites
-end
-for _, tab in ipairs({ "knives", "guns", "effects" }) do
-    if type(Favorites[tab]) ~= "table" then Favorites[tab] = {} end
-end
-local function isFavorite(entry)
-    local bucket = Favorites[entry.tab]
-    return type(bucket) == "table" and bucket[entry.lname] == true
-end
 local Scan = { running = false, done = false }
 local Selected = { knives = nil, guns = nil, effects = nil }
 local activeTab = "knives"
@@ -733,7 +740,19 @@ local M = (function()
     local wIndex = {}
     local guiMap, guiCat, iconMap = {}, {}, {}
     local assetIndex
-    local assetIndexBuiltAt = 0
+    local activeScanInstances = nil
+    local descendantCache = setmetatable({}, { __mode = "k" })
+    local partsCache = setmetatable({}, { __mode = "k" })
+    local meshSigCache = setmetatable({}, { __mode = "k" })
+    local killContentCache = setmetatable({}, { __mode = "k" })
+    local weaponTreeCache = setmetatable({}, { __mode = "k" })
+    local function descendantsOf(inst)
+        local cached = descendantCache[inst]
+        if cached then return cached end
+        local list = inst:GetDescendants()
+        descendantCache[inst] = list
+        return list
+    end
     local function norm(s)
         s = tostring(s):gsub("(%l)(%u)", "%1 %2")
         s = s:gsub("[_%-%.]+", " ")
@@ -807,10 +826,9 @@ local M = (function()
     }
     local function catOfName(name)
         local n = norm(name)
-        local blade = hasAny(n, BLADE_SUB) or hasWordKW(n, BLADE_WORD)
-        local gun = hasAny(n, GUN_SUB) or hasWordKW(n, GUN_WORD)
-        if blade == gun then return nil end
-        return blade and "melee" or "gun"
+        if hasAny(n, BLADE_SUB) or hasWordKW(n, BLADE_WORD) then return "melee" end
+        if hasAny(n, GUN_SUB) or hasWordKW(n, GUN_WORD) then return "gun" end
+        return nil
     end
     local function metadataCat(inst, includeDescendants)
         local function fromMetadata(key, value)
@@ -822,7 +840,7 @@ local M = (function()
             local cat = fromMetadata(key, value)
             if cat then return cat end
         end
-        local descendants = includeDescendants and inst:GetDescendants() or inst:GetChildren()
+        local descendants = includeDescendants and descendantsOf(inst) or inst:GetChildren()
         local checked = 0
         for _, d in ipairs(descendants) do
             checked = checked + 1
@@ -845,7 +863,7 @@ local M = (function()
     end
     local function catOfContent(inst)
         local gun, mel, count = 0, 0, 0
-        for _, d in ipairs(inst:GetDescendants()) do
+        for _, d in ipairs(descendantsOf(inst)) do
             count = count + 1
             if count > 200 then break end
             local n = norm(d.Name)
@@ -894,9 +912,12 @@ local M = (function()
     local function partsOf(inst)
         local list = {}
         if inst:IsA("BasePart") then list[1] = inst end
-        for _, d in ipairs(inst:GetDescendants()) do
+        local cached = partsCache[inst]
+        if cached then return cached end
+        for _, d in ipairs(descendantsOf(inst)) do
             if d:IsA("BasePart") then list[#list + 1] = d end
         end
+        partsCache[inst] = list
         return list
     end
     local function boundsIn(parts, ref)
@@ -942,10 +963,18 @@ local M = (function()
         end
         return ref
     end
-    local function shapeCat(inst)
+    local boundsCache = setmetatable({}, { __mode = "k" })
+    local function boundsFor(inst)
+        local cached = boundsCache[inst]
+        if cached then return cached[1], cached[2], cached[3] end
         local parts = partsOf(inst)
-        if #parts == 0 then return nil end
-        local _, s = boundsIn(parts, refPartOf(parts).CFrame)
+        if #parts == 0 then return Vector3.zero, Vector3.zero, Vector3.zero end
+        local center, size, weighted = boundsIn(parts, refPartOf(parts).CFrame)
+        boundsCache[inst] = { center, size, weighted }
+        return center, size, weighted
+    end
+    local function shapeCat(inst)
+        local _, s = boundsFor(inst)
         local a = { s.X, s.Y, s.Z }
         table.sort(a, function(x, y) return x > y end)
         if a[1] <= 0 then return nil end
@@ -953,26 +982,14 @@ local M = (function()
         return "melee"
     end
     local function sizeOk(inst)
-        local parts = partsOf(inst)
-        if #parts == 0 then return false end
-        local _, s = boundsIn(parts, refPartOf(parts).CFrame)
+        local _, s = boundsFor(inst)
+        if s == Vector3.zero then return false end
         local long = math.max(s.X, s.Y, s.Z)
         return long >= 0.4 and long <= 14
     end
-    local function hasWeaponMesh(inst)
-        if inst:IsA("MeshPart") or inst:FindFirstChildOfClass("SpecialMesh") then return true end
-        for _, d in ipairs(inst:GetDescendants()) do
-            if d:IsA("MeshPart") or d:IsA("SpecialMesh") then return true end
-        end
-        return false
-    end
-    local function validWeaponCandidate(inst, cat)
-        if cat ~= "melee" and cat ~= "gun" then return false end
-        local named = catOfName(inst.Name)
-        if named and named ~= cat then return false end
-        return hasWeaponMesh(inst) and sizeOk(inst)
-    end
     local function meshSig(inst)
+        local cached = meshSigCache[inst]
+        if cached ~= nil then return cached end
         local ids = {}
         local function add(d)
             if d:IsA("MeshPart") then
@@ -983,45 +1000,136 @@ local M = (function()
         end
         add(inst)
         local n = 0
-        for _, d in ipairs(inst:GetDescendants()) do
+        for _, d in ipairs(descendantsOf(inst)) do
             add(d)
             n = n + 1
             if n > 80 then break end
         end
-        if #ids == 0 then return "" end
+        if #ids == 0 then
+            meshSigCache[inst] = ""
+            return ""
+        end
         table.sort(ids)
-        return table.concat(ids, "|", 1, math.min(#ids, 5))
+        local signature = table.concat(ids, "|", 1, math.min(#ids, 5))
+        meshSigCache[inst] = signature
+        return signature
     end
     local function catOfTool(t)
         local ov = env.NexvyrCatOverride
         local o = ov and ov[t.Name:lower()]
-        if o then
-            if validWeaponCandidate(t, o) then return o end
-            return nil
-        end
+        if o then return o end
         local c = classifyWeapon(t)
-        if c and validWeaponCandidate(t, c) then return c end
-        return nil
+        if c then return c end
+        c = catOfContent(t)
+        if c then return c end
+        return shapeCat(t)
     end
     local FX_CLASSES = {
         "ParticleEmitter", "Beam", "Trail", "Fire", "Smoke", "Sparkles", "Explosion",
         "PointLight", "SpotLight", "SurfaceLight", "Highlight",
     }
+    local KILL_NAMES = { "kill", "elimination", "eliminat", "finisher", "finish", "execution", "execut", "slay", "fatal", "death" }
+    local KILL_LIBRARY_NAMES = { "previeweffects", "killeffects", "killeffectlibrary", "killfx", "finishers" }
+    local WEAPON_FOLDER_NAMES = {
+        knifepartsfolder = true, gunpartsfolder = true,
+        weaponassets = true, weaponmodels = true, meleemodels = true, gunmodels = true,
+    }
+    local killLibraryCache = setmetatable({}, { __mode = "k" })
+    local function insideKillLibrary(inst)
+        local cached = killLibraryCache[inst]
+        if cached ~= nil then return cached end
+        local path, p, found = {}, inst, false
+        while p and p ~= game do
+            local known = killLibraryCache[p]
+            if known ~= nil then
+                found = known
+                break
+            end
+            path[#path + 1] = p
+            if hasAny(squash(p.Name), KILL_LIBRARY_NAMES) then
+                found = true
+                break
+            end
+            p = p.Parent
+        end
+        for _, node in ipairs(path) do killLibraryCache[node] = found end
+        return found
+    end
+    local function isWeaponTreeContent(inst)
+        if insideKillLibrary(inst) then return false end
+        local cached = weaponTreeCache[inst]
+        if cached ~= nil then return cached end
+        local path, p, found = {}, inst, false
+        while p and p ~= game do
+            local known = weaponTreeCache[p]
+            if known ~= nil then
+                found = known
+                break
+            end
+            path[#path + 1] = p
+            if p:IsA("Tool") or p:IsA("Accessory") or p:IsA("Accoutrement") then
+                found = true
+                break
+            end
+            local key = squash(p.Name)
+            if WEAPON_FOLDER_NAMES[key] then
+                found = true
+                break
+            end
+            if (p:IsA("Model") or p:IsA("Folder")) and catOfName(p.Name) then
+                found = true
+                break
+            end
+            if p:IsA("Model") or p:IsA("Folder") then
+                local hasVisual, hasVfx, hasRoot, hasWeaponChild = false, false, false, false
+                for _, child in ipairs(p:GetChildren()) do
+                    local childName = squash(child.Name)
+                    if childName == "visual" then hasVisual = true end
+                    if childName == "vfx" then hasVfx = true end
+                    if childName == "root" or childName == "handle" then hasRoot = true end
+                    if catOfName(child.Name) then hasWeaponChild = true end
+                end
+                if (hasVisual and hasVfx and hasRoot) or (hasVfx and hasWeaponChild) then
+                    found = true
+                    break
+                end
+            end
+            p = p.Parent
+        end
+        for _, node in ipairs(path) do weaponTreeCache[node] = found end
+        return found
+    end
     local KILL_BAD = {
         "feed", "streak", "count", "counter", "brick", "zone", "trap", "gui", "hud", "board",
         "announcer", "notification", "message", "script", "remote",
     }
-    local KILL_NAMES = { "kill", "elimination", "eliminat", "finisher", "finish", "execution", "execut", "slay", "fatal", "death" }
     local KILL_FX_TERMS = { "effect", "efecto", "fx", "vfx", "animation", "anim", "sound", "sfx", "particle", "visual" }
-    local function isKillEffectName(inst)
-        local n = norm(inst.Name)
-        return hasAny(n, KILL_NAMES) and hasAny(n, KILL_FX_TERMS)
-    end
     local function isFx(i)
         for _, c in ipairs(FX_CLASSES) do
             if i:IsA(c) then return true end
         end
         return false
+    end
+    local fxDescendantPresence, contentDescendantPresence
+    local function buildFxPresence(all)
+        fxDescendantPresence = setmetatable({}, { __mode = "k" })
+        contentDescendantPresence = setmetatable({}, { __mode = "k" })
+
+        -- allInstances() is parent-before-child DFS order. Reverse iteration propagates
+        -- descendant metadata once per instance instead of walking every ancestor chain.
+        for i = #all, 1, -1 do
+            local inst = all[i]
+            local ownFx = isFx(inst)
+            local hasFx = ownFx or fxDescendantPresence[inst] == true
+            local hasContent = ownFx or inst:IsA("Sound") or inst:IsA("Animation")
+                or contentDescendantPresence[inst] == true
+            local parent = inst.Parent
+            if parent and parent ~= game then
+                if hasFx then fxDescendantPresence[parent] = true end
+                if hasContent then contentDescendantPresence[parent] = true end
+            end
+            if i % 180 == 0 then task.wait() end
+        end
     end
     local function skipCommon(inst)
         if inst:GetAttribute("NxTV") then return true end
@@ -1037,31 +1145,108 @@ local M = (function()
         if skipCommon(inst) then return true end
         if inst:IsA("Tool") or inst:IsA("Accessory") or inst:IsA("Accoutrement") then return true end
         if inst:IsA("Model") and inst:FindFirstChildOfClass("Humanoid") then return true end
+        if isWeaponTreeContent(inst) then return true end
         return false
     end
-    local SKIP_CLASS = {
-        CoreGui = true, CorePackages = true, RobloxPluginGuiService = true, PluginGuiService = true,
-        NetworkClient = true, Players = true, Stats = true, TestService = true, LogService = true,
-    }
-    local function scanRoots()
-        local list = {}
-        for _, s in ipairs(game:GetChildren()) do
-            if not SKIP_CLASS[s.ClassName] then list[#list + 1] = s end
+    local function weaponRoots()
+        local list, seen = {}, {}
+        local function add(inst)
+            if inst and not seen[inst] then
+                seen[inst] = true
+                list[#list + 1] = inst
+            end
         end
-        for _, c in ipairs(LocalPlayer:GetChildren()) do
-            if c.Name ~= "PlayerGui" and c.Name ~= "PlayerScripts" then list[#list + 1] = c end
+
+        local replicated = game:GetService("ReplicatedStorage")
+        local assets = replicated:FindFirstChild("Assets")
+        if assets then add(assets:FindFirstChild("BundlePreviewSet")) end
+
+        local replicatedSkins = replicated:FindFirstChild("ReplicatedSkins")
+        if replicatedSkins then add(replicatedSkins:FindFirstChild("Weapons")) end
+        add(game:GetService("StarterPack"))
+
+        -- Inventory and actual player rigs only; no map geometry or UI trees.
+        for _, player in ipairs(Players:GetPlayers()) do
+            local backpack = player:FindFirstChildOfClass("Backpack")
+            if backpack then add(backpack) end
+            add(player:FindFirstChild("StarterGear"))
+            if player.Character then add(player.Character) end
         end
         return list
     end
-    local function allInstances()
-        local list = {}
-        for _, root in ipairs(scanRoots()) do
-            list[#list + 1] = root
-            local ok, d = pcall(function() return root:GetDescendants() end)
-            if ok then
-                for _, x in ipairs(d) do list[#list + 1] = x end
+
+    local function effectRoots()
+        local list, seen = {}, {}
+        local function add(inst)
+            if inst and not seen[inst] then
+                seen[inst] = true
+                list[#list + 1] = inst
             end
-            task.wait()
+        end
+
+        local replicated = game:GetService("ReplicatedStorage")
+        local assets = replicated:FindFirstChild("Assets")
+        if assets then add(assets:FindFirstChild("Finishers")) end
+
+        local replicatedSkins = replicated:FindFirstChild("ReplicatedSkins")
+        if replicatedSkins then add(replicatedSkins:FindFirstChild("PreviewEffects")) end
+        return list
+    end
+
+    local function remoteRoots()
+        local list, seen = {}, {}
+        local function add(inst)
+            if inst and not seen[inst] then
+                seen[inst] = true
+                list[#list + 1] = inst
+            end
+        end
+
+        local replicated = game:GetService("ReplicatedStorage")
+        add(replicated:FindFirstChild("Remotes"))
+        local packages = replicated:FindFirstChild("Packages")
+        if packages then
+            add(packages:FindFirstChild("Net"))
+            local networking = packages:FindFirstChild("Networking")
+            if networking then
+                add(networking:FindFirstChild("RE"))
+                add(networking:FindFirstChild("RF"))
+            end
+        end
+        return list
+    end
+
+    local function scanRoots()
+        local list, seen = {}, {}
+        for _, group in ipairs({ weaponRoots(), effectRoots(), remoteRoots() }) do
+            for _, root in ipairs(group) do
+                if not seen[root] then
+                    seen[root] = true
+                    list[#list + 1] = root
+                end
+            end
+        end
+        return list
+    end
+
+    local function allInstances(roots)
+        local list = {}
+        local stack = roots or scanRoots()
+        local seen = {}
+        local processed = 0
+        while #stack > 0 do
+            local inst = table.remove(stack)
+            if inst and not seen[inst] then
+                seen[inst] = true
+                list[#list + 1] = inst
+                local children = inst:GetChildren()
+                for i = #children, 1, -1 do
+                    stack[#stack + 1] = children[i]
+                end
+                processed = processed + 1
+                -- Yield frequently to keep frame time reasonable on mobile.
+                if processed % 90 == 0 then task.wait() end
+            end
         end
         return list
     end
@@ -1080,7 +1265,7 @@ local M = (function()
             end
         end
         if inst:IsA("Animation") then add(inst) end
-        for _, d in ipairs(inst:GetDescendants()) do
+        for _, d in ipairs(descendantsOf(inst)) do
             if d:IsA("Animation") then add(d) end
         end
         return specs
@@ -1090,21 +1275,30 @@ local M = (function()
         local ok, r = pcall(function() return inst:IsDescendantOf(game) end)
         return ok and r
     end
-    local function hasEffectPayload(i)
-        local function payload(d)
-            return isFx(d) or d:IsA("Sound") or d:IsA("Animation")
+    local function killContent(i)
+        if isFx(i) or i:IsA("Sound") or i:IsA("Animation") then return true end
+        if contentDescendantPresence then return contentDescendantPresence[i] == true end
+        local cached = killContentCache[i]
+        if cached ~= nil then return cached end
+        local found = false
+        for _, d in ipairs(descendantsOf(i)) do
+            if isFx(d) or d:IsA("Sound") or d:IsA("Animation") then
+                found = true
+                break
+            end
         end
-        if payload(i) then return true end
-        for _, d in ipairs(i:GetDescendants()) do
-            if payload(d) then return true end
-        end
-        return false
+        killContentCache[i] = found
+        return found
     end
     local function fxInfo(inst)
         local list = {}
         if isFx(inst) then list[#list + 1] = inst end
-        for _, d in ipairs(inst:GetDescendants()) do
+        local descendants = descendantsOf(inst)
+        local limit = math.min(#descendants, 600)
+        for i = 1, limit do
+            local d = descendants[i]
             if isFx(d) then list[#list + 1] = d end
+            if i % 180 == 0 then task.wait() end
         end
         local tex, col, col2
         for _, d in ipairs(list) do
@@ -1126,7 +1320,7 @@ local M = (function()
         return tex, col, col2 or col, #list
     end
     local function addEffect(inst, out, seen, nameOverride, lib)
-        if not hasEffectPayload(inst) then return end
+        if not inst or isWeaponTreeContent(inst) then return end
         local name = nameOverride or inst.Name
         local key = name:lower()
         if key == "" or seen[key] then return end
@@ -1141,20 +1335,18 @@ local M = (function()
         local function buildIndex()
             assetIndex = {}
             local counter = 0
-            for _, root in ipairs(scanRoots()) do
-                if root ~= workspace then
-                    for _, d in ipairs(root:GetDescendants()) do
-                        counter = counter + 1
-                        if counter % 800 == 0 then task.wait() end
-                        if (d:IsA("Folder") or d:IsA("Model") or d:IsA("BasePart") or d:IsA("Attachment")
-                            or d:IsA("Configuration")) and not skipFx(d) and d.Name ~= "" then
-                            local k = squash(d.Name)
-                            if k ~= "" and not assetIndex[k] and hasEffectPayload(d) then assetIndex[k] = d end
-                        end
-                    end
+            local source = activeScanInstances or {}
+            for _, d in ipairs(source) do
+                counter = counter + 1
+                if counter % 300 == 0 then task.wait() end
+                if d ~= workspace and not d:IsDescendantOf(workspace)
+                    and (d:IsA("Folder") or d:IsA("Model") or d:IsA("BasePart") or d:IsA("Attachment")
+                        or d:IsA("Configuration")) and not skipFx(d) and not isWeaponTreeContent(d)
+                    and d.Name ~= "" and killContent(d) then
+                    local k = squash(d.Name)
+                    if k ~= "" and not assetIndex[k] then assetIndex[k] = d end
                 end
             end
-            assetIndexBuiltAt = os.clock()
         end
         local function findIndexed()
             for _, k in ipairs(nameKeys(name)) do
@@ -1164,12 +1356,7 @@ local M = (function()
         end
         if not assetIndex then buildIndex() end
         local found = findIndexed()
-        if found then return found end
-        if os.clock() - assetIndexBuiltAt >= 3 then
-            buildIndex()
-            return findIndexed()
-        end
-        return nil
+        return found
     end
     local KILL_CFG = {
         match = function(n)
@@ -1179,7 +1366,7 @@ local M = (function()
             return n:find("s$") ~= nil
                 or n == "kill" or n == "death" or n == "elimination" or n == "finisher" or n == "execution"
         end,
-        content = hasEffectPayload,
+        content = killContent,
         plural = function(n)
             return n:find("s$") ~= nil
         end,
@@ -1196,55 +1383,59 @@ local M = (function()
         end,
     }
     local function scanGeneric(inst, ctx, cfg, out, seen, counter)
-        counter.n = counter.n + 1
-        if counter.n % 400 == 0 then task.wait() end
-        if skipFx(inst) then return end
-        local n = norm(inst.Name)
-        local here = ctx or cfg.match(n)
-        if here and cfg.values then
-            local hasValues = false
-            for _, c in ipairs(inst:GetChildren()) do
-                if c:IsA("ValueBase") then
-                    hasValues = true
-                    break
-                end
-            end
-            if hasValues then cfg.fromValues(inst, out, seen) end
-        end
-        if here and cfg.content(inst) then
-            local plural = cfg.plural(n)
-            local container = false
-            if inst:IsA("Folder") or inst:IsA("Configuration") or inst:IsA("Model") or inst:IsA("BasePart") then
-                local holders, direct = 0, 0
-                for _, c in ipairs(inst:GetChildren()) do
-                    if cfg.direct(c) then
-                        direct = direct + 1
-                    elseif not skipFx(c) and cfg.content(c) then
-                        holders = holders + 1
+        local stack = { { inst = inst, ctx = ctx } }
+        while #stack > 0 do
+            local node = table.remove(stack)
+            local current, inherited = node.inst, node.ctx
+            if current and current.Parent and not skipFx(current) then
+                counter.n = counter.n + 1
+                if counter.n % 180 == 0 then task.wait() end
+                local n = norm(current.Name)
+                local here = inherited or cfg.match(n)
+                local children = current:GetChildren()
+                if here and cfg.values then
+                    for _, child in ipairs(children) do
+                        if child:IsA("ValueBase") then
+                            cfg.fromValues(current, out, seen)
+                            break
+                        end
                     end
                 end
-                if plural and (holders > 0 or direct > 0) then
-                    container = true
-                elseif not ctx and direct == 0 and holders >= 2
-                    and (inst:IsA("Folder") or inst:IsA("Configuration")) then
-                    container = true
-                end
-            end
-            if container then
-                for _, c in ipairs(inst:GetChildren()) do
-                    if cfg.direct(c) then
-                        cfg.add(c, out, seen)
+                if here and cfg.content(current) then
+                    local plural = cfg.plural(n)
+                    local holders, direct = 0, 0
+                    local canContain = current:IsA("Folder") or current:IsA("Configuration")
+                        or current:IsA("Model") or current:IsA("BasePart")
+                    if canContain then
+                        for _, child in ipairs(children) do
+                            if cfg.direct(child) then
+                                direct = direct + 1
+                            elseif not skipFx(child) and cfg.content(child) then
+                                holders = holders + 1
+                            end
+                        end
+                    end
+                    local container = (plural and (holders > 0 or direct > 0))
+                        or (not inherited and direct == 0 and holders >= 2
+                            and (current:IsA("Folder") or current:IsA("Configuration")))
+                    if container then
+                        for i = #children, 1, -1 do
+                            local child = children[i]
+                            if cfg.direct(child) then
+                                cfg.add(child, out, seen)
+                            else
+                                stack[#stack + 1] = { inst = child, ctx = true }
+                            end
+                        end
                     else
-                        scanGeneric(c, true, cfg, out, seen, counter)
+                        cfg.add(current, out, seen)
+                    end
+                else
+                    for i = #children, 1, -1 do
+                        stack[#stack + 1] = { inst = children[i], ctx = inherited }
                     end
                 end
-            else
-                cfg.add(inst, out, seen)
             end
-            return
-        end
-        for _, c in ipairs(inst:GetChildren()) do
-            scanGeneric(c, ctx, cfg, out, seen, counter)
         end
     end
     local function priorityScan(all, out, seen)
@@ -1262,8 +1453,8 @@ local M = (function()
                     if asset then addEffect(asset, out, seen, inst.Name) end
                 elseif inst:IsA("Folder") or inst:IsA("Model") or inst:IsA("Configuration")
                     or inst:IsA("BasePart") or inst:IsA("Attachment") then
-                    if hasEffectPayload(inst) then p1[#p1 + 1] = inst end
-                elseif hasEffectPayload(inst) then
+                    if killContent(inst) then p1[#p1 + 1] = inst end
+                elseif killContent(inst) then
                     p2[#p2 + 1] = inst
                 end
             end
@@ -1271,11 +1462,14 @@ local M = (function()
         for _, inst in ipairs(p1) do addEffect(inst, out, seen) end
         for _, inst in ipairs(p2) do addEffect(inst, out, seen) end
     end
-    local LIB_NAMES = { "effect", "efecto", "fx", "vfx", "particle" }
+    local LIB_NAMES = KILL_LIBRARY_NAMES
     local function isHolder(c)
         if isFx(c) then return false end
+        if fxDescendantPresence then return fxDescendantPresence[c] == true end
         if c:IsA("Folder") or c:IsA("Model") or c:IsA("Attachment") or c:IsA("BasePart") or c:IsA("Configuration") then
-            if hasEffectPayload(c) then return true end
+            for _, d in ipairs(descendantsOf(c)) do
+                if isFx(d) then return true end
+            end
         end
         return false
     end
@@ -1283,15 +1477,18 @@ local M = (function()
         for i, inst in ipairs(all) do
             if i % 800 == 0 then task.wait() end
             if (inst:IsA("Folder") or inst:IsA("Configuration")) and not skipFx(inst) then
-                local n = norm(inst.Name)
-                if hasAny(n, LIB_NAMES) and not hasWord(n, KILL_BAD) and not inst:IsDescendantOf(workspace) then
+                local key = squash(inst.Name)
+                if hasAny(key, LIB_NAMES) and not hasWord(norm(inst.Name), KILL_BAD)
+                    and not inst:IsDescendantOf(workspace) and not isWeaponTreeContent(inst) then
                     local kids = inst:GetChildren()
-                    if #kids >= 3 then
+                    if #kids >= 2 then
                         local hold = {}
                         for _, c in ipairs(kids) do
-                            if isHolder(c) then hold[#hold + 1] = c end
+                            if isHolder(c) and not isWeaponTreeContent(c) then
+                                hold[#hold + 1] = c
+                            end
                         end
-                        if #hold >= 3 and #hold / #kids >= 0.7 then
+                        if #hold >= 2 and #hold / #kids >= 0.7 then
                             for _, c in ipairs(hold) do addEffect(c, out, seen, nil, true) end
                         end
                     end
@@ -1325,7 +1522,7 @@ local M = (function()
     end
     local function explicitIcon(inst)
         local list = { inst }
-        for _, d in ipairs(inst:GetDescendants()) do list[#list + 1] = d end
+        for _, d in ipairs(descendantsOf(inst)) do list[#list + 1] = d end
         for _, d in ipairs(list) do
             for k, v in pairs(d:GetAttributes()) do
                 if nameIsIcon(k) then
@@ -1345,7 +1542,7 @@ local M = (function()
     end
     local function embeddedImage(inst)
         local list = { inst }
-        for _, d in ipairs(inst:GetDescendants()) do list[#list + 1] = d end
+        for _, d in ipairs(descendantsOf(inst)) do list[#list + 1] = d end
         for _, d in ipairs(list) do
             if d:IsA("ImageLabel") or d:IsA("ImageButton") then
                 if d.Image ~= "" then return d.Image end
@@ -1361,7 +1558,7 @@ local M = (function()
     end
     local WCONT = {
         "weapon", "weaponassets", "weaponmodels", "skin", "skins", "loadout", "arsenal", "armas",
-        "equipment", "gunmodels", "meleemodels", "firearms",
+        "equipment", "gunmodels", "meleemodels", "firearms", "bundlepreviewset",
     }
     local function inWeaponContainer(inst)
         local p, depth = inst.Parent, 0
@@ -1373,13 +1570,13 @@ local M = (function()
         return false
     end
     local function toolValid(t)
-        for _, d in ipairs(t:GetDescendants()) do
+        for _, d in ipairs(descendantsOf(t)) do
             if d:IsA("BasePart") then return true end
         end
         return false
     end
     local function modelValid(m)
-        for _, d in ipairs(m:GetDescendants()) do
+        for _, d in ipairs(descendantsOf(m)) do
             if d:IsA("BasePart") then return true end
         end
         return false
@@ -1408,72 +1605,35 @@ local M = (function()
     local function consider(inst, out, seen, sig, ov)
         indexW(inst)
         local cat = ov[inst.Name:lower()] or classifyWeapon(inst)
-        if not cat or isKillEffectName(inst) then return end
-        if not validWeaponCandidate(inst, cat) then return end
+        if not cat then
+            if inst:IsDescendantOf(workspace) then return end
+            if not inWeaponContainer(inst) then return end
+            cat = catOfContent(inst) or shapeCat(inst)
+        end
+        if not cat then return end
+        if not sizeOk(inst) then return end
         pushWeapon(inst, cat, out, seen, sig, nil)
-    end
-    local WEAPON_GROUP_NAMES = {
-        gun = true, guns = true, pistol = true, pistols = true, knife = true, knives = true,
-        weapon = true, weapons = true, skin = true, skins = true, gunskins = true, kniveskins = true,
-        weaponskins = true, gunassets = true, knifeassets = true, weaponassets = true,
-        armory = true, arsenal = true, loadout = true, inventory = true, equipment = true,
-        cosmetics = true, items = true,
-    }
-    local function insideCharacterModel(inst)
-        local p = inst
-        while p and p ~= game do
-            if p:IsA("Model") and p:FindFirstChildOfClass("Humanoid") then return true end
-            p = p.Parent
-        end
-        return false
-    end
-    local function compositeWeaponCat(inst, ov)
-        if not (inst:IsA("Folder") or inst:IsA("Configuration")) then return nil end
-        if insideCharacterModel(inst) or inst:FindFirstAncestorWhichIsA("Model")
-            or inst:FindFirstAncestorWhichIsA("Tool") or inst:FindFirstAncestorWhichIsA("Accessory") then
-            return nil
-        end
-        if WEAPON_GROUP_NAMES[squash(inst.Name)] then return nil end
-        local cat = ov[inst.Name:lower()] or classifyWeapon(inst)
-        if not cat or isKillEffectName(inst) or not modelValid(inst) then return nil end
-        if not validWeaponCandidate(inst, cat) then return nil end
-        return cat
-    end
-    local function hasCompositeAncestor(inst, roots)
-        local p = inst.Parent
-        while p and p ~= game do
-            if roots[p] then return true end
-            p = p.Parent
-        end
-        return false
     end
     local function scanWeapons(list, out, seen, sig)
         local ov = env.NexvyrCatOverride or {}
         local char = LocalPlayer.Character
         for i, inst in ipairs(list) do
             if i % 700 == 0 then task.wait() end
-            if inst:IsA("Tool") and not inst:GetAttribute("NxTV") and toolValid(inst) then
+            if inst:IsA("Tool") and not inst:GetAttribute("NxTV") and not insideKillLibrary(inst) and toolValid(inst) then
                 indexW(inst)
-                local cat = ov[inst.Name:lower()] or classifyWeapon(inst)
-                if cat and not isKillEffectName(inst) and validWeaponCandidate(inst, cat) then
-                    pushWeapon(inst, cat, out, seen, sig, nil)
+                local cat = ov[inst.Name:lower()] or classifyWeapon(inst) or catOfContent(inst)
+                if not cat then
+                    local mine = inst.Parent == char or inst:FindFirstAncestorOfClass("Backpack") ~= nil
+                        or inst:FindFirstAncestorOfClass("StarterPack") ~= nil
+                    if mine or inWeaponContainer(inst) then cat = shapeCat(inst) end
                 end
-            end
-        end
-        local compositeRoots = {}
-        for i, inst in ipairs(list) do
-            if i % 700 == 0 then task.wait() end
-            local cat = compositeWeaponCat(inst, ov)
-            if cat then
-                compositeRoots[inst] = true
-                consider(inst, out, seen, sig, ov)
+                if cat then pushWeapon(inst, cat, out, seen, sig, nil) end
             end
         end
         for i, inst in ipairs(list) do
             if i % 700 == 0 then task.wait() end
             if inst:IsA("Model") then
-                if not skipCommon(inst) and not insideCharacterModel(inst)
-                    and not inst:FindFirstAncestorWhichIsA("Model")
+                if not skipCommon(inst) and not insideKillLibrary(inst) and not inst:FindFirstAncestorWhichIsA("Model")
                     and not inst:FindFirstAncestorWhichIsA("Tool") and not inst:FindFirstAncestorWhichIsA("Accessory")
                     and not inst:FindFirstChildOfClass("Humanoid") and modelValid(inst) then
                     consider(inst, out, seen, sig, ov)
@@ -1481,83 +1641,10 @@ local M = (function()
             elseif inst:IsA("BasePart") then
                 local par = inst.Parent
                 if par and (par:IsA("Folder") or par:IsA("Configuration")) and not skipCommon(inst)
-                    and not insideCharacterModel(inst) and not hasCompositeAncestor(inst, compositeRoots)
+                    and not insideKillLibrary(inst)
                     and (inst:IsA("MeshPart") or inst:FindFirstChildOfClass("SpecialMesh")) then
                     consider(inst, out, seen, sig, ov)
                 end
-            end
-        end
-    end
-    local MOD_KEYS = {
-        "effect", "kill", "weapon", "knife", "knives", "gun", "item", "skin", "shop", "inventory", "data",
-        "config", "cosmetic", "crate", "catalog", "store", "melee", "blade", "finisher", "loot", "pistol", "sword",
-    }
-    local NAME_FIELDS = { "Name", "name", "DisplayName", "displayName", "Title", "title" }
-    local function harvestData(all, wOut, wSeen, wSig, eOut, eSeen)
-        local mods = {}
-        for _, d in ipairs(all) do
-            if d:IsA("ModuleScript") and not d:GetAttribute("NxTV") then
-                if hasAny(norm(d.Name), MOD_KEYS) then mods[#mods + 1] = d end
-            end
-        end
-        local function registerWeapon(nm, cat)
-            local k = squash(nm)
-            local inst = wIndex[k]
-            if not inst or wSeen[k] or not existsInGame(inst) then return end
-            if isKillEffectName(inst) or not validWeaponCandidate(inst, cat) then return end
-            pushWeapon(inst, cat, wOut, wSeen, wSig, nil)
-        end
-        local function registerEffect(nm)
-            local asset = findAssetByName(nm)
-            if asset and existsInGame(asset) then addEffect(asset, eOut, eSeen, nm) end
-        end
-        local t0 = os.clock()
-        for i, m in ipairs(mods) do
-            if i > 140 or os.clock() - t0 > 25 then break end
-            local data = withTimeout(1.2, function() return require(m) end)
-            if type(data) == "table" then
-                local visited, nodes = {}, 0
-                local function iconIn(t)
-                    for k, v in pairs(t) do
-                        if type(k) == "string" and nameIsIcon(k) then
-                            local a = assetStr(v)
-                            if a then return a end
-                        end
-                    end
-                    return nil
-                end
-                local function nameOf(t, key)
-                    for _, f in ipairs(NAME_FIELDS) do
-                        local v = rawget(t, f)
-                        if type(v) == "string" and v ~= "" and #v < 40 then return v end
-                    end
-                    return key
-                end
-                local function walk(t, key, cat, fx, depth)
-                    if depth > 6 or visited[t] or nodes > 9000 then return end
-                    visited[t] = true
-                    nodes = nodes + 1
-                    local nm = nameOf(t, type(key) == "string" and key or nil)
-                    if nm then
-                        local ic = iconIn(t)
-                        local sk = squash(nm)
-                        if ic and sk ~= "" and not iconMap[sk] then iconMap[sk] = ic end
-                        if cat then registerWeapon(nm, cat) end
-                        if fx then registerEffect(nm) end
-                    end
-                    for k, v in pairs(t) do
-                        local ks = type(k) == "string" and k or nil
-                        if type(v) == "table" then
-                            local nc = (ks and catOfName(ks)) or cat
-                            local nf = fx or (ks ~= nil and hasAny(norm(ks), KILL_NAMES))
-                            walk(v, k, nc, nf, depth + 1)
-                        elseif type(v) == "string" and type(k) == "number" and #v > 1 and #v < 40 then
-                            if cat then registerWeapon(v, cat) end
-                            if fx then registerEffect(v) end
-                        end
-                    end
-                end
-                pcall(walk, data, nil, nil, false, 0)
             end
         end
     end
@@ -1591,9 +1678,17 @@ local M = (function()
         end
         local counter = 0
         for _, root in ipairs(roots) do
-            for _, d in ipairs(root:GetDescendants()) do
+            local source = {}
+            if root == pg then
+                source = descendantsOf(root)
+            else
+                for _, d in ipairs(activeScanInstances or {}) do
+                    if d:IsDescendantOf(root) then source[#source + 1] = d end
+                end
+            end
+            for _, d in ipairs(source) do
                 counter = counter + 1
-                if counter % 700 == 0 then task.wait() end
+                if counter % 220 == 0 then task.wait() end
                 if not d:FindFirstAncestor(GUI_NAME) then
                     local img
                     if d:IsA("ImageLabel") or d:IsA("ImageButton") then
@@ -1654,7 +1749,10 @@ local M = (function()
         return nil
     end
     local function attachIcons(effects, weapons)
+        local processed = 0
         for _, e in ipairs(effects) do
+            processed = processed + 1
+            if processed % 12 == 0 then task.wait() end
             local explicit = explicitIcon(e.inst)
             local g = iconFor(e.name)
             local embedded = embeddedImage(e.inst)
@@ -1668,6 +1766,8 @@ local M = (function()
             e.imgs = imgs
         end
         for _, w in ipairs(weapons) do
+            processed = processed + 1
+            if processed % 12 == 0 then task.wait() end
             if not w.tex or w.tex == "" then
                 w.tex = explicitIcon(w.inst) or iconFor(w.name) or embeddedImage(w.inst)
             end
@@ -1687,12 +1787,13 @@ local M = (function()
         return added
     end
     local function attachSounds(all, effects)
-        local idx = {}
+        local idx, hasSound = {}, {}
         for i, d in ipairs(all) do
-            if i % 900 == 0 then task.wait() end
+            if i % 700 == 0 then task.wait() end
             if d:IsA("Sound") and not d:GetAttribute("NxTV") then
                 local p, depth = d, 0
-                while p and p ~= game and depth < 3 do
+                while p and p ~= game and depth < 8 do
+                    hasSound[p] = true
                     local k = squash(p.Name)
                     if k ~= "" then
                         idx[k] = idx[k] or {}
@@ -1704,22 +1805,13 @@ local M = (function()
             end
         end
         for _, e in ipairs(effects) do
-            local has = e.inst:IsA("Sound")
-            if not has then
-                for _, d in ipairs(e.inst:GetDescendants()) do
-                    if d:IsA("Sound") then
-                        has = true
-                        break
-                    end
-                end
-            end
-            if not has then
+            if not hasSound[e.inst] then
                 e.sounds = {}
                 for _, k in ipairs(nameKeys(e.name)) do
                     local l = idx[k]
                     if l then
-                        for _, s in ipairs(l) do
-                            if #e.sounds < 3 then table.insert(e.sounds, s) end
+                        for _, sound in ipairs(l) do
+                            if #e.sounds < 3 then table.insert(e.sounds, sound) end
                         end
                     end
                 end
@@ -1728,7 +1820,8 @@ local M = (function()
     end
     M.norm, M.squash, M.hasAny, M.catOfName, M.catOfTool = norm, squash, hasAny, catOfName, catOfTool
     M.scanRoots, M.allInstances, M.scanWeapons, M.scanGeneric, M.KILL_CFG = scanRoots, allInstances, scanWeapons, scanGeneric, KILL_CFG
-    M.priorityScan, M.libraryScan, M.harvestData = priorityScan, libraryScan, harvestData
+    M.buildFxPresence = buildFxPresence
+    M.priorityScan, M.libraryScan = priorityScan, libraryScan
     M.buildGuiMap, M.guiDiscover, M.attachIcons, M.attachSounds = buildGuiMap, guiDiscover, attachIcons, attachSounds
     M.collectAnims, M.stripJunk, M.existsInGame = collectAnims, stripJunk, existsInGame
     M.partsOf, M.boundsIn = partsOf, boundsIn
@@ -1737,7 +1830,8 @@ end)()
 local function App()
     local norm, squash, hasAny, catOfName, catOfTool = M.norm, M.squash, M.hasAny, M.catOfName, M.catOfTool
     local scanRoots, allInstances, scanWeapons, scanGeneric, KILL_CFG = M.scanRoots, M.allInstances, M.scanWeapons, M.scanGeneric, M.KILL_CFG
-    local priorityScan, libraryScan, harvestData = M.priorityScan, M.libraryScan, M.harvestData
+    local buildFxPresence = M.buildFxPresence
+    local priorityScan, libraryScan = M.priorityScan, M.libraryScan
     local buildGuiMap, guiDiscover, attachIcons, attachSounds = M.buildGuiMap, M.guiDiscover, M.attachIcons, M.attachSounds
     local collectAnims, stripJunk, existsInGame = M.collectAnims, M.stripJunk, M.existsInGame
     local partsOf, boundsIn = M.partsOf, M.boundsIn
@@ -2084,7 +2178,8 @@ local function App()
             if d:IsA("ParticleEmitter") then
                 local delay = tonumber(d:GetAttribute("EmitDelay")) or 0
                 local dur = tonumber(d:GetAttribute("EmitDuration")) or 0
-                local count = tonumber(d:GetAttribute("EmitCount")) or 20
+                local rawCount = tonumber(d:GetAttribute("EmitCount")) or 0
+                local count = math.clamp(rawCount > 0 and math.ceil(rawCount) or 20, 1, 200)
                 local life = 1
                 pcall(function() life = d.Lifetime.Max end)
                 if d.Rate > 0 and dur <= 0 then dur = 1.2 end
@@ -2092,7 +2187,7 @@ local function App()
                 task.spawn(function()
                     if delay > 0 then task.wait(delay) end
                     if not d.Parent then return end
-                    if d.Rate > 0 or dur > 0 then
+                    if d.Rate > 0 then
                         d.Enabled = true
                         task.wait(math.max(dur, 0.05))
                         if d.Parent then d.Enabled = false end
@@ -2176,18 +2271,15 @@ local function App()
             if h and h:IsA("BasePart") then return h end
             return v:FindFirstChildWhichIsA("BasePart", true)
         end
-        if v:IsA("Model") then
+        if v:IsA("Model") or v:IsA("Folder") then
             local h = v:FindFirstChild("Handle", true)
             if h and h:IsA("BasePart") then return h end
-            if v.PrimaryPart and v.PrimaryPart:IsA("BasePart") then return v.PrimaryPart end
-            local r = v:FindFirstChild("Root", true)
-            if r and r:IsA("BasePart") then return r end
-            return v:FindFirstChildWhichIsA("BasePart", true)
-        end
-        if v:IsA("Folder") or v:IsA("Configuration") then
-            for _, name in ipairs({ "Root", "Handle", "KnifeDisplay", "GunDisplay" }) do
-                local part = v:FindFirstChild(name, true)
-                if part and part:IsA("BasePart") then return part end
+            if v:IsA("Model") and v.PrimaryPart then return v.PrimaryPart end
+            local root = v:FindFirstChild("Root", true)
+            if root and root:IsA("BasePart") then return root end
+            for _, name in ipairs({ "KnifeDisplay", "GunDisplay", "Display" }) do
+                local display = v:FindFirstChild(name, true)
+                if display and display:IsA("BasePart") then return display end
             end
             return v:FindFirstChildWhichIsA("BasePart", true)
         end
@@ -2228,115 +2320,110 @@ local function App()
         local y = axisVec(idx[2]) * sgn1(idx[2])
         return CFrame.fromMatrix(Vector3.zero, x, y, x:Cross(y))
     end
-    local function cloneComplete(src)
-        local changed = {}
-        local blocked = false
-        local function enableArchivable(inst)
-            local ok, value = pcall(function() return inst.Archivable end)
-            if not ok or value then return end
-            local setOk = pcall(function() inst.Archivable = true end)
-            if setOk then
-                changed[#changed + 1] = inst
-            else
-                blocked = true
-            end
-        end
-        enableArchivable(src)
-        for _, d in ipairs(src:GetDescendants()) do
-            enableArchivable(d)
-        end
-        local ok, clone = pcall(function() return src:Clone() end)
-        for i = #changed, 1, -1 do
-            pcall(function() changed[i].Archivable = false end)
-        end
-        if blocked or not ok or not clone then
-            if clone then pcall(function() clone:Destroy() end) end
-            return nil
-        end
-        return clone
-    end
     local function buildSkin(entry, origRoot, origParts, origGrip, gripMode)
         local src = entry.inst
         if not existsInGame(src) then return nil end
-        local c = cloneComplete(src)
-        if not c then return nil end
-        local function insideClone(inst)
-            return inst ~= nil and (inst == c or inst:IsDescendantOf(c))
-        end
+        local c
+        if not pcall(function() c = src:Clone() end) or not c then return nil end
         local junk = {}
         for _, d in ipairs(c:GetDescendants()) do
-            if d:IsA("LuaSourceContainer") or d:IsA("Sound") or d:IsA("ScreenGui")
-                or d:IsA("BillboardGui") or d:IsA("SurfaceGui") or d:IsA("Humanoid")
-                or d:IsA("Animation") then
+            if d:IsA("LuaSourceContainer") or d:IsA("Sound") or d:IsA("ScreenGui") or d:IsA("BillboardGui")
+                or d:IsA("SurfaceGui") or d:IsA("Humanoid") or d:IsA("Animation") or d:IsA("JointInstance")
+                or d:IsA("WeldConstraint") or d:IsA("Constraint") then
                 junk[#junk + 1] = d
-            elseif d:IsA("JointInstance") or d:IsA("WeldConstraint") then
-                local ok, p0, p1 = pcall(function() return d.Part0, d.Part1 end)
-                if not ok or not insideClone(p0) or not insideClone(p1) then
-                    junk[#junk + 1] = d
-                end
-            elseif d:IsA("Constraint") then
-                local ok, a0, a1 = pcall(function() return d.Attachment0, d.Attachment1 end)
-                if not ok or not insideClone(a0) or not insideClone(a1) then
-                    junk[#junk + 1] = d
-                end
             end
         end
         for _, d in ipairs(junk) do pcall(function() d:Destroy() end) end
-
-        local srcPart = c:IsA("BasePart") and c or nil
+        local gripS = c:IsA("Tool") and c.Grip or nil
         local pp = c:IsA("Model") and c.PrimaryPart or nil
+        local srcPart = c:IsA("BasePart") and c or nil
         local model = Instance.new("Model")
         model.Name = "NxTVSkin"
         model:SetAttribute("NxTV", true)
-        c.Parent = model
-
+        if srcPart then
+            srcPart.Parent = model
+        else
+            for _, ch in ipairs(c:GetChildren()) do ch.Parent = model end
+            pcall(function() c:Destroy() end)
+        end
         local parts = partsOf(model)
         if #parts == 0 then
             pcall(function() model:Destroy() end)
             return nil
         end
-        local root = srcPart
+        local root = model:FindFirstChild("Handle", true)
+        if not (root and root:IsA("BasePart")) then root = nil end
         if not root and pp and pp:IsA("BasePart") and pp:IsDescendantOf(model) then root = pp end
-        if not root then root = c:FindFirstChild("Handle", true) end
-        if not (root and root:IsA("BasePart")) then root = c:FindFirstChild("Root", true) end
-        if not (root and root:IsA("BasePart")) then
-            local best, bestVolume = nil, -1
+        if not root then
+            local namedRoot = model:FindFirstChild("Root", true)
+            if namedRoot and namedRoot:IsA("BasePart") then root = namedRoot end
+        end
+        if not root and srcPart then root = srcPart end
+        if not root then
+            local best, bv = nil, -1
             for _, p in ipairs(parts) do
-                local volume = p.Size.X * p.Size.Y * p.Size.Z
-                if volume > bestVolume then
-                    best, bestVolume = p, volume
-                end
+                local v = p.Size.X * p.Size.Y * p.Size.Z
+                if v > bv then best, bv = p, v end
             end
             root = best
         end
-        if not root then
-            pcall(function() model:Destroy() end)
-            return nil
-        end
-
-        local delta = origRoot.CFrame * root.CFrame:Inverse()
-        if c:IsA("Model") then
-            local moved = pcall(function() c:PivotTo(delta * c:GetPivot()) end)
-            if not moved then
-                for _, p in ipairs(parts) do p.CFrame = delta * p.CFrame end
-            end
-        else
-            for _, p in ipairs(parts) do p.CFrame = delta * p.CFrame end
-        end
-
-        pcall(function() model.PrimaryPart = root end)
         for _, p in ipairs(parts) do
             p.Anchored = false
             p.CanCollide = false
             p.CanTouch = false
             p.CanQuery = false
             p.Massless = true
+        end
+        local oRef = origRoot.CFrame
+        local sRefCF = root.CFrame
+        local vis = {}
+        for _, p in ipairs(origParts) do
+            if p.Transparency < 0.95 then vis[#vis + 1] = p end
+        end
+        if #vis == 0 then vis = origParts end
+        local srcVisible = {}
+        for _, p in ipairs(parts) do
+            if p.Transparency < 0.95 then srcVisible[#srcVisible + 1] = p end
+        end
+        if #srcVisible == 0 then srcVisible = parts end
+        local _, sO = boundsIn(vis, oRef)
+        local _, sS = boundsIn(srcVisible, sRefCF)
+        local oLong = math.max(sO.X, sO.Y, sO.Z)
+        local sLong = math.max(sS.X, sS.Y, sS.Z)
+        local ratio = 1
+        if sLong > 0.01 then ratio = oLong / sLong end
+        local useGrip = gripMode and gripS ~= nil and root.Name == "Handle"
+        local k = 1
+        if useGrip then
+            if ratio < 0.75 or ratio > 1.33 then k = math.clamp(ratio, 0.25, 4) end
+        else
+            k = math.clamp(ratio, 0.25, 4)
+        end
+        local plan = {}
+        for _, p in ipairs(parts) do
+            local relative = sRefCF:ToObjectSpace(p.CFrame)
+            if useGrip then
+                relative = gripS:Inverse() * relative
+            end
+            local scaled = CFrame.new(relative.Position * k) * (relative - relative.Position)
+            plan[p] = useGrip and (origGrip * scaled) or scaled
+        end
+        if math.abs(k - 1) > 0.02 then
+            for _, p in ipairs(parts) do
+                p.Size = p.Size * k
+                for _, ch in ipairs(p:GetChildren()) do
+                    if ch:IsA("SpecialMesh") and ch.MeshType == Enum.MeshType.FileMesh then
+                        ch.Scale = ch.Scale * k
+                    end
+                end
+            end
+        end
+        for _, p in ipairs(parts) do
             local w = Instance.new("Weld")
             w.Name = "NxTVWeld"
             w.Part0 = origRoot
             w.Part1 = p
-            w.C0 = origRoot.CFrame:ToObjectSpace(p.CFrame)
-            w.C1 = CFrame.new()
+            w.C0 = plan[p]
             w.Parent = p
         end
         return model
@@ -2373,7 +2460,7 @@ local function App()
         model.Parent = tool
         rec.targets[tool] = { kind = "tool", model = model, parts = origParts, root = handle, skinParts = partsOf(model) }
     end
-    local function skinHolster(rec, target, char, displayKind)
+    local function skinHolster(rec, target, char)
         local root = rootPartOf(target)
         if not root then return end
         local origParts = partsOf(target)
@@ -2381,30 +2468,7 @@ local function App()
         local model = buildSkin(rec.entry, root, origParts, CFrame.new(), false)
         if not model then return end
         model.Parent = holsterFolder(char)
-        rec.targets[target] = {
-            kind = displayKind or "holster", model = model, parts = origParts,
-            root = root, skinParts = partsOf(model),
-        }
-    end
-    local function targetWeaponCat(inst, char)
-        local cat = catOfName(inst.Name)
-        if cat then return cat end
-        local p = inst.Parent
-        while p and p ~= char do
-            local n = squash(p.Name)
-            if n == "knifepartsfolder" then return "melee" end
-            if n == "gunpartsfolder" then return "gun" end
-            p = p.Parent
-        end
-        return nil
-    end
-    local function isRigDisplay(inst, char)
-        local p = inst.Parent
-        while p and p ~= char do
-            if p.Name == "RightTool" or p.Name == "LeftTool" then return true end
-            p = p.Parent
-        end
-        return false
+        rec.targets[target] = { kind = "holster", model = model, parts = origParts, root = root, skinParts = partsOf(model) }
     end
     local function refreshRec(rec)
         local char = LocalPlayer.Character
@@ -2449,54 +2513,35 @@ local function App()
             end
         end
         if char then
-            local candidates = {}
-            for _, d in ipairs(char:GetDescendants()) do
-                local eligible = d:IsA("Model") or d:IsA("BasePart") or d:IsA("Accessory")
-                if d:IsA("Folder") or d:IsA("Configuration") then
-                    local n = squash(d.Name)
-                    eligible = n == "knifepartsfolder" or n == "gunpartsfolder"
-                end
-                if eligible and not isOurs(d, char) and not d:FindFirstAncestorWhichIsA("Tool") then
-                    local targetCat = targetWeaponCat(d, char)
-                    if targetCat == rec.cat or rec.toolNames[squash(d.Name)] then
-                        candidates[#candidates + 1] = d
-                    end
+            local descendants = char:GetDescendants()
+            for _, d in ipairs(descendants) do
+                local key = squash(d.Name)
+                local folderCat = key == "knifepartsfolder" and "melee"
+                    or key == "gunpartsfolder" and "gun" or nil
+                if d:IsA("Folder") and folderCat == rec.cat and not rec.targets[d]
+                    and not isOurs(d, char) and not d:FindFirstAncestorWhichIsA("Tool")
+                    and not claimed(d) then
+                    pcall(skinHolster, rec, d, char)
                 end
             end
-            local function depthOf(inst)
-                local depth, p = 0, inst
-                while p and p ~= char do
-                    depth = depth + 1
-                    p = p.Parent
-                end
-                return depth
-            end
-            table.sort(candidates, function(a, b) return depthOf(a) < depthOf(b) end)
-            for _, d in ipairs(candidates) do
-                if not rec.targets[d] and not claimed(d) then
-                    local nested = false
-                    for t in pairs(rec.targets) do
-                        if t ~= d and d:IsDescendantOf(t) then
-                            nested = true
-                            break
+            for _, d in ipairs(descendants) do
+                if (d:IsA("Model") or d:IsA("BasePart") or d:IsA("Accessory")) and not rec.targets[d]
+                    and not isOurs(d, char) and not d:FindFirstAncestorWhichIsA("Tool") then
+                    if catOfName(d.Name) == rec.cat or rec.toolNames[squash(d.Name)] then
+                        if not claimed(d) then
+                            local nested = false
+                            for t in pairs(rec.targets) do
+                                if t ~= d and d:IsDescendantOf(t) then
+                                    nested = true
+                                    break
+                                end
+                            end
+                            if not nested then pcall(skinHolster, rec, d, char) end
                         end
                     end
-                    if not nested then
-                        local kind = isRigDisplay(d, char) and "rig" or "holster"
-                        pcall(skinHolster, rec, d, char, kind)
-                    end
                 end
             end
         end
-    end
-    local function originalVisualVisible(info)
-        for _, p in ipairs(info.parts) do
-            if p.Parent and p.Transparency < 0.99 then
-                local hasMesh = p:IsA("MeshPart") or p:FindFirstChildOfClass("SpecialMesh") ~= nil
-                if p.Name ~= "Root" or hasMesh then return true end
-            end
-        end
-        return false
     end
     local function stepRec(rec)
         local char = LocalPlayer.Character
@@ -2513,9 +2558,17 @@ local function App()
             for _, p in ipairs(info.parts) do
                 if p.Parent then p.LocalTransparencyModifier = 1 end
             end
-            if info.kind == "holster" or info.kind == "rig" then
-                local show = originalVisualVisible(info)
-                if info.kind == "holster" then show = show and not equipped end
+            if info.kind == "holster" then
+                local root = info.root
+                local originalVisible = false
+                for _, p in ipairs(info.parts) do
+                    if p.Parent and p.Transparency < 0.99 then
+                        originalVisible = true
+                        break
+                    end
+                end
+                local show = (not equipped) and root.Parent ~= nil and char ~= nil
+                    and root:IsDescendantOf(char) and originalVisible
                 local v = show and 0 or 1
                 for _, p in ipairs(info.skinParts) do
                     if p.Parent then p.LocalTransparencyModifier = v end
@@ -2849,11 +2902,10 @@ local function App()
             end
         end
     end
-    local function hookRemotes()
-        local n, count = 0, 0
-        for _, d in ipairs(game:GetDescendants()) do
-            count = count + 1
-            if count % 3000 == 0 then task.wait() end
+    local function hookRemotes(instances)
+        local n = 0
+        for i, d in ipairs(instances or {}) do
+            if i % 900 == 0 then task.wait() end
             if d:IsA("RemoteEvent") and hasAny(norm(d.Name), REMOTE_TERMS) then
                 n = n + 1
                 if n > 40 then break end
@@ -2895,11 +2947,10 @@ local function App()
             Kill.hasStat = true
             if oldv ~= nil and v > oldv then addCredit() end
         end))
-        task.spawn(hookRemotes)
+        -- Remote hooks are attached to the main scan snapshot to avoid a second full-game traversal.
     end
     local View = { token = 0, built = 0, limit = PAGE, list = {}, more = nil }
     local cards = {}
-    local buildCards
     local function isApplied(entry)
         if entry.tab == "effects" then
             return Kill.entry == entry
@@ -2914,8 +2965,6 @@ local function App()
                 c.st.Color = sel and IC.gold or IC.btnLine
                 c.st.Transparency = sel and 0.05 or 0.7
                 c.dot.Visible = isApplied(entry)
-                c.fav.Text = isFavorite(entry) and "★" or "☆"
-                c.fav.TextColor3 = isFavorite(entry) and IC.gold or IC.soft
             end
         end
     end
@@ -2925,45 +2974,29 @@ local function App()
         paintCards()
     end
     local function makeCard(entry, order)
-        local card = new("Frame", {
+        local card = new("TextButton", {
             Parent = listFrame, BackgroundColor3 = IC.btnBg, BackgroundTransparency = 0.35,
-            BorderSizePixel = 0, LayoutOrder = order,
+            AutoButtonColor = false, Text = "", BorderSizePixel = 0, LayoutOrder = order,
         })
         corner(card, 5)
         local st = stroke(card, IC.btnLine, 1, 0.7)
-        local selectButton = new("TextButton", {
-            Parent = card, Position = UDim2.fromScale(0, 0), Size = UDim2.fromScale(1, 1),
-            BackgroundTransparency = 1, AutoButtonColor = false, Text = "", BorderSizePixel = 0, ZIndex = 2,
+        local imgHost = new("Frame", {
+            Parent = card, Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 0, 54),
+            BackgroundTransparency = 1, BorderSizePixel = 0, ClipsDescendants = true,
         })
+        renderVisual(imgHost, entry, false)
         new("TextLabel", {
-            Parent = selectButton, Position = UDim2.fromOffset(6, 5), Size = UDim2.new(1, -28, 1, -10),
+            Parent = card, Position = UDim2.fromOffset(4, 59), Size = UDim2.new(1, -8, 0, 16),
             BackgroundTransparency = 1, Text = entry.name, Font = Enum.Font.GothamMedium, TextSize = 10,
-            TextColor3 = IC.title, TextWrapped = true, TextTruncate = Enum.TextTruncate.AtEnd,
-            TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Center,
-            ZIndex = 2,
-        })
-        local fav = new("TextButton", {
-            Parent = card, Position = UDim2.new(1, -22, 0, 2), Size = UDim2.fromOffset(19, 19),
-            BackgroundTransparency = 1, AutoButtonColor = false, Text = isFavorite(entry) and "★" or "☆",
-            Font = Enum.Font.GothamBold, TextSize = 17,
-            TextColor3 = isFavorite(entry) and IC.gold or IC.soft, BorderSizePixel = 0, ZIndex = 5,
+            TextColor3 = IC.title, TextSize = 9, TextTruncate = Enum.TextTruncate.AtEnd,
         })
         local dot = new("Frame", {
-            Parent = card, Position = UDim2.fromOffset(6, 6), Size = UDim2.fromOffset(7, 7),
-            BackgroundColor3 = T.green, BorderSizePixel = 0, Visible = isApplied(entry), ZIndex = 4,
+            Parent = card, Position = UDim2.fromOffset(7, 7), Size = UDim2.fromOffset(7, 7),
+            BackgroundColor3 = T.green, BorderSizePixel = 0, Visible = isApplied(entry), ZIndex = 3,
         })
         corner(dot, 4)
-        cards[entry] = { card = card, button = selectButton, st = st, dot = dot, fav = fav }
-        selectButton.MouseButton1Click:Connect(function() selectEntry(entry) end)
-        fav.MouseButton1Click:Connect(function()
-            local bucket = Favorites[entry.tab]
-            if bucket[entry.lname] then
-                bucket[entry.lname] = nil
-            else
-                bucket[entry.lname] = true
-            end
-            if buildCards then task.defer(function() buildCards(true) end) end
-        end)
+        cards[entry] = { card = card, st = st, dot = dot }
+        card.MouseButton1Click:Connect(function() selectEntry(entry) end)
         card.MouseEnter:Connect(function()
             if touchOnly then return end
             if Selected[entry.tab] ~= entry then tween(st, TweenInfo.new(0.12), { Transparency = 0.4 }) end
@@ -2978,12 +3011,6 @@ local function App()
         for _, e in ipairs(Data[activeTab]) do
             if q == "" or string.find(e.lname, q, 1, true) then res[#res + 1] = e end
         end
-        table.sort(res, function(a, b)
-            local af, bf = isFavorite(a), isFavorite(b)
-            if af ~= bf then return af end
-            if a.lname ~= b.lname then return a.lname < b.lname end
-            return a.name < b.name
-        end)
         return res
     end
     local function clearCards()
@@ -2993,7 +3020,7 @@ local function App()
         cards = {}
         View.more = nil
     end
-    buildCards = function(reset)
+    local function buildCards(reset)
         View.token = View.token + 1
         local my = View.token
         if reset then
@@ -3013,7 +3040,7 @@ local function App()
         if #list == 0 then
             emptyLabel.Visible = true
             if not Scan.done then
-                emptyLabel.Text = "Escaneando juego..."
+                emptyLabel.Text = "Preparando catálogo en segundo plano..."
             else
                 emptyLabel.Text = TAB_INFO[activeTab].empty
             end
@@ -3078,10 +3105,6 @@ local function App()
                 break
             end
         end
-        if Favorites[from][entry.lname] then
-            Favorites[from][entry.lname] = nil
-            Favorites[to][entry.lname] = true
-        end
         entry.cat = entry.cat == "melee" and "gun" or "melee"
         entry.tab = to
         Data[to][#Data[to] + 1] = entry
@@ -3093,62 +3116,108 @@ local function App()
         setStatus("Movido a " .. (to == "guns" and "Pistolas" or "Cuchillos") .. ".", T.green)
     end
     local function runScan()
-        if Scan.running then return end
+        if Scan.running or Scan.done then return end
         Scan.running = true
         Scan.done = false
-        setStatus("Escaneando todo el juego...", IC.soft)
-        setProgress(0.05)
+        setStatus("Preparando catálogo...", IC.soft)
+        setProgress(0.03)
+
         local weapons, effects = {}, {}
         local seenW, sigW, seenE = {}, {}, {}
-        local cE = { n = 0 }
-        local all = {}
-        pcall(function() all = allInstances() end)
-        setProgress(0.2)
-        pcall(function() scanWeapons(all, weapons, seenW, sigW) end)
-        setProgress(0.35)
-        for _, root in ipairs(scanRoots()) do
-            pcall(function() scanGeneric(root, false, KILL_CFG, effects, seenE, cE) end)
-        end
-        setProgress(0.5)
-        pcall(function() priorityScan(all, effects, seenE) end)
-        pcall(function() libraryScan(all, effects, seenE) end)
-        setProgress(0.62)
-        setStatus("Leyendo datos del juego...", IC.soft)
-        pcall(function() harvestData(all, weapons, seenW, sigW, effects, seenE) end)
-        setProgress(0.78)
-        setStatus("Leyendo la GUI del juego...", IC.soft)
-        pcall(function() buildGuiMap() end)
-        pcall(function() guiDiscover(weapons, seenW, sigW) end)
-        setProgress(0.88)
-        pcall(function() attachIcons(effects, weapons) end)
-        pcall(function() attachSounds(all, effects) end)
-        setProgress(0.95)
-        local knives, guns = {}, {}
-        local ov = env.NexvyrCatOverride
-        for _, e in ipairs(weapons) do
-            if ov[e.lname] then e.cat = ov[e.lname] end
-            if e.cat == "melee" then
-                e.tab = "knives"
-                knives[#knives + 1] = e
-            else
-                e.tab = "guns"
-                guns[#guns + 1] = e
+        local weaponInstances, effectInstances = {}, {}
+        local weaponOk, effectOk = true, true
+        local weaponErr, effectErr
+
+        local function publishWeaponLists()
+            local knives, guns = {}, {}
+            local overrides = env.NexvyrCatOverride
+            for _, entry in ipairs(weapons) do
+                if overrides[entry.lname] then entry.cat = overrides[entry.lname] end
+                if entry.cat == "melee" then
+                    entry.tab = "knives"
+                    knives[#knives + 1] = entry
+                else
+                    entry.tab = "guns"
+                    guns[#guns + 1] = entry
+                end
             end
+            table.sort(knives, function(a, b) return a.lname < b.lname end)
+            table.sort(guns, function(a, b) return a.lname < b.lname end)
+            Data.knives, Data.guns = knives, guns
+            return knives, guns
         end
-        table.sort(knives, function(a, b) return a.lname < b.lname end)
-        table.sort(guns, function(a, b) return a.lname < b.lname end)
+
+        -- Stage 1: scan only the weapon registries, inventory and player rigs.
+        weaponOk, weaponErr = pcall(function()
+            weaponInstances = allInstances(weaponRoots())
+            scanWeapons(weaponInstances, weapons, seenW, sigW)
+            publishWeaponLists()
+        end)
+        if not weaponOk then
+            warn("[SnowX-Armas] Weapon scan failed: " .. tostring(weaponErr))
+        end
+        pcall(buildCards, true)
+        setProgress(0.34)
+        setStatus(#Data.knives .. " cuchillos y " .. #Data.guns .. " pistolas; buscando efectos...", IC.soft)
+
+        -- Stage 2: hook only known networking folders; never traverse the whole DataModel.
+        pcall(function()
+            hookRemotes(allInstances(remoteRoots()))
+        end)
+
+        -- Stage 3: scan the dedicated kill-effect libraries, not weapon VFX or world props.
+        effectOk, effectErr = pcall(function()
+            effectInstances = allInstances(effectRoots())
+            activeScanInstances = effectInstances
+            buildFxPresence(effectInstances)
+            local counter = { n = 0 }
+            for _, root in ipairs(effectRoots()) do
+                scanGeneric(root, false, KILL_CFG, effects, seenE, counter)
+            end
+            priorityScan(effectInstances, effects, seenE)
+            libraryScan(effectInstances, effects, seenE)
+        end)
+        if not effectOk then
+            warn("[SnowX-Armas] Effect scan failed: " .. tostring(effectErr))
+        end
+
+        Data.effects = effects
+        setProgress(0.78)
+        setStatus(#effects .. " efectos encontrados; finalizando catálogo...", IC.soft)
+        local knives, guns = publishWeaponLists()
         table.sort(effects, function(a, b)
             if a.priority ~= b.priority then return a.priority end
             if a.lib ~= b.lib then return not a.lib end
             return a.lname < b.lname
         end)
         Data.knives, Data.guns, Data.effects = knives, guns, effects
-        Scan.done = true
+
+        -- Complete the main catalogue before optional icon/sound enrichment.
         Scan.running = false
-        setStatus(#knives .. " cuchillos | " .. #guns .. " pistolas | " .. #effects .. " efectos.", T.green)
+        Scan.done = true
+        if not weaponOk or not effectOk then
+            local reason = not weaponOk and tostring(weaponErr) or tostring(effectErr)
+            setStatus("Catálogo parcial: " .. reason, T.warn)
+        else
+            setStatus(#knives .. " cuchillos | " .. #guns .. " pistolas | " .. #effects .. " efectos.", T.green)
+        end
         setProgress(1)
-        task.delay(0.6, function() setProgress(0) end)
-        buildCards(true)
+        pcall(buildCards, true)
+        task.delay(0.6, function()
+            if progressFill and progressFill.Parent then setProgress(0) end
+        end)
+
+        -- Optional metadata is deliberately detached from catalogue completion.
+        task.spawn(function()
+            local ok, err = pcall(function()
+                attachIcons(effects, weapons)
+                attachSounds(effectInstances, effects)
+            end)
+            if not ok then warn("[SnowX-Armas] Optional metadata skipped: " .. tostring(err)) end
+            if gui and gui.Parent and Scan.done then
+                pcall(buildCards, true)
+            end
+        end)
     end
     local function doSearch()
         buildCards(true)
@@ -3242,13 +3311,13 @@ local function App()
         BorderSizePixel = 0, ClipsDescendants = true, Visible = true, Active = true, ZIndex = 50,
     })
     corner(floatRoot, 12)
-    local floatBackground = new("ImageLabel", {
+    floatingBackground = new("ImageLabel", {
         Parent = floatRoot, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
         Image = bgAsset or "", ImageTransparency = bgAsset and 0.5 or 1,
         ScaleType = Enum.ScaleType.Crop, BorderSizePixel = 0, ZIndex = 50,
     })
-    corner(floatBackground, 12)
-    new("Frame", {
+    corner(floatingBackground, 12)
+    floatingOverlay = new("Frame", {
         Parent = floatRoot, Size = UDim2.fromScale(1, 1), BackgroundColor3 = BLACK,
         BackgroundTransparency = bgAsset and 0.55 or 0.82, BorderSizePixel = 0, ZIndex = 51,
     })
@@ -3359,6 +3428,7 @@ local function App()
 
     local mainDrag = nil
     local floatingDrag = nil
+    local suppressFloatOpen = false
 
     local function beginMainDrag(input)
         local inputType = input.UserInputType
@@ -3373,6 +3443,7 @@ local function App()
     local function beginFloatingDrag(input)
         local inputType = input.UserInputType
         if inputType ~= Enum.UserInputType.MouseButton1 and inputType ~= Enum.UserInputType.Touch then return end
+        suppressFloatOpen = false
         floatingDrag = {
             input = input, inputType = inputType,
             start = Vector2.new(input.Position.X, input.Position.Y),
@@ -3413,11 +3484,18 @@ local function App()
                 and input.UserInputType == Enum.UserInputType.MouseButton1)
         if not ended then return end
         floatingDrag = nil
-        if not drag.moved then openWindow(true) end
+        if drag.moved then suppressFloatOpen = true end
     end
 
     track(dragArea.InputBegan:Connect(beginMainDrag))
     track(floatBtn.InputBegan:Connect(beginFloatingDrag))
+    track(floatBtn.Activated:Connect(function()
+        if suppressFloatOpen then
+            suppressFloatOpen = false
+            return
+        end
+        openWindow(true)
+    end))
     track(UIS.InputChanged:Connect(function(input)
         moveDrag(mainDrag, input, false, setMainCenter)
         moveDrag(floatingDrag, input, false, setFloatingCenter)
