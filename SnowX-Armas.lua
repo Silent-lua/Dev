@@ -461,6 +461,7 @@ local Window = new("CanvasGroup", {
     BorderSizePixel = 0,
     Active = true,
     ClipsDescendants = true,
+    Visible = false,
     GroupTransparency = 0,
 })
 corner(Window, 16)
@@ -524,7 +525,7 @@ new("TextLabel", {
 local btnMin = UI.winButton(TopBar, "min", -44, IC.gold)
 local btnClose = UI.winButton(TopBar, "close", -10, T.red)
 
-create("Frame", {
+new("Frame", {
     Parent = Window, Position = UDim2.fromOffset(176, 52),
     Size = UDim2.new(0, 1, 1, -52), BackgroundColor3 = Color3.fromRGB(54, 54, 62), BorderSizePixel = 0,
 })
@@ -3199,7 +3200,6 @@ local function App()
     end)
     updateLabels()
     setTab("knives")
-    openWindow(false)
     initKills()
     task.spawn(runScan)
 end
