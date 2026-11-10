@@ -1388,6 +1388,40 @@ local M = (function()
         if not sizeOk(inst) then return end
         pushWeapon(inst, cat, out, seen, sig, nil)
     end
+    local WEAPON_GROUP_NAMES = {
+        gun = true, guns = true, pistol = true, pistols = true, knife = true, knives = true,
+        weapon = true, weapons = true, skin = true, skins = true, gunskins = true, kniveskins = true,
+        weaponskins = true, gunassets = true, knifeassets = true, weaponassets = true,
+        armory = true, arsenal = true, loadout = true, inventory = true, equipment = true,
+        cosmetics = true, items = true,
+    }
+    local function insideCharacterModel(inst)
+        local p = inst
+        while p and p ~= game do
+            if p:IsA("Model") and p:FindFirstChildOfClass("Humanoid") then return true end
+            p = p.Parent
+        end
+        return false
+    end
+    local function compositeWeaponCat(inst, ov)
+        if not (inst:IsA("Folder") or inst:IsA("Configuration")) then return nil end
+        if insideCharacterModel(inst) or inst:FindFirstAncestorWhichIsA("Model")
+            or inst:FindFirstAncestorWhichIsA("Tool") or inst:FindFirstAncestorWhichIsA("Accessory") then
+            return nil
+        end
+        if WEAPON_GROUP_NAMES[squash(inst.Name)] then return nil end
+        local cat = ov[inst.Name:lower()] or classifyWeapon(inst)
+        if not cat or not modelValid(inst) or not sizeOk(inst) then return nil end
+        return cat
+    end
+    local function hasCompositeAncestor(inst, roots)
+        local p = inst.Parent
+        while p and p ~= game do
+            if roots[p] then return true end
+            p = p.Parent
+        end
+        return false
+    end
     local function scanWeapons(list, out, seen, sig)
         local ov = env.NexvyrCatOverride or {}
         local char = LocalPlayer.Character
@@ -1404,10 +1438,20 @@ local M = (function()
                 if cat then pushWeapon(inst, cat, out, seen, sig, nil) end
             end
         end
+        local compositeRoots = {}
+        for i, inst in ipairs(list) do
+            if i % 700 == 0 then task.wait() end
+            local cat = compositeWeaponCat(inst, ov)
+            if cat then
+                compositeRoots[inst] = true
+                consider(inst, out, seen, sig, ov)
+            end
+        end
         for i, inst in ipairs(list) do
             if i % 700 == 0 then task.wait() end
             if inst:IsA("Model") then
-                if not skipCommon(inst) and not inst:FindFirstAncestorWhichIsA("Model")
+                if not skipCommon(inst) and not insideCharacterModel(inst)
+                    and not inst:FindFirstAncestorWhichIsA("Model")
                     and not inst:FindFirstAncestorWhichIsA("Tool") and not inst:FindFirstAncestorWhichIsA("Accessory")
                     and not inst:FindFirstChildOfClass("Humanoid") and modelValid(inst) then
                     consider(inst, out, seen, sig, ov)
@@ -1415,6 +1459,7 @@ local M = (function()
             elseif inst:IsA("BasePart") then
                 local par = inst.Parent
                 if par and (par:IsA("Folder") or par:IsA("Configuration")) and not skipCommon(inst)
+                    and not insideCharacterModel(inst) and not hasCompositeAncestor(inst, compositeRoots)
                     and (inst:IsA("MeshPart") or inst:FindFirstChildOfClass("SpecialMesh")) then
                     consider(inst, out, seen, sig, ov)
                 end
@@ -2151,11 +2196,38 @@ local function App()
         local y = axisVec(idx[2]) * sgn1(idx[2])
         return CFrame.fromMatrix(Vector3.zero, x, y, x:Cross(y))
     end
+    local function cloneComplete(src)
+        local changed = {}
+        local blocked = false
+        local function enableArchivable(inst)
+            local ok, value = pcall(function() return inst.Archivable end)
+            if not ok or value then return end
+            local setOk = pcall(function() inst.Archivable = true end)
+            if setOk then
+                changed[#changed + 1] = inst
+            else
+                blocked = true
+            end
+        end
+        enableArchivable(src)
+        for _, d in ipairs(src:GetDescendants()) do
+            enableArchivable(d)
+        end
+        local ok, clone = pcall(function() return src:Clone() end)
+        for i = #changed, 1, -1 do
+            pcall(function() changed[i].Archivable = false end)
+        end
+        if blocked or not ok or not clone then
+            if clone then pcall(function() clone:Destroy() end) end
+            return nil
+        end
+        return clone
+    end
     local function buildSkin(entry, origRoot, origParts, origGrip, gripMode)
         local src = entry.inst
         if not existsInGame(src) then return nil end
-        local c
-        if not pcall(function() c = src:Clone() end) or not c then return nil end
+        local c = cloneComplete(src)
+        if not c then return nil end
         local junk = {}
         for _, d in ipairs(c:GetDescendants()) do
             if d:IsA("LuaSourceContainer") or d:IsA("Sound") or d:IsA("ScreenGui") or d:IsA("BillboardGui")
@@ -2171,18 +2243,13 @@ local function App()
         local model = Instance.new("Model")
         model.Name = "NxTVSkin"
         model:SetAttribute("NxTV", true)
-        if srcPart then
-            srcPart.Parent = model
-        else
-            for _, ch in ipairs(c:GetChildren()) do ch.Parent = model end
-            pcall(function() c:Destroy() end)
-        end
+        c.Parent = model
         local parts = partsOf(model)
         if #parts == 0 then
             pcall(function() model:Destroy() end)
             return nil
         end
-        local root = model:FindFirstChild("Handle")
+        local root = srcPart or c:FindFirstChild("Handle", true)
         if not (root and root:IsA("BasePart")) then root = nil end
         if not root and pp and pp:IsA("BasePart") and pp:IsDescendantOf(model) then root = pp end
         if not root and srcPart then root = srcPart end
@@ -2246,6 +2313,7 @@ local function App()
             end
         end
         for _, p in ipairs(parts) do
+            p.CFrame = origRoot.CFrame * plan[p]
             local w = Instance.new("Weld")
             w.Name = "NxTVWeld"
             w.Part0 = origRoot
@@ -2790,15 +2858,11 @@ local function App()
         })
         corner(card, 5)
         local st = stroke(card, IC.btnLine, 1, 0.7)
-        local imgHost = new("Frame", {
-            Parent = card, Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 0, 54),
-            BackgroundTransparency = 1, BorderSizePixel = 0, ClipsDescendants = true,
-        })
-        renderVisual(imgHost, entry, false)
         new("TextLabel", {
-            Parent = card, Position = UDim2.fromOffset(4, 59), Size = UDim2.new(1, -8, 0, 16),
+            Parent = card, Position = UDim2.fromOffset(6, 6), Size = UDim2.new(1, -12, 1, -12),
             BackgroundTransparency = 1, Text = entry.name, Font = Enum.Font.GothamMedium, TextSize = 10,
-            TextColor3 = IC.title, TextSize = 9, TextTruncate = Enum.TextTruncate.AtEnd,
+            TextColor3 = IC.title, TextWrapped = true, TextTruncate = Enum.TextTruncate.AtEnd,
+            TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Center,
         })
         local dot = new("Frame", {
             Parent = card, Position = UDim2.fromOffset(7, 7), Size = UDim2.fromOffset(7, 7),
