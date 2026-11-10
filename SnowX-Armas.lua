@@ -3,6 +3,7 @@ local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+local ContentProvider = game:GetService("ContentProvider")
 if not game:IsLoaded() then game.Loaded:Wait() end
 local LocalPlayer = Players.LocalPlayer
 while not LocalPlayer do
@@ -720,6 +721,7 @@ local M = (function()
     local wIndex = {}
     local guiMap, guiCat, iconMap = {}, {}, {}
     local assetIndex
+    local assetIndexBuiltAt = 0
     local function norm(s)
         s = tostring(s):gsub("(%l)(%u)", "%1 %2")
         s = s:gsub("[_%-%.]+", " ")
@@ -788,10 +790,44 @@ local M = (function()
     }
     local GUN_HINT = { "muzzle", "ammo", "reload", "bullet", "shoot", "recoil", "magazine", "fire rate", "firerate", "barrel" }
     local MELEE_HINT = { "slash", "stab", "swing", "lunge", "backstab", "throw" }
+    local CAT_META_KEYS = {
+        "category", "weaponcategory", "weaponclass", "class", "slot", "itemtype", "weapontype", "type",
+    }
     local function catOfName(name)
         local n = norm(name)
         if hasAny(n, BLADE_SUB) or hasWordKW(n, BLADE_WORD) then return "melee" end
         if hasAny(n, GUN_SUB) or hasWordKW(n, GUN_WORD) then return "gun" end
+        return nil
+    end
+    local function metadataCat(inst, includeDescendants)
+        local function fromMetadata(key, value)
+            if type(value) ~= "string" then return nil end
+            if not hasAny(squash(key), CAT_META_KEYS) then return nil end
+            return catOfName(value)
+        end
+        for key, value in pairs(inst:GetAttributes()) do
+            local cat = fromMetadata(key, value)
+            if cat then return cat end
+        end
+        local descendants = includeDescendants and inst:GetDescendants() or inst:GetChildren()
+        local checked = 0
+        for _, d in ipairs(descendants) do
+            checked = checked + 1
+            if checked > 250 then break end
+            if includeDescendants then
+                for key, value in pairs(d:GetAttributes()) do
+                    local cat = fromMetadata(key, value)
+                    if cat then return cat end
+                end
+            end
+            if d:IsA("ValueBase") and hasAny(squash(d.Name), CAT_META_KEYS) then
+                local ok, value = pcall(function() return d.Value end)
+                if ok then
+                    local cat = catOfName(value)
+                    if cat then return cat end
+                end
+            end
+        end
         return nil
     end
     local function catOfContent(inst)
@@ -802,6 +838,14 @@ local M = (function()
             local n = norm(d.Name)
             if hasAny(n, GUN_HINT) then gun = gun + 1 end
             if hasAny(n, MELEE_HINT) then mel = mel + 1 end
+            if d:IsA("ValueBase") then
+                local ok, value = pcall(function() return d.Value end)
+                if ok and type(value) == "string" then
+                    local cat = catOfName(value)
+                    if cat == "gun" then gun = gun + 1 end
+                    if cat == "melee" then mel = mel + 1 end
+                end
+            end
         end
         for k in pairs(inst:GetAttributes()) do
             local n = norm(k)
@@ -821,9 +865,13 @@ local M = (function()
     local function classifyWeapon(inst)
         local c = catOfName(inst.Name)
         if c then return c end
+        c = metadataCat(inst, true)
+        if c then return c end
         local p, depth = inst.Parent, 0
-        while p and depth < 6 and not stopWalk(p) do
+        while p and depth < 8 and not stopWalk(p) do
             c = catOfName(p.Name)
+            if c then return c end
+            c = metadataCat(p, false)
             if c then return c end
             p = p.Parent
             depth = depth + 1
@@ -937,7 +985,7 @@ local M = (function()
         "announcer", "notification", "message", "script", "remote",
     }
     local KILL_NAMES = { "kill", "elimination", "eliminat", "finisher", "finish", "execution", "execut", "slay", "fatal", "death" }
-    local KILL_FX_TERMS = { "effect", "efecto", "fx", "vfx", "animation", "anim", "sound", "particle" }
+    local KILL_FX_TERMS = { "effect", "efecto", "fx", "vfx", "animation", "anim", "sound", "sfx", "particle", "visual" }
     local function isFx(i)
         for _, c in ipairs(FX_CLASSES) do
             if i:IsA(c) then return true end
@@ -1059,7 +1107,7 @@ local M = (function()
         }
     end
     local function findAssetByName(name)
-        if not assetIndex then
+        local function buildIndex()
             assetIndex = {}
             local counter = 0
             for _, root in ipairs(scanRoots()) do
@@ -1075,9 +1123,20 @@ local M = (function()
                     end
                 end
             end
+            assetIndexBuiltAt = os.clock()
         end
-        for _, k in ipairs(nameKeys(name)) do
-            if assetIndex[k] then return assetIndex[k] end
+        local function findIndexed()
+            for _, k in ipairs(nameKeys(name)) do
+                if assetIndex[k] then return assetIndex[k] end
+            end
+            return nil
+        end
+        if not assetIndex then buildIndex() end
+        local found = findIndexed()
+        if found then return found end
+        if os.clock() - assetIndexBuiltAt >= 3 then
+            buildIndex()
+            return findIndexed()
         end
         return nil
     end
@@ -1087,6 +1146,7 @@ local M = (function()
             if not hasAny(n, KILL_NAMES) then return false end
             if hasAny(n, KILL_FX_TERMS) then return true end
             return n:find("s$") ~= nil
+                or n == "kill" or n == "death" or n == "elimination" or n == "finisher" or n == "execution"
         end,
         content = killContent,
         plural = function(n)
@@ -1210,7 +1270,10 @@ local M = (function()
             end
         end
     end
-    local ICON_KEYS = { "icon", "image", "thumb", "texture", "picture", "img" }
+    local ICON_KEYS = {
+        "icon", "iconid", "image", "imageid", "thumb", "thumbnail", "texture", "textureid",
+        "picture", "img", "previewimage", "assetimage",
+    }
     local function nameIsIcon(n)
         local s = squash(n)
         for _, k in ipairs(ICON_KEYS) do
@@ -1232,15 +1295,17 @@ local M = (function()
         return nil
     end
     local function explicitIcon(inst)
-        for k, v in pairs(inst:GetAttributes()) do
-            if nameIsIcon(k) then
-                local a = assetStr(v)
-                if a then return a end
+        local list = { inst }
+        for _, d in ipairs(inst:GetDescendants()) do list[#list + 1] = d end
+        for _, d in ipairs(list) do
+            for k, v in pairs(d:GetAttributes()) do
+                if nameIsIcon(k) then
+                    local a = assetStr(v)
+                    if a then return a end
+                end
             end
-        end
-        for _, c in ipairs(inst:GetChildren()) do
-            if c:IsA("ValueBase") and nameIsIcon(c.Name) then
-                local okv, v = pcall(function() return c.Value end)
+            if d:IsA("ValueBase") and nameIsIcon(d.Name) then
+                local okv, v = pcall(function() return d.Value end)
                 if okv then
                     local a = assetStr(v)
                     if a then return a end
@@ -1257,11 +1322,18 @@ local M = (function()
                 if d.Image ~= "" then return d.Image end
             elseif d:IsA("Decal") or d:IsA("Texture") then
                 if d.Texture ~= "" then return d.Texture end
+            elseif d:IsA("MeshPart") and d.TextureID ~= "" then
+                return d.TextureID
+            elseif d:IsA("SpecialMesh") and d.TextureId ~= "" then
+                return d.TextureId
             end
         end
         return nil
     end
-    local WCONT = { "weapon", "skin", "loadout", "arsenal", "armas", "equipment" }
+    local WCONT = {
+        "weapon", "weaponassets", "weaponmodels", "skin", "skins", "loadout", "arsenal", "armas",
+        "equipment", "gunmodels", "meleemodels", "firearms",
+    }
     local function inWeaponContainer(inst)
         local p, depth = inst.Parent, 0
         while p and depth < 6 and p ~= game do
@@ -1530,7 +1602,7 @@ local M = (function()
         end
         for _, w in ipairs(weapons) do
             if not w.tex or w.tex == "" then
-                w.tex = explicitIcon(w.inst) or iconFor(w.name)
+                w.tex = explicitIcon(w.inst) or iconFor(w.name) or embeddedImage(w.inst)
             end
         end
     end
@@ -1612,7 +1684,7 @@ local function App()
         btnMove.label.Text = activeTab == "knives" and "> Pistolas" or "> Cuchillos"
     end
     local function glyph(host, text)
-        new("TextLabel", {
+        return new("TextLabel", {
             Parent = host, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = text,
             Font = Enum.Font.Garamond, TextSize = 22, TextColor3 = IC.gold,
         })
@@ -1633,6 +1705,7 @@ local function App()
             Font = Enum.Font.Garamond, TextSize = 22, TextColor3 = WHITE,
             TextStrokeTransparency = 0.6, TextStrokeColor3 = BLACK,
         })
+        return f
     end
     local function buildViewport(host, src, spinOn)
         if not src then return nil end
@@ -1694,38 +1767,76 @@ local function App()
         end
         return vf
     end
+    local IMAGE_LOAD_TIMEOUT = 1.4
+    local imageLoadCache = {}
     local function texCandidates(tex)
         local out = {}
         if not tex or tex == "" then return out end
-        local id = tostring(tex):match("(%d%d%d%d%d+)")
-        if id then
-            out[#out + 1] = "rbxthumb://type=Asset&id=" .. id .. "&w=150&h=150"
-            out[#out + 1] = "rbxassetid://" .. id
+        local original = tostring(tex)
+        local seen = {}
+        local function add(value)
+            if value and value ~= "" and not seen[value] then
+                seen[value] = true
+                out[#out + 1] = value
+            end
         end
-        if tostring(tex) ~= out[2] then out[#out + 1] = tostring(tex) end
+        local id = original:match("(%d%d%d%d%d+)")
+        if id then
+            add("rbxassetid://" .. id)
+            add("rbxthumb://type=Asset&id=" .. id .. "&w=150&h=150")
+        end
+        add(original)
         return out
     end
-    local function loadImageChain(host, texList, onFail)
+    local function loadImageChain(host, texList, onFail, onLoaded)
         local img = new("ImageLabel", {
             Parent = host, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
-            ScaleType = Enum.ScaleType.Fit, Image = "", ImageTransparency = 1, BorderSizePixel = 0,
+            ScaleType = Enum.ScaleType.Fit, Image = "", ImageTransparency = 1, BorderSizePixel = 0, ZIndex = 5,
         })
         task.spawn(function()
             local tried = {}
             local function attempt(c)
                 if tried[c] then return false end
                 tried[c] = true
+                if imageLoadCache[c] == false then return false end
                 img.Image = c
+                if imageLoadCache[c] == true then return true end
                 local t0 = os.clock()
-                while img.Parent and os.clock() - t0 < 2.5 do
+                local preloadDone, preloadSuccess = false, false
+                task.spawn(function()
+                    local ok = pcall(function()
+                        ContentProvider:PreloadAsync({ img }, function(_, status)
+                            preloadSuccess = status == Enum.AssetFetchStatus.Success
+                            preloadDone = true
+                        end)
+                    end)
+                    if not ok then preloadDone = true end
+                end)
+                while img.Parent and os.clock() - t0 < IMAGE_LOAD_TIMEOUT do
                     local okl, loaded = pcall(function() return img.IsLoaded end)
-                    if okl and loaded then return true end
-                    task.wait(0.1)
+                    if okl and loaded then
+                        imageLoadCache[c] = true
+                        return true
+                    end
+                    if preloadDone and not preloadSuccess then
+                        imageLoadCache[c] = false
+                        return false
+                    end
+                    task.wait(0.04)
                 end
-                return false
+                local okl, loaded = pcall(function() return img.IsLoaded end)
+                if okl and loaded then imageLoadCache[c] = true end
+                return okl and loaded or false
             end
             local function show()
-                tween(img, TweenInfo.new(0.2), { ImageTransparency = 0 })
+                local fade = tween(img, TweenInfo.new(0.2), { ImageTransparency = 0 })
+                if onLoaded then
+                    fade.Completed:Connect(function(playbackState)
+                        if playbackState == Enum.PlaybackState.Completed and img.Parent then
+                            onLoaded(img)
+                        end
+                    end)
+                end
             end
             for _, tex in ipairs(texList) do
                 for _, c in ipairs(texCandidates(tex)) do
@@ -1760,12 +1871,24 @@ local function App()
     local function renderVisual(host, entry, big)
         local isFxTab = entry.tab == "effects"
         local label = isFxTab and "FX" or (entry.cat == "melee" and "CUCH" or "PIST")
+        local immediatePreview
+        if big then
+            if entry.inst then immediatePreview = buildViewport(host, entry.inst, true) end
+            if not immediatePreview then
+                if isFxTab then
+                    immediatePreview = fxSwatch(host, entry)
+                else
+                    immediatePreview = glyph(host, label)
+                end
+            end
+        end
         local function fallback()
             if not host.Parent then return end
+            if immediatePreview and immediatePreview.Parent then return end
             if isFxTab then
-                if not (entry.inst and buildViewport(host, entry.inst, big)) then fxSwatch(host, entry) end
+                fxSwatch(host, entry)
             else
-                if not buildViewport(host, entry.inst, big) then glyph(host, label) end
+                glyph(host, label)
             end
         end
         local list
@@ -1775,9 +1898,14 @@ local function App()
             list = { entry.tex }
         end
         if list and #list > 0 then
-            loadImageChain(host, list, fallback)
+            loadImageChain(host, list, fallback, function()
+                if immediatePreview and immediatePreview.Parent then
+                    immediatePreview.Visible = false
+                    if Spin.cam and Spin.cam.Parent == immediatePreview then Spin.cam = nil end
+                end
+            end)
         else
-            fallback()
+            if not immediatePreview then fallback() end
         end
     end
     track(RunService.Heartbeat:Connect(function(dt)
@@ -2947,7 +3075,6 @@ local function App()
         BorderSizePixel = 0, ClipsDescendants = true, Visible = true, Active = true, ZIndex = 50,
     })
     corner(floatRoot, 12)
-    stroke(floatRoot, IC.title, 1.5, 0.45)
     local floatBackground = new("ImageLabel", {
         Parent = floatRoot, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
         Image = bgAsset or "", ImageTransparency = bgAsset and 0.5 or 1,
@@ -3014,6 +3141,7 @@ local function App()
         token = token + 1
         local my = token
         initializeFloatingPosition()
+        floatRoot.Visible = false
         setMainCenter(mainCenter)
         Window.Visible = true
         Window.GroupTransparency = 1
@@ -3039,7 +3167,6 @@ local function App()
             Position = UDim2.fromOffset(194, 60),
         })
         tween(bgScale, TweenInfo.new(7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1 })
-        floatRoot.Visible = true
     end
 
     local function minimizeWindow()
@@ -3047,7 +3174,7 @@ local function App()
         local my = token
         keepMainInsideViewport()
         initializeFloatingPosition()
-        floatRoot.Visible = true
+        floatRoot.Visible = false
         local target = getFloatingCenter()
         tween(Window, TI_CLOSE, {
             GroupTransparency = 1,
@@ -3058,6 +3185,7 @@ local function App()
                 Window.Visible = false
                 Window.GroupTransparency = 0
                 Window.Position = UDim2.fromOffset(mainCenter.X, mainCenter.Y)
+                floatRoot.Visible = true
             end
         end)
     end
