@@ -15,6 +15,7 @@ avatarBridge.skin = type(avatarBridge.skin) == "table" and avatarBridge.skin or 
 avatarBridge.accessory = type(avatarBridge.accessory) == "table" and avatarBridge.accessory or {}
 avatarBridge.skin.revision = tonumber(avatarBridge.skin.revision) or 0
 avatarBridge.accessory.revision = tonumber(avatarBridge.accessory.revision) or 0
+avatarBridge.uiPanels = type(avatarBridge.uiPanels) == "table" and avatarBridge.uiPanels or {}
 local skinBridgeToken = {}
 local function isSkinRendererActive()
     return avatarBridge.skin.active == true or avatarBridge.skin.pending == true
@@ -2003,10 +2004,32 @@ local uiScale = Instance.new("UIScale")
 uiScale.Parent = mainFrame
 local flag = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
-local function clampFrameCenter(position)
+local function getViewportSize()
     local camera = Workspace.CurrentCamera
-    local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
-    local halfSize = Vector2.new(mainFrame.AbsoluteSize.X * 0.5 + 2, mainFrame.AbsoluteSize.Y * 0.5 + 2)
+    return camera and camera.ViewportSize or Vector2.new(1280, 720)
+end
+
+local function getGuiCenter(guiObject)
+    local viewport = getViewportSize()
+    local position = guiObject.Position
+    local anchorPoint = guiObject.AnchorPoint
+    local size = guiObject.AbsoluteSize
+    local anchorPosition = Vector2.new(
+        position.X.Scale * viewport.X + position.X.Offset,
+        position.Y.Scale * viewport.Y + position.Y.Offset
+    )
+    return anchorPosition + Vector2.new(
+        (0.5 - anchorPoint.X) * size.X,
+        (0.5 - anchorPoint.Y) * size.Y
+    )
+end
+
+local function clampGuiCenter(guiObject, position)
+    local viewport = getViewportSize()
+    local halfSize = Vector2.new(
+        guiObject.AbsoluteSize.X * 0.5 + 2,
+        guiObject.AbsoluteSize.Y * 0.5 + 2
+    )
     local maxX, maxY = viewport.X - halfSize.X, viewport.Y - halfSize.Y
     if maxX < halfSize.X or maxY < halfSize.Y then
         return Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
@@ -2017,15 +2040,28 @@ local function clampFrameCenter(position)
     )
 end
 
-local function keepFrameInsideViewport()
-    if not mainFrame.Parent then return end
-    local absolute = mainFrame.AbsolutePosition
-    local center = Vector2.new(
-        absolute.X + mainFrame.AbsoluteSize.X * 0.5,
-        absolute.Y + mainFrame.AbsoluteSize.Y * 0.5
+local function setGuiCenter(guiObject, position)
+    local target = clampGuiCenter(guiObject, position)
+    local anchorPoint = guiObject.AnchorPoint
+    local size = guiObject.AbsoluteSize
+    local anchorPosition = target - Vector2.new(
+        (0.5 - anchorPoint.X) * size.X,
+        (0.5 - anchorPoint.Y) * size.Y
     )
-    local target = clampFrameCenter(center)
-    mainFrame.Position = UDim2.fromOffset(target.X, target.Y)
+    guiObject.Position = UDim2.fromOffset(anchorPosition.X, anchorPosition.Y)
+    return target
+end
+
+local mainFrameCenter = getGuiCenter(mainFrame)
+
+local function setMainFrameCenter(position)
+    mainFrameCenter = setGuiCenter(mainFrame, position)
+    return mainFrameCenter
+end
+
+local function keepFrameInsideViewport()
+    if not mainFrame.Parent or not mainFrame.Visible then return end
+    setMainFrameCenter(mainFrameCenter)
 end
 
 local function updateUiScale()
@@ -2396,92 +2432,188 @@ task.spawn(function()
 end)
 
 local floatingPositionInitialized = false
+local floatingButtonDragState = nil
+local mainWindowDragState = nil
+local dragConnections = {}
+local connectDragConnections = nil
+local disconnectDragConnections = nil
 
 local function clampFloatingPosition(position)
-    local camera = workspace.CurrentCamera
-    local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
-    local halfSize = Vector2.new(
-        floatingButtonFrame.AbsoluteSize.X * 0.5 + 1,
-        floatingButtonFrame.AbsoluteSize.Y * 0.5 + 1
-    )
-    local maxX, maxY = viewport.X - halfSize.X, viewport.Y - halfSize.Y
-    if maxX < halfSize.X or maxY < halfSize.Y then
-        return Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
-    end
-    return Vector2.new(
-        math.clamp(position.X, halfSize.X, maxX),
-        math.clamp(position.Y, halfSize.Y, maxY)
-    )
+    return clampGuiCenter(floatingButtonFrame, position)
 end
 
 local function getFloatingCenter()
-    local absolute = floatingButtonFrame.AbsolutePosition
-    return Vector2.new(
-        absolute.X + floatingButtonFrame.AbsoluteSize.X * 0.5,
-        absolute.Y + floatingButtonFrame.AbsoluteSize.Y * 0.5
-    )
+    return getGuiCenter(floatingButtonFrame)
 end
 
 local function setFloatingCenter(position)
-    local target = clampFloatingPosition(position)
-    floatingButtonFrame.Position = UDim2.fromOffset(target.X, target.Y)
+    return setGuiCenter(floatingButtonFrame, clampFloatingPosition(position))
+end
+
+local function initializeFloatingPosition()
+    if floatingPositionInitialized then return end
+    local viewport = getViewportSize()
+    local halfSize = floatingButtonFrame.AbsoluteSize * 0.5
+    setFloatingCenter(Vector2.new(viewport.X - halfSize.X - 16, viewport.Y * 0.5 + 28))
+    floatingPositionInitialized = true
+end
+
+local function hideWindow()
+    keepFrameInsideViewport()
+    initializeFloatingPosition()
+    isWindowMinimized = true
+    mainFrame.Visible = false
+    floatingButtonFrame.Visible = true
+end
+
+local function showWindow()
+    local closeAccessoriesPanel = avatarBridge.uiPanels.closeAccessoriesPanel
+    if type(closeAccessoriesPanel) == "function" then pcall(closeAccessoriesPanel) end
+    avatarBridge.uiPanels.activePanel = "skins"
+    screenGui.Enabled = true
+    isWindowMinimized = false
+    mainFrame.Visible = true
+    floatingButtonFrame.Visible = false
+    setMainFrameCenter(mainFrameCenter)
+    if connectDragConnections then connectDragConnections() end
+    updateUiScale()
 end
 
 local function setWindowMinimized(visible)
-    isWindowMinimized = visible
-    if visible and not floatingPositionInitialized then
-        local absolutePosition = mainFrame.AbsolutePosition
-        setFloatingCenter(Vector2.new(absolutePosition.X + 26, absolutePosition.Y + 26))
-        floatingPositionInitialized = true
-    end
-    mainFrame.Visible = not visible
-    floatingButtonFrame.Visible = visible
-    task.defer(keepFrameInsideViewport)
-    if visible and floatingPositionInitialized then
-        task.defer(function() setFloatingCenter(getFloatingCenter()) end)
+    if visible then hideWindow() else showWindow() end
+end
+
+local function closePanelForSwitch()
+    if disconnectDragConnections then disconnectDragConnections() end
+    screenGui.Enabled = false
+    mainFrame.Visible = false
+    floatingButtonFrame.Visible = false
+    isWindowMinimized = true
+    if avatarBridge.uiPanels.activePanel == "skins" then
+        avatarBridge.uiPanels.activePanel = "none"
     end
 end
 
-minimizeButton.Activated:Connect(function()
-    setWindowMinimized(true)
-end)
+avatarBridge.uiPanels.closeSkinsPanel = closePanelForSwitch
 
-local floatingButtonDragState = nil
+minimizeButton.Activated:Connect(hideWindow)
 
-openClick.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-        floatingButtonDragState = {
-            input = input,
-            desde = Vector2.new(input.Position.X, input.Position.Y),
-            origen = getFloatingCenter(),
-            movio = false,
-        }
+local function trackDragConnection(connection)
+    table.insert(dragConnections, connection)
+    return connection
+end
+
+local function beginFloatingDrag(input)
+    local inputType = input.UserInputType
+    if inputType ~= Enum.UserInputType.MouseButton1
+        and inputType ~= Enum.UserInputType.Touch then return end
+    floatingButtonDragState = {
+        input = input,
+        inputType = inputType,
+        start = Vector2.new(input.Position.X, input.Position.Y),
+        origin = getFloatingCenter(),
+        moved = false,
+    }
+end
+
+local function moveFloatingDrag(input, isTouch)
+    local drag = floatingButtonDragState
+    if not drag then return end
+    if isTouch then
+        if drag.inputType ~= Enum.UserInputType.Touch or input ~= drag.input then return end
+    elseif drag.inputType ~= Enum.UserInputType.MouseButton1
+        or input.UserInputType ~= Enum.UserInputType.MouseMovement then
+        return
     end
-end)
-
-local floatingDragChangedConnection = UserInputService.InputChanged:Connect(function(input)
-    local drag = floatingButtonDragState
-    if not drag then return end
-    local isMouseMove = drag.input.UserInputType == Enum.UserInputType.MouseButton1
-        and input.UserInputType == Enum.UserInputType.MouseMovement
-    if not isMouseMove and input ~= drag.input then return end
     local pointer = Vector2.new(input.Position.X, input.Position.Y)
-    local delta = pointer - drag.desde
-    if delta.Magnitude > 6 then drag.movio = true end
-    if drag.movio then setFloatingCenter(drag.origen + delta) end
-end)
+    local delta = pointer - drag.start
+    if delta.Magnitude > 6 then drag.moved = true end
+    if drag.moved then setFloatingCenter(drag.origin + delta) end
+end
 
-local floatingDragEndedConnection = UserInputService.InputEnded:Connect(function(input)
+local function finishFloatingDrag(input, isTouch)
     local drag = floatingButtonDragState
     if not drag then return end
-    local ended = input == drag.input
-        or (drag.input.UserInputType == Enum.UserInputType.MouseButton1
-            and input.UserInputType == Enum.UserInputType.MouseButton1)
+    local ended
+    if isTouch then
+        ended = drag.inputType == Enum.UserInputType.Touch and input == drag.input
+    else
+        ended = drag.inputType == Enum.UserInputType.MouseButton1
+            and input.UserInputType == Enum.UserInputType.MouseButton1
+    end
     if not ended then return end
     floatingButtonDragState = nil
-    if not drag.movio then setWindowMinimized(false) end
-end)
+    if not drag.moved then showWindow() end
+end
+
+local function beginMainWindowDrag(input)
+    local inputType = input.UserInputType
+    if inputType ~= Enum.UserInputType.MouseButton1
+        and inputType ~= Enum.UserInputType.Touch then return end
+    mainWindowDragState = {
+        input = input,
+        inputType = inputType,
+        start = Vector2.new(input.Position.X, input.Position.Y),
+        origin = mainFrameCenter,
+    }
+end
+
+local function moveMainWindowDrag(input, isTouch)
+    local drag = mainWindowDragState
+    if not drag then return end
+    if isTouch then
+        if drag.inputType ~= Enum.UserInputType.Touch or input ~= drag.input then return end
+    elseif drag.inputType ~= Enum.UserInputType.MouseButton1
+        or input.UserInputType ~= Enum.UserInputType.MouseMovement then
+        return
+    end
+    local pointer = Vector2.new(input.Position.X, input.Position.Y)
+    setMainFrameCenter(drag.origin + pointer - drag.start)
+end
+
+local function finishMainWindowDrag(input, isTouch)
+    local drag = mainWindowDragState
+    if not drag then return end
+    local ended
+    if isTouch then
+        ended = drag.inputType == Enum.UserInputType.Touch and input == drag.input
+    else
+        ended = drag.inputType == Enum.UserInputType.MouseButton1
+            and input.UserInputType == Enum.UserInputType.MouseButton1
+    end
+    if ended then mainWindowDragState = nil end
+end
+
+disconnectDragConnections = function()
+    floatingButtonDragState = nil
+    mainWindowDragState = nil
+    for _, connection in ipairs(dragConnections) do
+        pcall(function() connection:Disconnect() end)
+    end
+    table.clear(dragConnections)
+end
+
+connectDragConnections = function()
+    if #dragConnections > 0 then return end
+    trackDragConnection(openClick.InputBegan:Connect(beginFloatingDrag))
+    trackDragConnection(UserInputService.InputChanged:Connect(function(input)
+        moveFloatingDrag(input, false)
+        moveMainWindowDrag(input, false)
+    end))
+    trackDragConnection(UserInputService.TouchMoved:Connect(function(input)
+        moveFloatingDrag(input, true)
+        moveMainWindowDrag(input, true)
+    end))
+    trackDragConnection(UserInputService.InputEnded:Connect(function(input)
+        finishFloatingDrag(input, false)
+        finishMainWindowDrag(input, false)
+    end))
+    trackDragConnection(UserInputService.TouchEnded:Connect(function(input)
+        finishFloatingDrag(input, true)
+        finishMainWindowDrag(input, true)
+    end))
+    trackDragConnection(windowHeader.InputBegan:Connect(beginMainWindowDrag))
+end
 
 local closeConfirmationOverlay = createGuiInstance("Frame", {
     Size = UDim2.fromScale(1, 1),
@@ -3361,42 +3493,7 @@ table.insert(lifecycleConnections, localPlayer.CharacterAdded:Connect(function(c
     end)
 end))
 
-local mainWindowDragState = nil
 
-windowHeader.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-        local absolute = mainFrame.AbsolutePosition
-        mainWindowDragState = {
-            input = input,
-            start = Vector2.new(input.Position.X, input.Position.Y),
-            origin = Vector2.new(
-                absolute.X + mainFrame.AbsoluteSize.X * 0.5,
-                absolute.Y + mainFrame.AbsoluteSize.Y * 0.5
-            ),
-        }
-    end
-end)
-
-table.insert(lifecycleConnections, UserInputService.InputChanged:Connect(function(input)
-    local drag = mainWindowDragState
-    if not drag then return end
-    local isMouseMove = drag.input.UserInputType == Enum.UserInputType.MouseButton1
-        and input.UserInputType == Enum.UserInputType.MouseMovement
-    if not isMouseMove and input ~= drag.input then return end
-    local pointer = Vector2.new(input.Position.X, input.Position.Y)
-    local target = clampFrameCenter(drag.origin + pointer - drag.start)
-    mainFrame.Position = UDim2.fromOffset(target.X, target.Y)
-end))
-
-table.insert(lifecycleConnections, UserInputService.InputEnded:Connect(function(input)
-    local drag = mainWindowDragState
-    if not drag then return end
-    local ended = input == drag.input
-        or (drag.input.UserInputType == Enum.UserInputType.MouseButton1
-            and input.UserInputType == Enum.UserInputType.MouseButton1)
-    if ended then mainWindowDragState = nil end
-end))
 
 local currentCameraViewportConnection = nil
 
@@ -3458,9 +3555,14 @@ end)
 
 confirmCloseButton.Activated:Connect(function()
     closeConfirmationOverlay.Visible = false
+    if disconnectDragConnections then disconnectDragConnections() end
+    if avatarBridge.uiPanels.closeSkinsPanel == closePanelForSwitch then
+        avatarBridge.uiPanels.closeSkinsPanel = nil
+    end
+    if avatarBridge.uiPanels.activePanel == "skins" then
+        avatarBridge.uiPanels.activePanel = "none"
+    end
     disconnectCharacterLifecycleConnections()
-    floatingDragChangedConnection:Disconnect()
-    floatingDragEndedConnection:Disconnect()
     removeSkin()
     if avatarBridge.skin.owner == skinBridgeToken then
         avatarBridge.skin.owner = nil
@@ -3489,18 +3591,31 @@ local skinApi = {
     setEnabled = function(enabled)
         if not screenGui.Parent then return false end
         if enabled == true then
+            local closeAccessoriesPanel = avatarBridge.uiPanels.closeAccessoriesPanel
+            if type(closeAccessoriesPanel) == "function" then pcall(closeAccessoriesPanel) end
+            avatarBridge.uiPanels.activePanel = "skins"
             screenGui.Enabled = true
-            setWindowMinimized(true)
+            initializeFloatingPosition()
+            isWindowMinimized = true
+            mainFrame.Visible = false
+            floatingButtonFrame.Visible = true
+            if connectDragConnections then connectDragConnections() end
         else
+            if disconnectDragConnections then disconnectDragConnections() end
             screenGui.Enabled = false
+            mainFrame.Visible = false
+            floatingButtonFrame.Visible = false
+            isWindowMinimized = true
+            if avatarBridge.uiPanels.activePanel == "skins" then
+                avatarBridge.uiPanels.activePanel = "none"
+            end
         end
         return true
     end,
     open = function()
-        screenGui.Enabled = true
-        mainFrame.Visible = true
-        floatingButtonFrame.Visible = false
-        return screenGui.Parent ~= nil
+        if not screenGui.Parent then return false end
+        showWindow()
+        return true
     end,
     aplicar = applySkin,
     quitar = removeSkin,
@@ -3508,9 +3623,14 @@ local skinApi = {
     emote = playEmote,
     pararEmote = stopCurrentEmote,
     destroy = function()
+        if disconnectDragConnections then disconnectDragConnections() end
+        if avatarBridge.uiPanels.closeSkinsPanel == closePanelForSwitch then
+            avatarBridge.uiPanels.closeSkinsPanel = nil
+        end
+        if avatarBridge.uiPanels.activePanel == "skins" then
+            avatarBridge.uiPanels.activePanel = "none"
+        end
         disconnectCharacterLifecycleConnections()
-        pcall(function() floatingDragChangedConnection:Disconnect() end)
-        pcall(function() floatingDragEndedConnection:Disconnect() end)
         removeSkin()
         if avatarBridge.skin.owner == skinBridgeToken then
             avatarBridge.skin.owner = nil
