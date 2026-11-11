@@ -2494,9 +2494,9 @@ local M = (function()
             rarity = record.rarity or "Unknown", setName = record.setName,
         })
     end
-    local function addEffect(inst, out, seen, nameOverride, lib, imageOverride)
-        if not inst or underNxTV(inst) or isWeaponTreeContent(inst) then return false end
-        local record = catalogEffectRecordForName(nameOverride or inst.Name)
+    local function addEffect(inst, out, seen, nameOverride, lib, imageOverride, registeredSource, recordOverride)
+        if not inst or underNxTV(inst) or (isWeaponTreeContent(inst) and not registeredSource) then return false end
+        local record = recordOverride or catalogEffectRecordForName(nameOverride or inst.Name)
         if not record then return false end
         local key = squash(record.key)
         if key == "" then return false end
@@ -2530,6 +2530,7 @@ local M = (function()
         if seen then seen[key] = true end
         local entry = {
             tab = "effects", name = record.name, lname = record.name:lower(), catalogKey = record.key,
+            catalogRecord = record, rarity = record.rarity or "Unknown", setName = record.setName,
             inst = inst, tex = record.image, col = col, col2 = col2,
             fxCount = count, priority = isPriority(record.name), lib = lib or false,
             imgs = record.image and { record.image } or {}, cacheTemplate = cached and cached.template or nil,
@@ -2558,6 +2559,15 @@ local M = (function()
                 candidates[#candidates + 1] = root
             end
         end
+        local function isDedicatedLibrary(root)
+            return root ~= nil and (
+                (assets and (root == assets:FindFirstChild("Finishers") or root == assets:FindFirstChild("Effects")))
+                or (replicatedSkins and (
+                    root == replicatedSkins:FindFirstChild("Effects")
+                    or root == replicatedSkins:FindFirstChild("PreviewEffects")
+                ))
+            )
+        end
         local claimed = {}
         for _, root in ipairs(candidates) do
             if root then
@@ -2568,20 +2578,42 @@ local M = (function()
                 end
                 for _, node in ipairs(nodes) do
                     if not node:IsA("LuaSourceContainer") then
+                        local directRegistryItem = node.Parent == root and isDedicatedLibrary(root)
+                            and (node:IsA("Folder") or node:IsA("Model") or node:IsA("BasePart"))
                         local record = catalogEffectRecordForName(node.Name)
+
+                        -- Dedicated effect folders are authoritative. A live game update can
+                        -- add entries before the embedded static catalogue is refreshed.
+                        if not record and directRegistryItem and killContent(node) then
+                            local image = select(1, fxInfo(node))
+                            local rarity = node:GetAttribute("Rarity")
+                            if type(rarity) ~= "string" or rarity == "" then rarity = "Unknown" end
+                            local setName = node:GetAttribute("SetName") or node:GetAttribute("Set")
+                            if type(setName) ~= "string" then setName = nil end
+                            record = {
+                                key = node.Name,
+                                name = node.Name,
+                                image = catalogImage(node:GetAttribute("Image")) or image,
+                                rarity = rarity,
+                                setName = setName,
+                            }
+                            local recordKey = squash(record.key)
+                            effectCatalogRecordByKey[recordKey] = record
+                            effectCatalog[#effectCatalog + 1] = record
+                            registerEffectAlias(record.key, record)
+                            registerEffectAlias(record.name, record)
+                        end
+
                         if record and not claimed[squash(record.key)] then
                             local source = node
                             if not (source:IsA("Model") or source:IsA("Folder") or source:IsA("BasePart")) then
                                 source = node:FindFirstAncestorOfClass("Model")
                             end
-                            local hasVisual = source and source:IsA("BasePart")
-                            if source and not hasVisual then
-                                for _, descendant in ipairs(descendantsOf(source)) do
-                                    if descendant:IsA("BasePart") then hasVisual = true; break end
-                                end
-                            end
-                            if source and not source:IsA("LuaSourceContainer") and hasVisual then
-                                if addEffect(source, out, seen, record.key, true, record.image) then
+                            if source and killContent(source) then
+                                if addEffect(
+                                    source, out, seen, record.key, true, record.image,
+                                    directRegistryItem == true, record
+                                ) then
                                     claimed[squash(record.key)] = true
                                 end
                             end
@@ -3448,9 +3480,11 @@ local M = (function()
     M.hydrateWeaponCatalogPlaceholders = hydrateWeaponCatalogPlaceholders
     M.resolveEffectSource = function(entry)
         if not entry then return nil end
-        local catalogRecord = catalogEffectRecordForName(entry.catalogKey or entry.name)
-        if not catalogRecord then return nil end
-        local cached = AssetCache.effects[squash(catalogRecord.key)]
+        local catalogRecord = entry.catalogRecord or catalogEffectRecordForName(entry.catalogKey or entry.name)
+        local cacheKey = catalogRecord and squash(catalogRecord.key)
+            or squash(entry.catalogKey or entry.name)
+        if cacheKey == "" then return nil end
+        local cached = AssetCache.effects[cacheKey]
         local template = entry.cacheTemplate
         if not isCachedTemplate(template) and cached then template = cached.template end
         if isCachedTemplate(template) then return template end
@@ -3464,13 +3498,27 @@ local M = (function()
             if template and isCachedTemplate(template) then
                 local catalogRecord = type(cacheRecord.catalogKey) == "string"
                     and catalogEffectRecordForName(cacheRecord.catalogKey) or nil
+                if not catalogRecord and type(cacheRecord.catalogKey) == "string" and cacheRecord.catalogKey ~= "" then
+                    catalogRecord = {
+                        key = cacheRecord.catalogKey,
+                        name = cacheRecord.name or cacheRecord.catalogKey,
+                        image = cacheRecord.tex,
+                        rarity = cacheRecord.rarity or "Unknown",
+                        setName = cacheRecord.setName,
+                    }
+                    effectCatalogRecordByKey[squash(catalogRecord.key)] = catalogRecord
+                    registerEffectAlias(catalogRecord.key, catalogRecord)
+                    registerEffectAlias(catalogRecord.name, catalogRecord)
+                end
                 if catalogRecord then
                     local key = squash(catalogRecord.key)
                     local entry = effectEntriesByKey[key]
                     if not entry then
                         entry = {
                             tab = "effects", name = catalogRecord.name, lname = catalogRecord.name:lower(),
-                            catalogKey = catalogRecord.key, inst = template, cacheTemplate = template,
+                            catalogKey = catalogRecord.key, catalogRecord = catalogRecord,
+                            rarity = catalogRecord.rarity or "Unknown", setName = catalogRecord.setName,
+                            inst = template, cacheTemplate = template,
                             tex = catalogRecord.image, imgs = catalogRecord.image and { catalogRecord.image } or {},
                             sourceRank = cacheRecord.rank or 99, sourcePath = cacheRecord.sourcePath,
                             fxCount = 0, priority = isPriority(catalogRecord.name), lib = false,
@@ -3505,8 +3553,8 @@ local M = (function()
                         catalogRecord = catalogWeaponRecordForName(record.catalogKey)
                     end
                 end
-                local valid = catalogRecord ~= nil
-                    and (category == "effects" or catalogRecord.cat == (category == "knives" and "melee" or "gun"))
+                local valid = (category == "effects" and record.template ~= nil)
+                    or (catalogRecord ~= nil and catalogRecord.cat == (category == "knives" and "melee" or "gun"))
                 if valid then
                     count = count + 1
                     if type(record.variants) == "table" then
