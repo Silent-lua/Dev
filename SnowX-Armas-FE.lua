@@ -729,8 +729,8 @@ new("UIPadding", {
     Parent = listFrame, PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6),
     PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6),
 })
-new("UIGridLayout", {
-    Parent = listFrame, CellSize = UDim2.fromOffset(86, 80), CellPadding = UDim2.fromOffset(6, 6),
+new("UIListLayout", {
+    Parent = listFrame, Padding = UDim.new(0, 6),
     SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center,
 })
 local emptyLabel = new("TextLabel", {
@@ -5049,9 +5049,9 @@ local function App()
         showSelected(entry)
         paintCards()
     end
-    local function makeCard(entry, order)
+    local function makeCard(entry, order, parent)
         local card = new("TextButton", {
-            Parent = listFrame, BackgroundColor3 = IC.btnBg, BackgroundTransparency = 0.35,
+            Parent = parent or listFrame, BackgroundColor3 = IC.btnBg, BackgroundTransparency = 0.35,
             AutoButtonColor = false, Text = "", BorderSizePixel = 0, LayoutOrder = order,
         })
         corner(card, 5)
@@ -5102,15 +5102,83 @@ local function App()
         cards = {}
         View.more = nil
     end
-    local function buildCards(reset)
+    local rarityOrder = { Ancient = 1, Mythic = 2, Legendary = 3, Rare = 4, Uncommon = 5, Common = 6 }
+    local function rarityOf(entry)
+        return entry.rarity or (entry.catalogRecord and entry.catalogRecord.rarity) or "Unknown"
+    end
+    local function allEntriesForSetInference()
+        local all = {}
+        for _, tab in ipairs({ "knives", "guns", "effects" }) do
+            for _, entry in ipairs(Data[tab]) do all[#all + 1] = entry end
+        end
+        return all
+    end
+    local function explicitSetOf(entry)
+        local value = entry.setName or (entry.catalogRecord and entry.catalogRecord.setName)
+        if type(value) == "string" and value ~= "" then return value end
+        if entry.inst then
+            local ok, setName = pcall(function()
+                return entry.inst:GetAttribute("SetName") or entry.inst:GetAttribute("Set")
+            end)
+            if ok and type(setName) == "string" and setName ~= "" then return setName end
+        end
+        return nil
+    end
+    local function inferredSetKey(entry)
+        local key = tostring(entry.catalogKey or entry.name or "")
+        key = key:gsub("(%l)(%u)", "%1 %2"):gsub("[_%-%.]+", " ")
+        local tokens = {}
+        for word in key:gmatch("%w+") do tokens[#tokens + 1] = word:lower() end
+        if #tokens < 2 then return nil end
+        table.remove(tokens, #tokens)
+        if #tokens == 0 then return nil end
+        return table.concat(tokens, " ")
+    end
+    local function setNameOf(entry, allEntries)
+        local explicit = explicitSetOf(entry)
+        if explicit then return explicit end
+        local candidate = inferredSetKey(entry)
+        if not candidate then return "Otros" end
+        local matches = 0
+        for _, other in ipairs(allEntries) do
+            if inferredSetKey(other) == candidate then
+                matches = matches + 1
+                if matches >= 2 then
+                    return candidate:gsub("(%a)([%w]*)", function(first, rest)
+                        return string.upper(first) .. rest
+                    end)
+                end
+            end
+        end
+        return "Otros"
+    end
+    local function sortedEntriesForView(list)
+        local result = table.clone(list)
+        local allEntries = allEntriesForSetInference()
+        table.sort(result, function(a, b)
+            local ar = rarityOrder[rarityOf(a)] or 99
+            local br = rarityOrder[rarityOf(b)] or 99
+            if ar ~= br then return ar < br end
+            local as = setNameOf(a, allEntries)
+            local bs = setNameOf(b, allEntries)
+            if as ~= bs then return as < bs end
+            return a.lname < b.lname
+        end)
+        return result
+    end
+    local function buildCards(reset, preserveScroll)
         View.token = View.token + 1
         local my = View.token
+        local previousPosition = listFrame.CanvasPosition
+        local previousLimit = View.limit
         if reset then
             clearCards()
             View.built = 0
-            View.limit = PAGE
-            View.list = filterList()
-            listFrame.CanvasPosition = Vector2.new(0, 0)
+            View.limit = preserveScroll and math.max(PAGE, previousLimit or PAGE) or PAGE
+            View.list = sortedEntriesForView(filterList())
+            if not preserveScroll then
+                listFrame.CanvasPosition = Vector2.new(0, 0)
+            end
         else
             if View.more then
                 View.more:Destroy()
@@ -5130,27 +5198,114 @@ local function App()
         end
         emptyLabel.Visible = false
         local target = math.min(View.limit, #list)
-        for i = View.built + 1, target do
-            if View.token ~= my then return end
-            makeCard(list[i], i)
-            View.built = i
-            if i % 2 == 0 then task.wait() end
+        local allEntries = allEntriesForSetInference()
+        local groups = {}
+        local rarityNames = {}
+        for i = 1, target do
+            local entry = list[i]
+            local rarity = rarityOf(entry)
+            local setName = setNameOf(entry, allEntries)
+            if not groups[rarity] then
+                groups[rarity] = {}
+                rarityNames[#rarityNames + 1] = rarity
+            end
+            groups[rarity][setName] = groups[rarity][setName] or {}
+            local bucket = groups[rarity][setName]
+            bucket[#bucket + 1] = entry
+        end
+        table.sort(rarityNames, function(a, b)
+            local ar, br = rarityOrder[a] or 99, rarityOrder[b] or 99
+            if ar ~= br then return ar < br end
+            return a < b
+        end)
+        local sectionOrder = 0
+        local rendered = 0
+        for _, rarity in ipairs(rarityNames) do
+            local sets = groups[rarity]
+            local setNames = {}
+            for setName in pairs(sets) do setNames[#setNames + 1] = setName end
+            table.sort(setNames, function(a, b)
+                if a == "Otros" then return false end
+                if b == "Otros" then return true end
+                return a < b
+            end)
+            local sectionHeight = 22
+            for _, setName in ipairs(setNames) do
+                local rows = math.ceil(#sets[setName] / 4)
+                local gridHeight = rows * 80 + math.max(0, rows - 1) * 6
+                sectionHeight = sectionHeight + 22 + gridHeight + 5
+            end
+            local section = new("Frame", {
+                Parent = listFrame, Size = UDim2.new(1, -12, 0, sectionHeight),
+                BackgroundTransparency = 1, BorderSizePixel = 0, LayoutOrder = sectionOrder,
+            })
+            sectionOrder = sectionOrder + 1
+            new("TextLabel", {
+                Parent = section, Position = UDim2.fromOffset(0, 0), Size = UDim2.new(1, 0, 0, 18),
+                BackgroundTransparency = 1, Text = rarity, Font = Enum.Font.GothamBold,
+                TextSize = 12, TextColor3 = IC.gold, TextXAlignment = Enum.TextXAlignment.Left,
+            })
+            local y = 22
+            for _, setName in ipairs(setNames) do
+                local entries = sets[setName]
+                local rows = math.ceil(#entries / 4)
+                local gridHeight = rows * 80 + math.max(0, rows - 1) * 6
+                local groupHeight = 22 + gridHeight
+                local group = new("Frame", {
+                    Parent = section, Position = UDim2.fromOffset(0, y),
+                    Size = UDim2.new(1, 0, 0, groupHeight),
+                    BackgroundTransparency = 1, BorderSizePixel = 0,
+                })
+                new("TextLabel", {
+                    Parent = group, Position = UDim2.fromOffset(0, 0), Size = UDim2.new(1, 0, 0, 16),
+                    BackgroundTransparency = 1, Text = setName, Font = Enum.Font.GothamMedium,
+                    TextSize = 9, TextColor3 = IC.soft, TextXAlignment = Enum.TextXAlignment.Left,
+                })
+                local grid = new("Frame", {
+                    Parent = group, Position = UDim2.fromOffset(0, 20),
+                    Size = UDim2.new(1, 0, 0, gridHeight),
+                    BackgroundTransparency = 1, BorderSizePixel = 0,
+                })
+                new("UIGridLayout", {
+                    Parent = grid, CellSize = UDim2.fromOffset(86, 80),
+                    CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder,
+                    HorizontalAlignment = Enum.HorizontalAlignment.Center,
+                })
+                for i, entry in ipairs(entries) do
+                    if View.token ~= my then return end
+                    makeCard(entry, i, grid)
+                    rendered = rendered + 1
+                    if rendered % 6 == 0 then task.wait() end
+                end
+                y = y + groupHeight + 5
+            end
         end
         if View.token ~= my then return end
+        View.built = target
         paintCards()
         if #list > View.built then
             local more = new("TextButton", {
-                Parent = listFrame, BackgroundColor3 = IC.btnBgMain, BackgroundTransparency = 0.35,
+                Parent = listFrame, Size = UDim2.new(1, -12, 0, 28),
+                BackgroundColor3 = IC.btnBgMain, BackgroundTransparency = 0.35,
                 AutoButtonColor = false, Text = "Ver mas (" .. (#list - View.built) .. ")",
-                Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = WHITE, BorderSizePixel = 0,
-                LayoutOrder = 1000000,
+                Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = WHITE,
+                BorderSizePixel = 0, LayoutOrder = 1000000,
             })
             corner(more, 5)
             stroke(more, IC.gold, 1, 0.5)
             View.more = more
             more.MouseButton1Click:Connect(function()
                 View.limit = View.limit + PAGE
-                task.spawn(buildCards, false)
+                task.spawn(buildCards, true, true)
+            end)
+        end
+        if preserveScroll then
+            task.defer(function()
+                RunService.Heartbeat:Wait()
+                if listFrame and listFrame.Parent then
+                    local maxY = math.max(0, listFrame.AbsoluteCanvasSize.Y - listFrame.AbsoluteSize.Y)
+                    listFrame.CanvasPosition = Vector2.new(0, math.clamp(previousPosition.Y, 0, maxY))
+                end
             end)
         end
     end
