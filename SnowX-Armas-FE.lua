@@ -4240,6 +4240,13 @@ local function App()
         model.PrimaryPart = sourceRoot
 
         local targetCF = mountCFrame or origRoot.CFrame
+        local targetTool = origRoot:FindFirstAncestorWhichIsA("Tool")
+        if not mountCFrame and targetTool and typeof(origGrip) == "CFrame" then
+            local sourceGrip = src:IsA("Tool") and src.Grip or CFrame.new()
+            -- Convert the selected source Tool grip to the currently equipped Handle frame.
+            -- Both frames come from the original Tools; no forward axis or arbitrary angle is guessed.
+            targetCF = origRoot.CFrame * origGrip:Inverse() * sourceGrip
+        end
         local sourceCF = sourceRoot.CFrame
         local delta = targetCF * sourceCF:Inverse()
         local pivotOk = pcall(function()
@@ -4548,10 +4555,19 @@ local function App()
             end
         end
         local gone
+        local now = os.clock()
         for inst, info in pairs(rec.proj) do
-            if not info.root.Parent or not inst.Parent then
-                gone = gone or {}
-                gone[#gone + 1] = inst
+            local targetAlive = inst.Parent ~= nil
+            local rootAlive = info.root ~= nil and info.root.Parent ~= nil
+            if targetAlive and rootAlive then
+                info.lostAt = nil
+            else
+                -- Keep the local replacement during a short replication reparenting gap.
+                info.lostAt = info.lostAt or now
+                if now - info.lostAt >= 0.4 then
+                    gone = gone or {}
+                    gone[#gone + 1] = inst
+                end
             end
         end
         if gone then
@@ -4626,7 +4642,8 @@ local function App()
         if not (meleeNamed(target) or meleeNamed(d)) then return end
         task.wait()
         if not target.Parent or projectileSeen[target] or rec ~= Applied.melee then return end
-        local root = rootPartOf(target)
+        local root = target:IsA("Model") and target.PrimaryPart or nil
+        root = root and root:IsA("BasePart") and root or rootPartOf(target)
         local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if not root or not hrp then return end
         if (root.Position - hrp.Position).Magnitude > 16 then return end
@@ -4638,7 +4655,7 @@ local function App()
             return
         end
         model.Parent = projFolder()
-        rec.proj[target] = { model = model, parts = origParts, root = root }
+        rec.proj[target] = { model = model, parts = origParts, root = root, lostAt = nil }
     end
     local function dropWeapon(cat)
         local rec = Applied[cat]
@@ -5208,8 +5225,18 @@ local function App()
                     guns[#guns + 1] = entry
                 end
             end
-            table.sort(knives, function(a, b) return a.lname < b.lname end)
-            table.sort(guns, function(a, b) return a.lname < b.lname end)
+            local function rarityRank(entry)
+                local rarity = entry.rarity or (entry.catalogRecord and entry.catalogRecord.rarity) or "Unknown"
+                local order = { Ancient = 1, Mythic = 2, Legendary = 3, Rare = 4, Uncommon = 5, Common = 6 }
+                return order[rarity] or 99
+            end
+            local function sortByRarity(a, b)
+                local ar, br = rarityRank(a), rarityRank(b)
+                if ar ~= br then return ar < br end
+                return a.lname < b.lname
+            end
+            table.sort(knives, sortByRarity)
+            table.sort(guns, sortByRarity)
             Data.knives, Data.guns = knives, guns
             return knives, guns
         end
@@ -5219,7 +5246,6 @@ local function App()
             weaponInstances = allInstances(weaponRoots())
             scanWeapons(weaponInstances, weapons, seenW, sigW)
             hydrateWeaponCache(weapons, seenW)
-            hydrateWeaponCatalogPlaceholders(weapons, seenW)
             publishWeaponLists()
         end)
         if not weaponOk then
@@ -5253,7 +5279,6 @@ local function App()
             priorityScan(effectInstances, effects, seenE)
             libraryScan(effectInstances, effects, seenE)
             hydrateEffectCache(effects, seenE)
-            hydrateEffectCatalogPlaceholders(effects, seenE)
         end)
         if not effectOk then
             warn("[SnowX-Armas] Effect scan failed: " .. tostring(effectErr))
@@ -5263,9 +5288,15 @@ local function App()
         setProgress(0.78)
         setStatus(#effects .. " efectos encontrados; finalizando catálogo...", IC.soft)
         local knives, guns = publishWeaponLists()
+        local function rarityRank(entry)
+            local rarity = entry.rarity or (entry.catalogRecord and entry.catalogRecord.rarity) or "Unknown"
+            local order = { Ancient = 1, Mythic = 2, Legendary = 3, Rare = 4, Uncommon = 5, Common = 6 }
+            return order[rarity] or 99
+        end
         table.sort(effects, function(a, b)
+            local ar, br = rarityRank(a), rarityRank(b)
+            if ar ~= br then return ar < br end
             if a.priority ~= b.priority then return a.priority end
-            if a.lib ~= b.lib then return not a.lib end
             return a.lname < b.lname
         end)
         Data.knives, Data.guns, Data.effects = knives, guns, effects
@@ -5472,8 +5503,14 @@ local function App()
                     if #effects > before then
                         Data.effects = effects
                         table.sort(effects, function(a, b)
+                            local function rank(entry)
+                                local rarity = entry.rarity or (entry.catalogRecord and entry.catalogRecord.rarity) or "Unknown"
+                                local order = { Ancient = 1, Mythic = 2, Legendary = 3, Rare = 4, Uncommon = 5, Common = 6 }
+                                return order[rarity] or 99
+                            end
+                            local ar, br = rank(a), rank(b)
+                            if ar ~= br then return ar < br end
                             if a.priority ~= b.priority then return a.priority end
-                            if a.lib ~= b.lib then return not a.lib end
                             return a.lname < b.lname
                         end)
                         if gui and gui.Parent then
