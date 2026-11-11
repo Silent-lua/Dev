@@ -5309,6 +5309,20 @@ local function App()
             end)
         end
     end
+    local cardRefreshQueued = false
+    local function refreshCardsPreservingScroll()
+        if cardRefreshQueued then return end
+        cardRefreshQueued = true
+        task.delay(0.45, function()
+            cardRefreshQueued = false
+            if not gui or not gui.Parent then return end
+            local selected = Selected[activeTab]
+            pcall(buildCards, true, true)
+            if selected and Selected[activeTab] == selected then
+                pcall(showSelected, selected)
+            end
+        end)
+    end
     local function updateLabels()
         local info = TAB_INFO[activeTab]
         btnApply.label.Text = info.apply
@@ -5406,7 +5420,6 @@ local function App()
         if not weaponOk then
             warn("[SnowX-Armas] Weapon scan failed: " .. tostring(weaponErr))
         end
-        pcall(buildCards, true)
         setProgress(0.34)
         setStatus(
             tostring(catalogCounts.knives) .. " cuchillos y " .. tostring(catalogCounts.guns)
@@ -5477,7 +5490,7 @@ local function App()
                 .. string.format("%.2fs", Scan.elapsedSeconds) .. ".", T.green)
         end
         setProgress(1)
-        pcall(buildCards, true)
+        pcall(buildCards, true, true)
         task.delay(0.6, function()
             if progressFill and progressFill.Parent then setProgress(0) end
         end)
@@ -5490,7 +5503,7 @@ local function App()
             end)
             if not ok then warn("[SnowX-Armas] Optional metadata skipped: " .. tostring(err)) end
             if gui and gui.Parent and Scan.done then
-                pcall(buildCards, true)
+                refreshCardsPreservingScroll()
             end
         end)
 
@@ -5635,8 +5648,7 @@ local function App()
                     if changed then
                         local newKnives, newGuns = publishWeaponLists()
                         if gui and gui.Parent then
-                            pcall(buildCards, true)
-                            if Selected[activeTab] then pcall(showSelected, Selected[activeTab]) end
+                            refreshCardsPreservingScroll()
                         end
                         setStatus("Descubrimiento dinámico: " .. #newKnives .. " cuchillos y "
                             .. #newGuns .. " pistolas; caché actualizada.", IC.soft)
@@ -5669,13 +5681,9 @@ local function App()
                             return a.lname < b.lname
                         end)
                         if gui and gui.Parent then
-                            pcall(buildCards, true)
-                            if Selected.effects then pcall(showSelected, Selected.effects) end
+                            refreshCardsPreservingScroll()
                         end
                         setStatus("Efectos dinámicos detectados: " .. #effects .. "; caché sincronizada.", IC.soft)
-                    elseif gui and gui.Parent then
-                        pcall(buildCards, true)
-                        if Selected.effects then pcall(showSelected, Selected.effects) end
                     end
                 end
 
