@@ -15,26 +15,18 @@ local env = (getgenv and getgenv()) or _G
 env.NexvyrCatOverride = env.NexvyrCatOverride or {}
 -- Session cache: exact cloned Instances survive source removal and script re-execution
 -- inside the same executor environment. A client/game restart clears this in-memory cache.
-local ASSET_CACHE_KEY = "SnowXArmasAssetCacheV5"
+-- V6 intentionally starts empty: do not migrate old V4/V5 templates.
+-- Exact cloned templates are retained for the current executor session.
+local ASSET_CACHE_KEY = "SnowXArmasAssetCacheV6"
 local AssetCache = env[ASSET_CACHE_KEY]
-if type(AssetCache) ~= "table" or AssetCache.version ~= 5 then
-    local previous = env.SnowXArmasAssetCacheV4
+if type(AssetCache) ~= "table" or AssetCache.version ~= 6 then
     AssetCache = {
-        version = 5,
-        -- Instance templates live in three isolated buckets. getgenv() retains them
-        -- across script re-execution in the same client/executor session.
+        version = 6,
         knives = {},
         guns = {},
-        effects = type(previous) == "table" and type(previous.effects) == "table" and previous.effects or {},
+        effects = {},
         stats = { knifeAdds = 0, gunAdds = 0, effectAdds = 0 },
     }
-    -- Migrate the previous combined weapon bucket without cloning or dropping Instances.
-    if type(previous) == "table" and type(previous.weapons) == "table" then
-        for key, record in pairs(previous.weapons) do
-            local bucket = type(record) == "table" and record.cat == "melee" and AssetCache.knives or AssetCache.guns
-            bucket[key] = record
-        end
-    end
     env[ASSET_CACHE_KEY] = AssetCache
 else
     AssetCache.knives = type(AssetCache.knives) == "table" and AssetCache.knives or {}
@@ -42,10 +34,12 @@ else
     AssetCache.effects = type(AssetCache.effects) == "table" and AssetCache.effects or {}
     AssetCache.stats = type(AssetCache.stats) == "table" and AssetCache.stats or {}
 end
-AssetCache.stats.knifeAdds = AssetCache.stats.knifeAdds or 0
-AssetCache.stats.gunAdds = AssetCache.stats.gunAdds or 0
-AssetCache.stats.effectAdds = AssetCache.stats.effectAdds or 0
-AssetCache.sessionSchema = "knives/guns/effects-v1"
+AssetCache.stats.knifeAdds = tonumber(AssetCache.stats.knifeAdds) or 0
+AssetCache.stats.gunAdds = tonumber(AssetCache.stats.gunAdds) or 0
+AssetCache.stats.effectAdds = tonumber(AssetCache.stats.effectAdds) or 0
+AssetCache.sessionSchema = "knives/guns/effects-v2"
+env.SnowXArmasAssetCacheV5 = nil
+env.SnowXArmasAssetCacheV4 = nil
 if env.SnowXArmasVisualCleanup then
     pcall(env.SnowXArmasVisualCleanup)
 elseif env.NexvyrToolsVisualCleanup then
@@ -1503,6 +1497,7 @@ local M = (function()
             for _, raw in ipairs(source.source) do
                 local record = {
                     key = raw.key, name = raw.name, image = catalogImage(raw.image), rarity = raw.rarity,
+                    setName = raw.setName or raw.SetName or raw.set or raw.collection,
                     offset = raw.offset, angles = raw.angles, cat = source.category,
                 }
                 source.bucket[#source.bucket + 1] = record
@@ -1518,7 +1513,10 @@ local M = (function()
         end
 
         for _, raw in ipairs(STATIC_CATALOG.effects) do
-            local record = { key = raw.key, name = raw.name, image = catalogImage(raw.image), rarity = raw.rarity }
+            local record = {
+                key = raw.key, name = raw.name, image = catalogImage(raw.image), rarity = raw.rarity,
+                setName = raw.setName or raw.SetName or raw.set or raw.collection,
+            }
             effectCatalog[#effectCatalog + 1] = record
             effectCatalogRecordByKey[squash(record.key)] = record
             registerEffectAlias(record.key, record)
@@ -2228,8 +2226,7 @@ local M = (function()
     local function isCachedTemplate(inst)
         if not inst then return false end
         local ok, marker = pcall(function()
-            return inst:GetAttribute("NxTVAssetCacheV5") == true
-                or inst:GetAttribute("NxTVAssetCacheV4") == true
+            return inst:GetAttribute("NxTVAssetCacheV6") == true
         end)
         return ok and marker == true
     end
@@ -2415,20 +2412,6 @@ local M = (function()
         if type(record) ~= "table" then record = {} end
         record.variants = type(record.variants) == "table" and record.variants or {}
 
-        -- Migrate a V4 single-template cache entry without discarding its clone.
-        if record.template and isCachedTemplate(record.template) and next(record.variants) == nil then
-            local legacyKey = tostring(record.sourcePath or "legacy") .. "|legacy"
-            record.variants[legacyKey] = {
-                template = record.template,
-                rank = record.rank or 99,
-                quality = record.quality or 0,
-                counts = record.counts,
-                sourcePath = record.sourcePath or "legacy-cache",
-                fingerprint = record.fingerprint or "legacy",
-                cachedAt = record.cachedAt,
-            }
-        end
-
         local variant = record.variants[variantKey]
         local variantValid = variant and isCachedTemplate(variant.template)
         local needsClone = not variantValid
@@ -2438,8 +2421,7 @@ local M = (function()
             local clone = cloneComplete(inst)
             if clone then
                 pcall(function()
-                    clone:SetAttribute("NxTVAssetCacheV5", true)
-                    clone:SetAttribute("NxTVAssetCacheV4", true)
+                    clone:SetAttribute("NxTVAssetCacheV6", true)
                 end)
                 variant = {
                     template = clone,
@@ -2502,12 +2484,14 @@ local M = (function()
         return cacheTemplate(section, key, inst, {
             name = record.name, catalogKey = record.key, cat = cat,
             side = side or "Default", tex = record.image,
+            rarity = record.rarity or "Unknown", setName = record.setName,
         })
     end
     local function cacheEffectSource(inst, record, tex)
         if not record then return nil end
         return cacheTemplate("effects", squash(record.key), inst, {
             name = record.name, catalogKey = record.key, tex = record.image or tex,
+            rarity = record.rarity or "Unknown", setName = record.setName,
         })
     end
     local function addEffect(inst, out, seen, nameOverride, lib, imageOverride)
