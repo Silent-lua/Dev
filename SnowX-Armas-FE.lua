@@ -17,16 +17,22 @@ env.NexvyrCatOverride = env.NexvyrCatOverride or {}
 -- assets that this version actually discovers during the current executor session.
 env.SnowXArmasAssetCacheV4 = nil
 env.SnowXArmasAssetCacheV5 = nil
-local ASSET_CACHE_KEY = "SnowXArmasAssetCacheV6"
+local ASSET_CACHE_KEY = "SnowXArmasAssetCacheV7"
+local previousCache = env.SnowXArmasAssetCacheV6
 local AssetCache = env[ASSET_CACHE_KEY]
-if type(AssetCache) ~= "table" or AssetCache.version ~= 6 then
-    AssetCache = {
-        version = 6,
-        knives = {},
-        guns = {},
-        effects = {},
-        stats = { knifeAdds = 0, gunAdds = 0, effectAdds = 0 },
-    }
+if type(AssetCache) ~= "table" or AssetCache.version ~= 7 then
+    if type(previousCache) == "table" and previousCache.version == 6 then
+        AssetCache = previousCache
+        AssetCache.version = 7
+    else
+        AssetCache = {
+            version = 7,
+            knives = {},
+            guns = {},
+            effects = {},
+            stats = { knifeAdds = 0, gunAdds = 0, effectAdds = 0 },
+        }
+    end
     env[ASSET_CACHE_KEY] = AssetCache
 else
     AssetCache.knives = type(AssetCache.knives) == "table" and AssetCache.knives or {}
@@ -34,6 +40,7 @@ else
     AssetCache.effects = type(AssetCache.effects) == "table" and AssetCache.effects or {}
     AssetCache.stats = type(AssetCache.stats) == "table" and AssetCache.stats or {}
 end
+env.SnowXArmasAssetCacheV6 = AssetCache
 AssetCache.stats.knifeAdds = AssetCache.stats.knifeAdds or 0
 AssetCache.stats.gunAdds = AssetCache.stats.gunAdds or 0
 AssetCache.stats.effectAdds = AssetCache.stats.effectAdds or 0
@@ -2050,7 +2057,7 @@ local M = (function()
         return list
     end
 
-    local function allInstances(roots)
+    local function allInstances(roots, include)
         local list = {}
         local stack = roots or scanRoots()
         local seen = {}
@@ -2059,14 +2066,13 @@ local M = (function()
             local inst = table.remove(stack)
             if inst and not seen[inst] then
                 seen[inst] = true
-                list[#list + 1] = inst
+                if not include or include(inst) then list[#list + 1] = inst end
                 local children = inst:GetChildren()
                 for i = #children, 1, -1 do
                     stack[#stack + 1] = children[i]
                 end
                 processed = processed + 1
-                -- Yield frequently to keep frame time reasonable on mobile.
-                if processed % 90 == 0 then task.wait() end
+                if processed % 160 == 0 then task.wait() end
             end
         end
         return list
@@ -2220,10 +2226,34 @@ local M = (function()
     local function isCachedTemplate(inst)
         if not inst then return false end
         local ok, marker = pcall(function()
-            return inst:GetAttribute("NxTVAssetCacheV5") == true
+            return inst:GetAttribute("NxTVAssetCacheV7") == true
+                or inst:GetAttribute("NxTVAssetCacheV6") == true
+                or inst:GetAttribute("NxTVAssetCacheV5") == true
                 or inst:GetAttribute("NxTVAssetCacheV4") == true
         end)
         return ok and marker == true
+    end
+    local function cachedTemplateFromRecord(record)
+        if type(record) ~= "table" then return nil end
+        if isCachedTemplate(record.template) then return record.template end
+        local best
+        for _, variant in pairs(record.variants or {}) do
+            if variant and isCachedTemplate(variant.template) then
+                if not best or (variant.quality or 0) > (best.quality or 0)
+                    or ((variant.quality or 0) == (best.quality or 0)
+                        and (variant.rank or 99) < (best.rank or 99)) then
+                    best = variant
+                end
+            end
+        end
+        if best then
+            record.template = best.template
+            record.rank = best.rank or record.rank or 99
+            record.quality = best.quality or record.quality or 0
+            record.sourcePath = best.sourcePath or record.sourcePath
+            return best.template
+        end
+        return nil
     end
     local function cacheQuality(inst)
         local counts = {
@@ -2430,6 +2460,8 @@ local M = (function()
             local clone = cloneComplete(inst)
             if clone then
                 pcall(function()
+                    clone:SetAttribute("NxTVAssetCacheV7", true)
+                    clone:SetAttribute("NxTVAssetCacheV6", true)
                     clone:SetAttribute("NxTVAssetCacheV5", true)
                     clone:SetAttribute("NxTVAssetCacheV4", true)
                 end)
@@ -2548,6 +2580,7 @@ local M = (function()
         out[#out + 1] = entry
         return true
     end
+    local catalogEffectName
     local function catalogEffectScan(roots, out, seen)
         local replicated = game:GetService("ReplicatedStorage")
         local assets = replicated:FindFirstChild("Assets")
@@ -2576,7 +2609,8 @@ local M = (function()
                 end
                 for _, node in ipairs(nodes) do
                     if not node:IsA("LuaSourceContainer") then
-                        local record = catalogEffectRecordForName(node.Name)
+                        local resolvedName = catalogEffectName and catalogEffectName(node)
+                        local record = catalogEffectRecordForName(resolvedName or node.Name)
                         if record and not claimed[squash(record.key)] then
                             local source = node
                             if not (source:IsA("Model") or source:IsA("Folder") or source:IsA("BasePart")) then
@@ -2609,7 +2643,7 @@ local M = (function()
         rightarm = true, leftleg = true, rightleg = true, lefthand = true,
         righthand = true, leftfoot = true, rightfoot = true,
     }
-    local function catalogEffectName(node)
+    catalogEffectName = function(node)
         if not node then return nil end
         local function resolve(value)
             local record = catalogEffectRecordForName(value)
@@ -3016,6 +3050,17 @@ local M = (function()
         if not inst or underNxTV(inst) then return false end
         local record = catalogWeaponRecordForName(displayName or inst.Name)
             or catalogWeaponRecordFromInstance(inst)
+        if not record then
+            local inferredCategory = cat or classifyWeapon(inst)
+            if inferredCategory == "melee" or inferredCategory == "gun" then
+                record = {
+                    key = displayName or inst.Name,
+                    name = displayName or inst.Name,
+                    cat = inferredCategory,
+                    image = nil,
+                }
+            end
+        end
         if not record then return false end
         cat = record.cat
         local itemKey = record.key
@@ -3095,10 +3140,18 @@ local M = (function()
         }
         for _, section in ipairs(sections) do
             for _, cacheRecord in pairs(section.bucket) do
-                local template = cacheRecord and cacheRecord.template
-                if template and isCachedTemplate(template) then
+                local template = cachedTemplateFromRecord(cacheRecord)
+                if template then
                     local catalogRecord = type(cacheRecord.catalogKey) == "string"
                         and catalogWeaponRecordForName(cacheRecord.catalogKey) or nil
+                    if not catalogRecord and cacheRecord.name and cacheRecord.cat then
+                        catalogRecord = {
+                            key = cacheRecord.catalogKey or cacheRecord.name,
+                            name = cacheRecord.name,
+                            cat = cacheRecord.cat,
+                            image = cacheRecord.tex,
+                        }
+                    end
                     if catalogRecord and catalogRecord.cat == section.cat then
                         local key = squash(catalogRecord.key)
                         local sideKey = cacheRecord.side or "Default"
@@ -3206,7 +3259,8 @@ local M = (function()
             if inst:IsA("Tool") and not inst:GetAttribute("NxTV") and not insideKillLibrary(inst)
                 and not inst:FindFirstAncestorWhichIsA("Accessory") and toolValid(inst) then
                 local record = catalogWeaponRecordFromInstance(inst)
-                if record then pushWeapon(inst, record.cat, out, seen, sig) end
+                local category = record and record.cat or classifyWeapon(inst)
+                if category then pushWeapon(inst, category, out, seen, sig) end
             end
         end
         for i, inst in ipairs(list) do
@@ -3233,12 +3287,16 @@ local M = (function()
                     pushWeapon(inst, record.cat, out, seen, sig, nil, record.key, side)
                 else
                     record = catalogWeaponRecordFromInstance(inst)
-                    if record then
+                    local category = record and record.cat or classifyWeapon(inst)
+                    if category then
                         local insideOtherModel = inst:FindFirstAncestorWhichIsA("Model") ~= nil
                         local directFolderChild = inst.Parent
                             and (inst.Parent:IsA("Folder") or inst.Parent:IsA("Configuration"))
-                        if not insideOtherModel or (directFolderChild and underKnownWeaponSourceFolder(inst)) then
-                            pushWeapon(inst, record.cat, out, seen, sig)
+                        local hasIdentity = record ~= nil or catOfName(inst.Name) ~= nil
+                            or metadataCat(inst, true) ~= nil or underKnownWeaponSourceFolder(inst)
+                        if hasIdentity and (not insideOtherModel
+                            or (directFolderChild and underKnownWeaponSourceFolder(inst))) then
+                            pushWeapon(inst, category, out, seen, sig)
                         end
                     end
                 end
@@ -3246,7 +3304,10 @@ local M = (function()
                 and not inst:FindFirstAncestorWhichIsA("Model")
                 and not inst:FindFirstAncestorWhichIsA("Tool") then
                 local record = catalogWeaponRecordFromInstance(inst)
-                if record then pushWeapon(inst, record.cat, out, seen, sig) end
+                local category = record and record.cat or classifyWeapon(inst)
+                if category and (record or catOfName(inst.Name) or metadataCat(inst, true)) then
+                    pushWeapon(inst, category, out, seen, sig)
+                end
             end
         end
     end
@@ -3460,7 +3521,7 @@ local M = (function()
         if not catalogRecord then return nil end
         local cached = AssetCache.effects[squash(catalogRecord.key)]
         local template = entry.cacheTemplate
-        if not isCachedTemplate(template) and cached then template = cached.template end
+        if not isCachedTemplate(template) and cached then template = cachedTemplateFromRecord(cached) end
         if isCachedTemplate(template) then return template end
         local live = entry.inst
         if live and existsInGame(live) then return live end
@@ -3468,8 +3529,8 @@ local M = (function()
     end
     M.hydrateEffectCache = function(out, seen)
         for _, cacheRecord in pairs(AssetCache.effects) do
-            local template = cacheRecord and cacheRecord.template
-            if template and isCachedTemplate(template) then
+            local template = cachedTemplateFromRecord(cacheRecord)
+            if template then
                 local catalogRecord = type(cacheRecord.catalogKey) == "string"
                     and catalogEffectRecordForName(cacheRecord.catalogKey) or nil
                 if catalogRecord then
@@ -4052,7 +4113,11 @@ local function App()
             local folderName = squash(v.Name)
             local names
             if folderName == "knifepartsfolder" or category == "melee" then
-                names = { "KnifeDisplay", "KnifeDisplay2", "Display", "Root", "Handle" }
+                if sourceSide == "Left" then
+                    names = { "KnifeDisplay2", "KnifeDisplay", "Display", "Root", "Handle" }
+                else
+                    names = { "KnifeDisplay", "KnifeDisplay2", "Display", "Root", "Handle" }
+                end
             elseif folderName == "gunpartsfolder2" or sourceSide == "Left" then
                 names = { "GunDisplay2", "GunDisplay", "Display", "Root", "Handle" }
             elseif folderName == "gunpartsfolder" or category == "gun" then
@@ -4156,10 +4221,21 @@ local function App()
         else
             -- A gun's direct Handle is its authored grip reference. Use it before any
             -- nested display Handle so its original barrel orientation is preserved.
-            if entry.cat == "gun" then
-                local directHandle = clone:FindFirstChild("Handle")
-                if directHandle and directHandle:IsA("BasePart") then
-                    sourceRoot = directHandle
+            local directHandle = clone:FindFirstChild("Handle")
+            if directHandle and directHandle:IsA("BasePart") then
+                sourceRoot = directHandle
+            end
+            if not sourceRoot then
+                local gripNames = sourceSide == "Left"
+                    and { "LeftGripAttachment", "RightGripAttachment", "GripAttachment" }
+                    or { "RightGripAttachment", "LeftGripAttachment", "GripAttachment" }
+                for _, gripName in ipairs(gripNames) do
+                    local gripAttachment = clone:FindFirstChild(gripName, true)
+                    if gripAttachment and gripAttachment:IsA("Attachment")
+                        and gripAttachment.Parent and gripAttachment.Parent:IsA("BasePart") then
+                        sourceRoot = gripAttachment.Parent
+                        break
+                    end
                 end
             end
             -- Use the same mount semantic as the live target. The old implementation
@@ -4362,7 +4438,7 @@ local function App()
         if not (handle and handle:IsA("BasePart")) then handle = rootPartOf(tool) end
         if not (handle and handle:IsA("BasePart")) then handle = origParts[1] end
         if not (handle and handle:IsA("BasePart")) then return end
-        local model = buildSkin(rec.entry, handle, origParts, tool.Grip, rec.cat == "gun" and "Right" or nil)
+        local model = buildSkin(rec.entry, handle, origParts, tool.Grip, "Right", handle.CFrame)
         if not model then return end
         model.Parent = tool
         local info = {
@@ -4385,8 +4461,9 @@ local function App()
         if not root then return end
         local origParts = partsOf(target)
         if #origParts == 0 then return end
-        local mountCFrame = catalogHolsterCFrame(rec.entry, char, sourceSide)
-        local model = buildSkin(rec.entry, root, origParts, CFrame.new(), sourceSide, mountCFrame)
+        -- The live holster root already carries the game's exact transform.
+        -- Use it rather than a generic offset that can push some variants to the avatar edge.
+        local model = buildSkin(rec.entry, root, origParts, CFrame.new(), sourceSide, root.CFrame)
         if not model then return end
         model.Parent = holsterFolder(char)
         rec.targets[target] = {
@@ -5112,6 +5189,33 @@ local function App()
         -- Stage 1: scan only the weapon registries, inventory and player rigs.
         weaponOk, weaponErr = pcall(function()
             weaponInstances = allInstances(weaponRoots())
+            local globalRoots = {
+                game:GetService("ReplicatedStorage"),
+                Workspace,
+                game:GetService("Players"),
+                game:GetService("StarterPack"),
+            }
+            local already = {}
+            for _, inst in ipairs(weaponInstances) do already[inst] = true end
+            local globalCandidates = allInstances(globalRoots, function(inst)
+                if inst:IsA("Tool") then return true end
+                if inst:IsA("Model") then
+                    return not inst:FindFirstChildOfClass("Humanoid")
+                        and (catalogWeaponRecordFromInstance(inst) ~= nil or classifyWeapon(inst) ~= nil)
+                end
+                if inst:IsA("BasePart") then
+                    return not inst:FindFirstAncestorWhichIsA("Model")
+                        and not inst:FindFirstAncestorWhichIsA("Tool")
+                        and (catalogWeaponRecordFromInstance(inst) ~= nil or classifyWeapon(inst) ~= nil)
+                end
+                return false
+            end)
+            for _, inst in ipairs(globalCandidates) do
+                if not already[inst] then
+                    already[inst] = true
+                    weaponInstances[#weaponInstances + 1] = inst
+                end
+            end
             scanWeapons(weaponInstances, weapons, seenW, sigW)
             hydrateWeaponCache(weapons, seenW)
             publishWeaponLists()
@@ -5144,6 +5248,11 @@ local function App()
                 scanGeneric(root, false, KILL_CFG, effects, seenE, counter)
             end
             catalogEffectScan(effectRoots(), effects, seenE)
+            catalogEffectScan({
+                game:GetService("ReplicatedStorage"),
+                Workspace,
+                game:GetService("Players"),
+            }, effects, seenE)
             priorityScan(effectInstances, effects, seenE)
             libraryScan(effectInstances, effects, seenE)
             hydrateEffectCache(effects, seenE)
@@ -5221,6 +5330,14 @@ local function App()
         local runtimeLastScan = setmetatable({}, { __mode = "k" })
         local function runtimeContext(inst)
             local weaponContext, effectContext = catOfName(inst.Name) ~= nil, false
+            if inst:IsA("Tool") or inst:IsA("Model") or inst:IsA("BasePart") then
+                weaponContext = weaponContext or catalogWeaponRecordFromInstance(inst) ~= nil
+                    or classifyWeapon(inst) ~= nil
+            end
+            local resolvedEffect = catalogEffectName and catalogEffectName(inst)
+            if resolvedEffect and (inst:IsA("Model") or inst:IsA("Folder") or killContent(inst)) then
+                effectContext = true
+            end
             local normalizedName = norm(inst.Name)
             local namedEffectHint = hasAny(normalizedName, {
                 "kill effect", "killfx", "finisher", "effect", "vfx", "death",
@@ -5251,7 +5368,11 @@ local function App()
                 if p:IsA("Model") and not p:FindFirstChildOfClass("Humanoid") then
                     local hasVisualRoot = p:FindFirstChild("Visual") and p:FindFirstChild("VFX")
                         and (p:FindFirstChild("Root") or p:FindFirstChild("Handle"))
-                    if hasVisualRoot or catOfName(p.Name) then return p end
+                    if hasVisualRoot or catOfName(p.Name)
+                        or catalogWeaponRecordFromInstance(p)
+                        or (catalogEffectName and catalogEffectName(p)) then
+                        return p
+                    end
                     firstUsefulModel = firstUsefulModel or p
                 elseif p:IsA("BasePart") and not firstUsefulPart then
                     -- The triggering emitter/sound is already a descendant of this part;
@@ -5361,6 +5482,11 @@ local function App()
                     priorityScan(list, effects, seenE)
                     libraryScan(list, effects, seenE)
                     catalogEffectScan(effectRoots(), effects, seenE)
+                    catalogEffectScan({
+                        game:GetService("ReplicatedStorage"),
+                        Workspace,
+                        game:GetService("Players"),
+                    }, effects, seenE)
                     hydrateEffectCache(effects, seenE)
                     if #effects > before then
                         Data.effects = effects
