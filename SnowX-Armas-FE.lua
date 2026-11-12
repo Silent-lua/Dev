@@ -44,7 +44,7 @@ env.SnowXArmasAssetCacheV6 = AssetCache
 AssetCache.stats.knifeAdds = AssetCache.stats.knifeAdds or 0
 AssetCache.stats.gunAdds = AssetCache.stats.gunAdds or 0
 AssetCache.stats.effectAdds = AssetCache.stats.effectAdds or 0
-AssetCache.sessionSchema = "fresh-v6/knives-guns-effects"
+AssetCache.sessionSchema = "v7/global-discovery/knives-guns-effects"
 if env.SnowXArmasVisualCleanup then
     pcall(env.SnowXArmasVisualCleanup)
 elseif env.NexvyrToolsVisualCleanup then
