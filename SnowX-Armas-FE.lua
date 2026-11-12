@@ -1798,7 +1798,10 @@ local M = (function()
                 break
             end
             path[#path + 1] = p
-            if hasAny(squash(p.Name), KILL_LIBRARY_NAMES) then
+            local key = squash(p.Name)
+            local parentKey = p.Parent and squash(p.Parent.Name) or ""
+            if hasAny(key, KILL_LIBRARY_NAMES)
+                or (key == "effects" and parentKey == "replicatedskins") then
                 found = true
                 break
             end
@@ -1923,101 +1926,28 @@ local M = (function()
     local function weaponRoots()
         local list, seen = {}, {}
         local function add(inst)
-            if inst and not seen[inst] then
-                seen[inst] = true
-                list[#list + 1] = inst
-            end
+            if inst and not seen[inst] then seen[inst] = true; list[#list + 1] = inst end
         end
-
         local replicated = game:GetService("ReplicatedStorage")
-        local assets = replicated:FindFirstChild("Assets")
-        if assets then
-            add(assets:FindFirstChild("Weapons"))
-            -- Preview rigs can contain full client-visible weapon models.
-            add(assets:FindFirstChild("BundlePreviewSet"))
-        end
-
         local replicatedSkins = replicated:FindFirstChild("ReplicatedSkins")
-        if replicatedSkins then
-            add(replicatedSkins:FindFirstChild("Weapons"))
-        end
-        add(game:GetService("StarterPack"))
-
-        -- Workspace stands are a fallback catalogue source, not a source of live targets.
-        local ws = Workspace
-        local limited = ws:FindFirstChild("LimitedBundle")
-        if limited then
-            local rigs = limited:FindFirstChild("Rigs")
-            if rigs then
-                add(rigs:FindFirstChild("RigLeft"))
-                add(rigs:FindFirstChild("RigRight"))
-            end
-        end
-        local dia = ws:FindFirstChild("Dia De los MuertosEvent")
-        if dia then add(dia:FindFirstChild("Item")) end
-        local crate = ws:FindFirstChild("LimitedCrateStand")
-        if crate then
-            local objects = crate:FindFirstChild("Objects")
-            if objects then add(objects) end
-        end
-        local bench = ws:FindFirstChild("Workbench")
-        if bench then
-            local model = bench:FindFirstChild("Model")
-            if model then add(model:FindFirstChild("Weapons")) end
-        end
-        local clan = ws:FindFirstChild("ClanStand")
-        if clan then add(clan:FindFirstChild("Visuals")) end
-        -- DualWieldGunCopies is a live target, not a skin catalogue source.
-        -- The dump also places the live clan display under Lobby_Original/Clan.
-        local lobby = ws:FindFirstChild("Lobby_Original")
-        local clanFolder = lobby and lobby:FindFirstChild("Clan")
-        local nestedClan = clanFolder and clanFolder:FindFirstChild("ClanStand")
-        if nestedClan then add(nestedClan:FindFirstChild("Visuals")) end
-
-        -- Inventory and actual player rigs.
-        for _, player in ipairs(Players:GetPlayers()) do
-            local backpack = player:FindFirstChildOfClass("Backpack")
-            if backpack then add(backpack) end
-            add(player:FindFirstChild("StarterGear"))
-            if player.Character then add(player.Character) end
-        end
+        add(replicatedSkins and replicatedSkins:FindFirstChild("Weapons"))
+        add(LocalPlayer:FindFirstChildOfClass("Backpack"))
+        add(LocalPlayer:FindFirstChild("StarterGear"))
+        add(LocalPlayer.Character)
         return list
     end
 
     local function effectRoots()
         local list, seen = {}, {}
         local function add(inst)
-            if inst and not seen[inst] then
-                seen[inst] = true
-                list[#list + 1] = inst
-            end
+            if inst and not seen[inst] then seen[inst] = true; list[#list + 1] = inst end
         end
-
         local replicated = game:GetService("ReplicatedStorage")
-        local assets = replicated:FindFirstChild("Assets")
-        if assets then
-            add(assets:FindFirstChild("Finishers"))
-            add(assets:FindFirstChild("Effects"))
-        end
-
         local replicatedSkins = replicated:FindFirstChild("ReplicatedSkins")
-        if replicatedSkins then
-            add(replicatedSkins:FindFirstChild("PreviewEffects"))
-            add(replicatedSkins:FindFirstChild("Effects"))
-        end
+        add(replicatedSkins and replicatedSkins:FindFirstChild("Effects"))
+        add(replicatedSkins and replicatedSkins:FindFirstChild("PreviewEffects"))
         local shared = replicated:FindFirstChild("Shared")
-        if shared then add(shared:FindFirstChild("Finishers")) end
-
-        -- Runtime effect containers are explicit roots; never crawl the whole Workspace.
-        for _, name in ipairs({ "Effects", "KillEffects", "KillEffectLibrary", "FinisherEffects", "DeathEffects" }) do
-            add(Workspace:FindFirstChild(name))
-        end
-        local character = LocalPlayer.Character
-        if character then
-            for _, name in ipairs({ "Effects", "KillEffects", "FinisherEffects", "DeathEffects" }) do
-                add(character:FindFirstChild(name))
-            end
-        end
+        add(shared and shared:FindFirstChild("Finishers"))
         return list
     end
 
@@ -2534,8 +2464,8 @@ local M = (function()
             name = record.name, catalogKey = record.key, tex = record.image or tex,
         })
     end
-    local function addEffect(inst, out, seen, nameOverride, lib, imageOverride)
-        if not inst or underNxTV(inst) or isWeaponTreeContent(inst) then return false end
+    local function addEffect(inst, out, seen, nameOverride, lib, imageOverride, trustedEffectSource)
+        if not inst or underNxTV(inst) or (not trustedEffectSource and isWeaponTreeContent(inst)) then return false end
         local record = catalogEffectRecordForName(nameOverride or inst.Name)
         if not record then return false end
         local key = squash(record.key)
@@ -2583,59 +2513,69 @@ local M = (function()
     local catalogEffectName
     local function catalogEffectScan(roots, out, seen)
         local replicated = game:GetService("ReplicatedStorage")
-        local assets = replicated:FindFirstChild("Assets")
         local replicatedSkins = replicated:FindFirstChild("ReplicatedSkins")
-        local candidates = {
-            assets and assets:FindFirstChild("Finishers"),
-            assets and assets:FindFirstChild("Effects"),
-            replicatedSkins and replicatedSkins:FindFirstChild("Effects"),
-            replicatedSkins and replicatedSkins:FindFirstChild("PreviewEffects"),
-        }
-        local candidateSet = {}
-        for _, root in ipairs(candidates) do if root then candidateSet[root] = true end end
-        for _, root in ipairs(roots or {}) do
+        local shared = replicated:FindFirstChild("Shared")
+        local candidates, candidateSet, scanned = {}, {}, {}
+        local function addLibrary(root)
             if root and not candidateSet[root] then
                 candidateSet[root] = true
                 candidates[#candidates + 1] = root
             end
         end
-        local claimed = {}
+        addLibrary(replicatedSkins and replicatedSkins:FindFirstChild("Effects"))
+        addLibrary(replicatedSkins and replicatedSkins:FindFirstChild("PreviewEffects"))
+        addLibrary(shared and shared:FindFirstChild("Finishers"))
+        for _, root in ipairs(roots or {}) do addLibrary(root) end
+
+        local function getRecord(name)
+            local record = catalogEffectRecordForName(name)
+            if record then return record end
+            local key, suffix = squash(name), "finisher"
+            if #key > #suffix and key:sub(-#suffix) == suffix then
+                local base = key:sub(1, #key - #suffix)
+                return catalogEffectRecordForName(base .. "Effect") or catalogEffectRecordForName(base)
+            end
+            return nil
+        end
+        local function hasVisual(source)
+            if source:IsA("BasePart") then return true end
+            for _, descendant in ipairs(descendantsOf(source)) do
+                if descendant:IsA("BasePart") then return true end
+            end
+            return false
+        end
+        local function register(source, record)
+            if not source or not record or source:IsA("LuaSourceContainer") or not hasVisual(source) then return end
+            if addEffect(source, out, seen, record.key, true, record.image, true) then
+                scanned[#scanned + 1] = source
+                for _, descendant in ipairs(source:GetDescendants()) do
+                    scanned[#scanned + 1] = descendant
+                    if #scanned % 500 == 0 then task.wait(0) end
+                end
+            end
+        end
         for _, root in ipairs(candidates) do
             if root then
-                local nodes = { root }
-                for i, node in ipairs(root:GetDescendants()) do
-                    nodes[#nodes + 1] = node
-                    if i % 600 == 0 then task.wait(0) end
-                end
-                for _, node in ipairs(nodes) do
-                    if not node:IsA("LuaSourceContainer") then
-                        local record = catalogEffectRecordForName(node.Name)
-                        if not record and (node:IsA("Model")
-                            or node:IsA("StringValue") or node:IsA("ObjectValue") or isFx(node)) then
-                            local resolvedName = catalogEffectName and catalogEffectName(node, false)
-                            record = catalogEffectRecordForName(resolvedName)
-                        end
-                        if record and not claimed[squash(record.key)] then
-                            local source = node
-                            if not (source:IsA("Model") or source:IsA("Folder") or source:IsA("BasePart")) then
-                                source = node:FindFirstAncestorOfClass("Model")
-                            end
-                            local hasVisual = source and source:IsA("BasePart")
-                            if source and not hasVisual then
-                                for _, descendant in ipairs(descendantsOf(source)) do
-                                    if descendant:IsA("BasePart") then hasVisual = true; break end
-                                end
-                            end
-                            if source and not source:IsA("LuaSourceContainer") and hasVisual then
-                                if addEffect(source, out, seen, record.key, true, record.image) then
-                                    claimed[squash(record.key)] = true
-                                end
+                scanned[#scanned + 1] = root
+                local rootRecord = getRecord(root.Name)
+                if rootRecord then
+                    register(root, rootRecord)
+                else
+                    for i, child in ipairs(root:GetChildren()) do
+                        local record, source = getRecord(child.Name), child
+                        if not record then
+                            for _, descendant in ipairs(child:GetDescendants()) do
+                                record = getRecord(descendant.Name)
+                                if record then source = child; break end
                             end
                         end
+                        if record then register(source, record) end
+                        if i % 24 == 0 then task.wait(0) end
                     end
                 end
             end
         end
+        return scanned
     end
     local GENERIC_EFFECT_NODE = {
         model = true, folder = true, effect = true, effects = true, vfx = true,
@@ -4126,16 +4066,16 @@ local function App()
             local names
             if folderName == "knifepartsfolder" or category == "melee" then
                 if sourceSide == "Left" then
-                    names = { "KnifeDisplay2", "KnifeDisplay", "Display", "Root", "Handle" }
+                    names = { "KnifeDisplay2", "KnifeDisplay", "Display", "Center", "Root", "Handle" }
                 else
-                    names = { "KnifeDisplay", "KnifeDisplay2", "Display", "Root", "Handle" }
+                    names = { "KnifeDisplay", "KnifeDisplay2", "Display", "Center", "Root", "Handle" }
                 end
             elseif folderName == "gunpartsfolder2" or sourceSide == "Left" then
-                names = { "GunDisplay2", "GunDisplay", "Display", "Root", "Handle" }
+                names = { "GunDisplay2", "GunDisplay", "Display", "Center", "Root", "Handle" }
             elseif folderName == "gunpartsfolder" or category == "gun" then
-                names = { "GunDisplay", "GunDisplay2", "Display", "Root", "Handle" }
+                names = { "GunDisplay", "GunDisplay2", "Display", "Center", "Root", "Handle" }
             else
-                names = { "KnifeDisplay", "GunDisplay", "GunDisplay2", "KnifeDisplay2", "Display", "Root", "Handle" }
+                names = { "KnifeDisplay", "GunDisplay", "GunDisplay2", "KnifeDisplay2", "Display", "Center", "Root", "Handle" }
             end
             for _, name in ipairs(names) do
                 local candidate = v:FindFirstChild(name, true)
@@ -4231,55 +4171,41 @@ local function App()
         if clone:IsA("BasePart") then
             sourceRoot = clone
         else
-            -- A gun's direct Handle is its authored grip reference. Use it before any
-            -- nested display Handle so its original barrel orientation is preserved.
-            local directHandle = clone:FindFirstChild("Handle")
-            if directHandle and directHandle:IsA("BasePart") then
-                sourceRoot = directHandle
-            end
-            if not sourceRoot then
-                local gripNames = sourceSide == "Left"
-                    and { "LeftGripAttachment", "RightGripAttachment", "GripAttachment" }
-                    or { "RightGripAttachment", "LeftGripAttachment", "GripAttachment" }
-                for _, gripName in ipairs(gripNames) do
-                    local gripAttachment = clone:FindFirstChild(gripName, true)
-                    if gripAttachment and gripAttachment:IsA("Attachment")
-                        and gripAttachment.Parent and gripAttachment.Parent:IsA("BasePart") then
-                        sourceRoot = gripAttachment.Parent
-                        break
-                    end
-                end
-            end
-            -- Use the same mount semantic as the live target. The old implementation
-            -- always preferred Handle, even when the target was a Root part; this
-            -- caused a visible offset and made some weapon models look oversized.
+            -- Match the live anchor first: Handle for an equipped Tool, display/Center/Root for a holster.
             local preferredName = origRoot.Name
-            if not sourceRoot and type(preferredName) == "string" and preferredName ~= "" then
+            if type(preferredName) == "string" and preferredName ~= "" then
                 local preferred = clone:FindFirstChild(preferredName, true)
                 if preferred and preferred:IsA("BasePart") then sourceRoot = preferred end
             end
             if not sourceRoot then
                 local preferredNames
                 if entry.cat == "melee" then
-                    if sourceSide == "Left" then
-                        preferredNames = { "KnifeDisplay2", "KnifeDisplay", "Display", "Root", "Handle" }
-                    else
-                        preferredNames = { "KnifeDisplay", "KnifeDisplay2", "Display", "Root", "Handle" }
-                    end
+                    preferredNames = sourceSide == "Left"
+                        and { "KnifeDisplay2", "KnifeDisplay", "Display", "Root", "Handle" }
+                        or { "KnifeDisplay", "KnifeDisplay2", "Display", "Root", "Handle" }
                 elseif sourceSide == "Left" then
-                    preferredNames = { "GunDisplay2", "GunDisplay", "Display", "Root", "Handle" }
+                    preferredNames = { "GunDisplay2", "GunDisplay", "Display", "Center", "Root", "Handle" }
                 else
-                    preferredNames = { "GunDisplay", "GunDisplay2", "Display", "Root", "Handle" }
+                    preferredNames = { "GunDisplay", "GunDisplay2", "Display", "Center", "Root", "Handle" }
                 end
                 for _, name in ipairs(preferredNames) do
                     local candidate = clone:FindFirstChild(name, true)
                     if candidate and candidate:IsA("BasePart") then sourceRoot = candidate; break end
                 end
             end
-            if not sourceRoot and clone:IsA("Model") then
-                local primary = clone.PrimaryPart
-                if primary and primary:IsA("BasePart") then sourceRoot = primary end
+            if not sourceRoot then
+                local gripNames = sourceSide == "Left"
+                    and { "LeftGripAttachment", "RightGripAttachment", "GripAttachment" }
+                    or { "RightGripAttachment", "LeftGripAttachment", "GripAttachment" }
+                for _, gripName in ipairs(gripNames) do
+                    local att = clone:FindFirstChild(gripName, true)
+                    if att and att:IsA("Attachment") and att.Parent and att.Parent:IsA("BasePart") then
+                        sourceRoot = att.Parent
+                        break
+                    end
+                end
             end
+            if not sourceRoot and clone:IsA("Model") and clone.PrimaryPart then sourceRoot = clone.PrimaryPart end
             if not sourceRoot then sourceRoot = clone:FindFirstChildWhichIsA("BasePart", true) end
         end
         if not sourceRoot then sourceRoot = sourceParts[1] end
@@ -4490,22 +4416,42 @@ local function App()
     local function refreshRec(rec)
         local char = LocalPlayer.Character
         local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+        local equippedSameCategory = false
+        if char then
+            for _, child in ipairs(char:GetChildren()) do
+                if child:IsA("Tool") and catOfTool(child) == rec.cat then
+                    equippedSameCategory = true
+                    break
+                end
+            end
+        end
         local dead = {}
         for inst, info in pairs(rec.targets) do
             local alive = inst.Parent ~= nil and existsInGame(inst)
-            if alive then ensureOriginalVisualSuppressed(info, inst) end
-            if alive and info.kind == "holster" then
-                local ownedDualCopy = false
+            if alive and info.kind == "tool" then
+                alive = (inst.Parent == bp or inst.Parent == char)
+                    and info.root ~= nil and info.root.Parent ~= nil and info.root:IsDescendantOf(inst)
+            end
+            if alive and info.kind == "holster" and equippedSameCategory then
+                local isDual = false
                 local dualCopies = Workspace:FindFirstChild("DualWieldGunCopies")
                 if char and dualCopies and inst:IsDescendantOf(dualCopies) then
                     local owner = inst:FindFirstChild("Owner")
-                    ownedDualCopy = owner ~= nil and owner:IsA("ObjectValue") and owner.Value == char
+                    isDual = owner ~= nil and owner:IsA("ObjectValue") and owner.Value == char
                 end
-                alive = char ~= nil and (inst:IsDescendantOf(char) or ownedDualCopy)
+                if not isDual then alive = false end
             end
-            if alive and info.kind == "tool" then
-                alive = (inst.Parent == bp) or (inst.Parent == char)
+            if alive and info.kind == "holster" then
+                local isDual = false
+                local dualCopies = Workspace:FindFirstChild("DualWieldGunCopies")
+                if char and dualCopies and inst:IsDescendantOf(dualCopies) then
+                    local owner = inst:FindFirstChild("Owner")
+                    isDual = owner ~= nil and owner:IsA("ObjectValue") and owner.Value == char
+                end
+                alive = char ~= nil and (inst:IsDescendantOf(char) or isDual)
             end
+            if alive and info.kind == "tool" then alive = inst.Parent == bp or inst.Parent == char end
+            if alive then ensureOriginalVisualSuppressed(info, inst) end
             if alive and not info.model.Parent then alive = false end
             if not alive then dead[#dead + 1] = inst end
         end
@@ -4521,32 +4467,30 @@ local function App()
         end
         for _, container in ipairs({ bp, char }) do
             if container then
-                for _, t in ipairs(container:GetChildren()) do
-                    if t:IsA("Tool") and not t:GetAttribute("NxTV") and not rec.targets[t] and not claimed(t) then
-                        local cc = rec.cc[t]
-                        if cc == nil then
-                            cc = catOfTool(t) or false
-                            rec.cc[t] = cc
-                        end
-                        if cc == rec.cat then
-                            rec.toolNames[squash(t.Name)] = true
-                            pcall(skinTool, rec, t)
+                for _, tool in ipairs(container:GetChildren()) do
+                    if tool:IsA("Tool") and not tool:GetAttribute("NxTV")
+                        and not rec.targets[tool] and not claimed(tool) then
+                        local category = rec.cc[tool]
+                        if category == nil then category = catOfTool(tool) or false; rec.cc[tool] = category end
+                        if category == rec.cat then
+                            rec.toolNames[squash(tool.Name)] = true
+                            pcall(skinTool, rec, tool)
                         end
                     end
                 end
             end
         end
         if char then
-            local descendants = char:GetDescendants()
-            for _, d in ipairs(descendants) do
-                local key = squash(d.Name)
+            for _, inst in ipairs(char:GetDescendants()) do
+                local key = squash(inst.Name)
                 local folderCat = key == "knifepartsfolder" and "melee"
                     or (key == "gunpartsfolder" or key == "gunpartsfolder2") and "gun" or nil
-                if (d:IsA("Folder") or d:IsA("Model")) and folderCat == rec.cat and not rec.targets[d]
-                    and not d:FindFirstChildOfClass("Humanoid")
-                    and not isOurs(d, char) and not d:FindFirstAncestorWhichIsA("Tool")
-                    and not claimed(d) then
-                    pcall(skinHolster, rec, d, char, key == "gunpartsfolder2" and "Left" or (rec.cat == "gun" and "Right" or nil))
+                if (inst:IsA("Folder") or inst:IsA("Model")) and folderCat == rec.cat
+                    and not equippedSameCategory and not rec.targets[inst]
+                    and not inst:FindFirstChildOfClass("Humanoid") and not isOurs(inst, char)
+                    and not inst:FindFirstAncestorWhichIsA("Tool") and not claimed(inst) then
+                    local side = key == "gunpartsfolder2" and "Left" or (rec.cat == "gun" and "Right" or nil)
+                    pcall(skinHolster, rec, inst, char, side)
                 end
             end
             if rec.cat == "gun" then
@@ -4557,25 +4501,6 @@ local function App()
                         if owner and owner:IsA("ObjectValue") and owner.Value == char
                             and not rec.targets[copy] and not claimed(copy) then
                             pcall(skinHolster, rec, copy, char, "Left")
-                        end
-                    end
-                end
-            end
-            for _, d in ipairs(descendants) do
-                if (d:IsA("Model") or d:IsA("BasePart") or d:IsA("Accessory")) and not rec.targets[d]
-                    and not isOurs(d, char) and not d:FindFirstAncestorWhichIsA("Tool") then
-                    if catOfName(d.Name) == rec.cat or rec.toolNames[squash(d.Name)] then
-                        if not claimed(d) then
-                            local nested = false
-                            for t in pairs(rec.targets) do
-                                if t ~= d and d:IsDescendantOf(t) then
-                                    nested = true
-                                    break
-                                end
-                            end
-                            local inSecondGunFolder = d:FindFirstAncestor("GunPartsFolder2") ~= nil
-                            local sourceSide = rec.cat == "gun" and (inSecondGunFolder and "Left" or "Right") or nil
-                            if not nested then pcall(skinHolster, rec, d, char, sourceSide) end
                         end
                     end
                 end
@@ -5204,13 +5129,8 @@ local function App()
 
         -- Stage 1: scan only the weapon registries, inventory and player rigs.
         weaponOk, weaponErr = pcall(function()
-            local globalRoots = {
-                game:GetService("ReplicatedStorage"),
-                Workspace,
-                game:GetService("Players"),
-                game:GetService("StarterPack"),
-            }
-            weaponInstances = allInstances(globalRoots, function(inst)
+            local inventoryRoots = weaponRoots()
+            weaponInstances = allInstances(inventoryRoots, function(inst)
                 if inst:IsA("Tool") then return true end
                 if inst:IsA("Model") then
                     return not inst:FindFirstChildOfClass("Humanoid")
@@ -5246,21 +5166,8 @@ local function App()
 
         -- Stage 3: scan the dedicated kill-effect libraries, not weapon VFX or world props.
         effectOk, effectErr = pcall(function()
-            effectInstances = allInstances(effectRoots())
+            effectInstances = catalogEffectScan(effectRoots(), effects, seenE)
             setActiveScanInstances(effectInstances)
-            Scan.fxPresenceSeconds = buildFxPresence(effectInstances)
-            local counter = { n = 0 }
-            for _, root in ipairs(effectRoots()) do
-                scanRuntimeEffects(root, effects, seenE, nil)
-                scanGeneric(root, false, KILL_CFG, effects, seenE, counter)
-            end
-            catalogEffectScan({
-                game:GetService("ReplicatedStorage"),
-                Workspace,
-                game:GetService("Players"),
-            }, effects, seenE)
-            priorityScan(effectInstances, effects, seenE)
-            libraryScan(effectInstances, effects, seenE)
             hydrateEffectCache(effects, seenE)
         end)
         if not effectOk then
@@ -5478,20 +5385,21 @@ local function App()
                 end
 
                 if effectContext or isEffectContext then
-                    setActiveScanInstances(list)
-                    pcall(buildFxPresence, list)
-                    local counter = { n = 0 }
+                    local effectAssetRoot = candidate
+                    for _, library in ipairs(effectRoots()) do
+                        if candidate == library then
+                            effectAssetRoot = library
+                            break
+                        elseif candidate:IsDescendantOf(library) then
+                            local current = candidate
+                            while current.Parent and current.Parent ~= library do current = current.Parent end
+                            effectAssetRoot = current
+                            break
+                        end
+                    end
                     local before = #effects
-                    scanRuntimeEffects(candidate, effects, seenE,
-                        Kill.entry and Kill.entry.name or nil)
-                    scanGeneric(candidate, false, KILL_CFG, effects, seenE, counter)
-                    priorityScan(list, effects, seenE)
-                    libraryScan(list, effects, seenE)
-                    catalogEffectScan({
-                        game:GetService("ReplicatedStorage"),
-                        Workspace,
-                        game:GetService("Players"),
-                    }, effects, seenE)
+                    local nodes = catalogEffectScan({ effectAssetRoot }, effects, seenE)
+                    for _, node in ipairs(nodes) do effectInstances[#effectInstances + 1] = node end
                     hydrateEffectCache(effects, seenE)
                     if #effects > before then
                         Data.effects = effects
@@ -5520,16 +5428,25 @@ local function App()
                 end
             end)
         end
-        track(ReplicatedStorage.DescendantAdded:Connect(onRuntimeDescendantAdded))
-        track(Workspace.DescendantAdded:Connect(onRuntimeDescendantAdded))
-        track(LocalPlayer.DescendantAdded:Connect(onRuntimeDescendantAdded))
-        local function watchCharacterRuntime(char)
-            if char then
-                track(char.DescendantAdded:Connect(onRuntimeDescendantAdded))
+        local watchedRoots = setmetatable({}, { __mode = "k" })
+        local function watchRoot(root)
+            if root and not watchedRoots[root] then
+                watchedRoots[root] = true
+                track(root.DescendantAdded:Connect(onRuntimeDescendantAdded))
             end
         end
-        watchCharacterRuntime(LocalPlayer.Character)
-        track(LocalPlayer.CharacterAdded:Connect(watchCharacterRuntime))
+        for _, root in ipairs(weaponRoots()) do watchRoot(root) end
+        for _, root in ipairs(effectRoots()) do watchRoot(root) end
+        local function watchInventory()
+            watchRoot(LocalPlayer:FindFirstChildOfClass("Backpack"))
+            watchRoot(LocalPlayer:FindFirstChild("StarterGear"))
+            watchRoot(LocalPlayer.Character)
+        end
+        watchInventory()
+        track(LocalPlayer.ChildAdded:Connect(function(child)
+            if child:IsA("Backpack") or child.Name == "StarterGear" then watchRoot(child) end
+        end))
+        track(LocalPlayer.CharacterAdded:Connect(function(char) watchRoot(char) end))
     end
     local function doSearch()
         buildCards(true)
