@@ -1924,17 +1924,41 @@ local M = (function()
         return false
     end
     local function weaponRoots()
-        local list, seen = {}, {}
-        local function add(inst)
-            if inst and not seen[inst] then seen[inst] = true; list[#list + 1] = inst end
-        end
+        -- Only the replicated weapon registry is watched as a shared source.
+        -- Player inventories are enumerated separately as direct Tool children.
         local replicated = game:GetService("ReplicatedStorage")
         local replicatedSkins = replicated:FindFirstChild("ReplicatedSkins")
-        add(replicatedSkins and replicatedSkins:FindFirstChild("Weapons"))
-        add(LocalPlayer:FindFirstChildOfClass("Backpack"))
-        add(LocalPlayer:FindFirstChild("StarterGear"))
-        add(LocalPlayer.Character)
-        return list
+        local root = replicatedSkins and replicatedSkins:FindFirstChild("Weapons")
+        return root and { root } or {}
+    end
+
+    local function collectInventoryTools()
+        local tools, seen = {}, {}
+        local function collect(container)
+            if not container then return end
+            for _, child in ipairs(container:GetChildren()) do
+                if child:IsA("Tool") and not child:GetAttribute("NxTV") and not seen[child] then
+                    seen[child] = true
+                    tools[#tools + 1] = child
+                elseif child:IsA("Folder") or child:IsA("Configuration") then
+                    -- Some inventory layouts use one grouping folder; inspect one level only.
+                    for _, nested in ipairs(child:GetChildren()) do
+                        if nested:IsA("Tool") and not nested:GetAttribute("NxTV") and not seen[nested] then
+                            seen[nested] = true
+                            tools[#tools + 1] = nested
+                        end
+                    end
+                end
+            end
+        end
+
+        for _, root in ipairs(weaponRoots()) do collect(root) end
+        for _, player in ipairs(Players:GetPlayers()) do
+            collect(player:FindFirstChildOfClass("Backpack"))
+            collect(player:FindFirstChild("StarterGear"))
+            collect(player.Character)
+        end
+        return tools
     end
 
     local function effectRoots()
@@ -1946,8 +1970,7 @@ local M = (function()
         local replicatedSkins = replicated:FindFirstChild("ReplicatedSkins")
         add(replicatedSkins and replicatedSkins:FindFirstChild("Effects"))
         add(replicatedSkins and replicatedSkins:FindFirstChild("PreviewEffects"))
-        local shared = replicated:FindFirstChild("Shared")
-        add(shared and shared:FindFirstChild("Finishers"))
+        add(replicated:FindFirstChild("Finishers"))
         return list
     end
 
@@ -2514,7 +2537,6 @@ local M = (function()
     local function catalogEffectScan(roots, out, seen)
         local replicated = game:GetService("ReplicatedStorage")
         local replicatedSkins = replicated:FindFirstChild("ReplicatedSkins")
-        local shared = replicated:FindFirstChild("Shared")
         local candidates, candidateSet, scanned = {}, {}, {}
         local function addLibrary(root)
             if root and not candidateSet[root] then
@@ -2524,16 +2546,21 @@ local M = (function()
         end
         addLibrary(replicatedSkins and replicatedSkins:FindFirstChild("Effects"))
         addLibrary(replicatedSkins and replicatedSkins:FindFirstChild("PreviewEffects"))
-        addLibrary(shared and shared:FindFirstChild("Finishers"))
+        -- Dump path: ReplicatedStorage/Finishers/{UFOFinisher,LavaFinisher,...}
+        addLibrary(replicated:FindFirstChild("Finishers"))
         for _, root in ipairs(roots or {}) do addLibrary(root) end
 
         local function getRecord(name)
             local record = catalogEffectRecordForName(name)
             if record then return record end
-            local key, suffix = squash(name), "finisher"
-            if #key > #suffix and key:sub(-#suffix) == suffix then
-                local base = key:sub(1, #key - #suffix)
-                return catalogEffectRecordForName(base .. "Effect") or catalogEffectRecordForName(base)
+            local key = squash(name)
+            for _, suffix in ipairs({ "finisher", "killeffect", "effect", "vfx", "killfx", "fx" }) do
+                if #key > #suffix and key:sub(-#suffix) == suffix then
+                    local base = key:sub(1, #key - #suffix)
+                    record = catalogEffectRecordForName(base .. "Effect")
+                        or catalogEffectRecordForName(base)
+                    if record then return record end
+                end
             end
             return nil
         end
@@ -4337,6 +4364,8 @@ local function App()
         -- Restore the exact prior local transparency values before removing our clone.
         restoreOriginalVisuals(info.originalVisualState)
         if info.activatedConn then pcall(function() info.activatedConn:Disconnect() end) end
+        if info.throwConn then pcall(function() info.throwConn:Disconnect() end) end
+        if info.throwRemoteConn then pcall(function() info.throwRemoteConn:Disconnect() end) end
         if info.model then pcall(function() info.model:Destroy() end) end
     end
     local lastHolsterFxAt = 0
@@ -4397,6 +4426,24 @@ local function App()
             end)
         end)
         if connected then info.activatedConn = activatedConnection end
+
+        local function suspendForNativeThrow()
+            if rec.targets[tool] ~= info then return end
+            rec.targets[tool] = nil
+            rec.throwSuspended = rec.throwSuspended or {}
+            rec.throwSuspended[tool] = os.clock() + 1.35
+            -- Restore the real Tool before its own MakeLocalFlyingHandle sequence starts.
+            -- We never clone, weld or follow the temporary projectile.
+            unskin(info)
+        end
+        local activateThrowing = tool:FindFirstChild("ActivateThrowing", true)
+        if activateThrowing and activateThrowing:IsA("BindableEvent") then
+            info.throwConn = activateThrowing.Event:Connect(suspendForNativeThrow)
+        end
+        local flingEvent = tool:FindFirstChild("FlingKnifeEvent", true)
+        if flingEvent and flingEvent:IsA("RemoteEvent") then
+            info.throwRemoteConn = flingEvent.OnClientEvent:Connect(suspendForNativeThrow)
+        end
     end
     local function skinHolster(rec, target, char, sourceSide)
         local root = rootPartOf(target, sourceSide, rec.cat)
@@ -4465,16 +4512,26 @@ local function App()
             end
             return false
         end
+        rec.throwSuspended = rec.throwSuspended or {}
+        for tool, untilTime in pairs(rec.throwSuspended) do
+            if not tool.Parent or os.clock() >= untilTime then
+                rec.throwSuspended[tool] = nil
+            end
+        end
         for _, container in ipairs({ bp, char }) do
             if container then
                 for _, tool in ipairs(container:GetChildren()) do
                     if tool:IsA("Tool") and not tool:GetAttribute("NxTV")
                         and not rec.targets[tool] and not claimed(tool) then
-                        local category = rec.cc[tool]
-                        if category == nil then category = catOfTool(tool) or false; rec.cc[tool] = category end
-                        if category == rec.cat then
-                            rec.toolNames[squash(tool.Name)] = true
-                            pcall(skinTool, rec, tool)
+                        local suspendedUntil = rec.throwSuspended[tool]
+                        if not suspendedUntil or os.clock() >= suspendedUntil then
+                            rec.throwSuspended[tool] = nil
+                            local category = rec.cc[tool]
+                            if category == nil then category = catOfTool(tool) or false; rec.cc[tool] = category end
+                            if category == rec.cat then
+                                rec.toolNames[squash(tool.Name)] = true
+                                pcall(skinTool, rec, tool)
+                            end
                         end
                     end
                 end
@@ -4566,7 +4623,7 @@ local function App()
         if cat ~= "melee" and cat ~= "gun" then return false, "Categoria invalida." end
         if not resolveWeaponSource(entry, nil) then return false, "No hay un modelo disponible en la caché ni en el cliente." end
         if Applied[cat] then dropWeapon(cat) end
-        local rec = { cat = cat, entry = entry, targets = {}, toolNames = {}, cc = {} }
+        local rec = { cat = cat, entry = entry, targets = {}, toolNames = {}, cc = {}, throwSuspended = {} }
         Applied[cat] = rec
         startLoop()
         pcall(refreshRec, rec)
@@ -4819,7 +4876,9 @@ local function App()
             end
         end))
     end
-    local REMOTE_TERMS = { "kill", "elim", "knock", "defeat", "slain" }
+    local REMOTE_TERMS = {
+        "kill", "elim", "knock", "defeat", "slain", "finisher", "deatheffect",
+    }
     local function onRemote(...)
         local args = table.pack(...)
         for i = 1, args.n do
@@ -5129,20 +5188,7 @@ local function App()
 
         -- Stage 1: scan only the weapon registries, inventory and player rigs.
         weaponOk, weaponErr = pcall(function()
-            local inventoryRoots = weaponRoots()
-            weaponInstances = allInstances(inventoryRoots, function(inst)
-                if inst:IsA("Tool") then return true end
-                if inst:IsA("Model") then
-                    return not inst:FindFirstChildOfClass("Humanoid")
-                        and (catalogWeaponRecordFromInstance(inst) ~= nil or classifyWeapon(inst) ~= nil)
-                end
-                if inst:IsA("BasePart") then
-                    return not inst:FindFirstAncestorWhichIsA("Model")
-                        and not inst:FindFirstAncestorWhichIsA("Tool")
-                        and (catalogWeaponRecordFromInstance(inst) ~= nil or classifyWeapon(inst) ~= nil)
-                end
-                return false
-            end)
+            weaponInstances = collectInventoryTools()
             scanWeapons(weaponInstances, weapons, seenW, sigW)
             hydrateWeaponCache(weapons, seenW)
             publishWeaponLists()
@@ -5314,7 +5360,14 @@ local function App()
             local toolAncestor = inst:IsA("Tool") and inst or inst:FindFirstAncestorWhichIsA("Tool")
             if toolAncestor then
                 local toolCategory = catOfTool(toolAncestor)
-                if toolCategory and (toolAncestor:IsDescendantOf(LocalPlayer)
+                local holder = toolAncestor.Parent
+                local isPlayerInventory = holder and (
+                    holder:IsA("Backpack")
+                    or holder.Name == "StarterGear"
+                    or (holder:IsA("Model") and Players:GetPlayerFromCharacter(holder) ~= nil)
+                )
+                if toolCategory and (isPlayerInventory
+                    or toolAncestor:IsDescendantOf(LocalPlayer)
                     or catOfName(toolAncestor.Name) ~= nil
                     or toolAncestor:FindFirstAncestor("GunPartsFolder")
                     or toolAncestor:FindFirstAncestor("KnifePartsFolder")) then
@@ -5437,16 +5490,41 @@ local function App()
         end
         for _, root in ipairs(weaponRoots()) do watchRoot(root) end
         for _, root in ipairs(effectRoots()) do watchRoot(root) end
-        local function watchInventory()
-            watchRoot(LocalPlayer:FindFirstChildOfClass("Backpack"))
-            watchRoot(LocalPlayer:FindFirstChild("StarterGear"))
-            watchRoot(LocalPlayer.Character)
+
+        local watchedInventoryPlayers = setmetatable({}, { __mode = "k" })
+        local function watchInventoryContainer(container)
+            if not container then return end
+            local function watchTool(tool)
+                if not tool or not tool:IsA("Tool") or tool:GetAttribute("NxTV") then return end
+                watchRoot(tool)
+                task.delay(0.35, function()
+                    if tool.Parent == container then onRuntimeDescendantAdded(tool) end
+                end)
+            end
+            for _, child in ipairs(container:GetChildren()) do
+                if child:IsA("Tool") then watchTool(child) end
+            end
+            track(container.ChildAdded:Connect(function(child)
+                if child:IsA("Tool") then watchTool(child) end
+            end))
         end
-        watchInventory()
-        track(LocalPlayer.ChildAdded:Connect(function(child)
-            if child:IsA("Backpack") or child.Name == "StarterGear" then watchRoot(child) end
-        end))
-        track(LocalPlayer.CharacterAdded:Connect(function(char) watchRoot(char) end))
+        local function watchInventoryPlayer(player)
+            if not player or watchedInventoryPlayers[player] then return end
+            watchedInventoryPlayers[player] = true
+            watchInventoryContainer(player:FindFirstChildOfClass("Backpack"))
+            watchInventoryContainer(player:FindFirstChild("StarterGear"))
+            watchInventoryContainer(player.Character)
+            track(player.ChildAdded:Connect(function(child)
+                if child:IsA("Backpack") or child.Name == "StarterGear" then
+                    watchInventoryContainer(child)
+                end
+            end))
+            track(player.CharacterAdded:Connect(watchInventoryContainer))
+        end
+        for _, player in ipairs(Players:GetPlayers()) do watchInventoryPlayer(player) end
+        track(Players.PlayerAdded:Connect(watchInventoryPlayer))
+    end
+    local function doSearch()
     end
     local function doSearch()
         buildCards(true)
