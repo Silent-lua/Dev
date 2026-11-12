@@ -4091,18 +4091,18 @@ local function App()
         if v:IsA("Model") or v:IsA("Folder") then
             local folderName = squash(v.Name)
             local names
-            if folderName == "knifepartsfolder" or category == "melee" then
-                if sourceSide == "Left" then
-                    names = { "KnifeDisplay2", "KnifeDisplay", "Display", "Center", "Root", "Handle" }
-                else
-                    names = { "KnifeDisplay", "KnifeDisplay2", "Display", "Center", "Root", "Handle" }
-                end
-            elseif folderName == "gunpartsfolder2" or sourceSide == "Left" then
-                names = { "GunDisplay2", "GunDisplay", "Display", "Center", "Root", "Handle" }
+            if sourceSide == "Left" or folderName == "gunpartsfolder2" then
+                -- DualWield's observer welds GunDisplay2 directly to LeftHand.
+                names = { "GunDisplay2", "Root", "GunDisplay", "Display", "Center", "Handle" }
+            elseif folderName == "knifepartsfolder" or category == "melee" then
+                -- KnifePartsFolder uses Root-Handle as the native visual mount.
+                names = { "Root", "Handle", "KnifeDisplay", "Display", "Center", "KnifeDisplay2" }
             elseif folderName == "gunpartsfolder" or category == "gun" then
-                names = { "GunDisplay", "GunDisplay2", "Display", "Center", "Root", "Handle" }
+                -- GunDisplay is auxiliary; Root is the native visual mount.
+                names = { "Root", "Handle", "GunDisplay", "Display", "Center", "GunDisplay2" }
             else
-                names = { "KnifeDisplay", "GunDisplay", "GunDisplay2", "KnifeDisplay2", "Display", "Center", "Root", "Handle" }
+                names = { "Root", "Handle", "KnifeDisplay", "GunDisplay", "GunDisplay2",
+                    "KnifeDisplay2", "Display", "Center" }
             end
             for _, name in ipairs(names) do
                 local candidate = v:FindFirstChild(name, true)
@@ -4368,37 +4368,7 @@ local function App()
         if info.throwRemoteConn then pcall(function() info.throwRemoteConn:Disconnect() end) end
         if info.model then pcall(function() info.model:Destroy() end) end
     end
-    local lastHolsterFxAt = 0
-    local lastWeaponFxAt = 0
-    local function triggerAppliedHolsterVfx()
-        local now = os.clock()
-        if now - lastHolsterFxAt < 0.12 then return end
-        lastHolsterFxAt = now
-        for _, rec in pairs(Applied) do
-            for _, info in pairs(rec.targets) do
-                if info.kind == "holster" and info.model and info.model.Parent then
-                    triggerVisualTree(info.model, 0.35)
-                end
-            end
-        end
-    end
-    local function triggerAppliedWeaponVfx(targetTool)
-        local now = os.clock()
-        if now - lastWeaponFxAt < 0.12 then return end
-        lastWeaponFxAt = now
-        local character = LocalPlayer.Character
-        for _, rec in pairs(Applied) do
-            for tool, info in pairs(rec.targets) do
-                local equipped = tool and tool:IsA("Tool") and character
-                    and tool:IsDescendantOf(character)
-                if info.kind == "tool" and info.model and info.model.Parent
-                    and ((targetTool and tool == targetTool) or (not targetTool and equipped)) then
-                    triggerVisualTree(info.model, 0.45)
-                end
-            end
-        end
-    end
-    local function skinTool(rec, tool)
+        local function skinTool(rec, tool)
         local origParts = {}
         for _, p in ipairs(partsOf(tool)) do
             if not p:FindFirstAncestor("NxTVSkin") then origParts[#origParts + 1] = p end
@@ -4417,15 +4387,7 @@ local function App()
             skinParts = partsOf(model), originalVisualState = suppressOriginalVisuals(origParts),
         }
         rec.targets[tool] = info
-        local connected, activatedConnection = pcall(function()
-            return tool.Activated:Connect(function()
-                triggerAppliedWeaponVfx(tool)
-                -- InputBegan usually triggers holster-folder effects first; this call is
-                -- debounced and remains a fallback for tools consumed by game UI input.
-                triggerAppliedHolsterVfx()
-            end)
-        end)
-        if connected then info.activatedConn = activatedConnection end
+        -- No Activated hook: the original Tool retains control of its audio/VFX.
 
         local function suspendForNativeThrow()
             if rec.targets[tool] ~= info then return end
@@ -4949,13 +4911,8 @@ local function App()
                 or t == Enum.UserInputType.Keyboard or t == Enum.UserInputType.Gamepad1 then
                 Kill.lastAct = os.clock()
             end
-            local attackInput = t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch
-                or (t == Enum.UserInputType.Gamepad1 and (input.KeyCode == Enum.KeyCode.ButtonR2
-                    or input.KeyCode == Enum.KeyCode.ButtonL2))
-            if attackInput and not gameProcessed and not UIS:GetFocusedTextBox() then
-                triggerAppliedWeaponVfx()
-                triggerAppliedHolsterVfx()
-            end
+            -- Do not trigger VFX or sounds from the replacement clone here.
+            -- The game's original Tool/character flow owns those effects.
         end))
         for _, d in ipairs(LocalPlayer:GetDescendants()) do
             if (d:IsA("IntValue") or d:IsA("NumberValue")) and statLike(d.Name)
