@@ -4897,6 +4897,21 @@ local function App()
         track(d.OnClientEvent:Connect(onRemote))
     end
     local function hookRemotes(instances)
+        -- These exact combat remotes are present in the supplied dump. Hook them
+        -- before the generic capped pass so unrelated kill remotes cannot crowd them out.
+        local replicated = game:GetService("ReplicatedStorage")
+        local packages = replicated:FindFirstChild("Packages")
+        local networking = packages and packages:FindFirstChild("Networking")
+        local re = networking and networking:FindFirstChild("RE")
+        local combat = re and re:FindFirstChild("Combat")
+        if combat then
+            for _, remoteName in ipairs({
+                "PlayFinisher", "ApplyDeathEffect", "DestroyBody",
+                "PlayKillSound", "Killed", "KnifeKill",
+            }) do
+                hookRemoteInstance(combat:FindFirstChild(remoteName))
+            end
+        end
         local n = 0
         for i, d in ipairs(instances or {}) do
             if i % 900 == 0 then task.wait() end
