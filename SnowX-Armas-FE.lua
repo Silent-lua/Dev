@@ -13,21 +13,28 @@ end
 local GUI_NAME = "snowx-arms-visual"
 local env = (getgenv and getgenv()) or _G
 env.NexvyrCatOverride = env.NexvyrCatOverride or {}
--- Fresh V6 session cache. Old V4/V5 buckets are intentionally ignored so this
--- run starts with a clean, sectioned cache and only stores newly discovered assets.
--- Cached Instances survive source removal and script re-execution in this executor session.
-env.SnowXArmasAssetCacheV4 = nil
-env.SnowXArmasAssetCacheV5 = nil
-local ASSET_CACHE_KEY = "SnowXArmasAssetCacheV6"
+-- Session cache: exact cloned Instances survive source removal and script re-execution
+-- inside the same executor environment. A client/game restart clears this in-memory cache.
+local ASSET_CACHE_KEY = "SnowXArmasAssetCacheV5"
 local AssetCache = env[ASSET_CACHE_KEY]
-if type(AssetCache) ~= "table" or AssetCache.version ~= 6 then
+if type(AssetCache) ~= "table" or AssetCache.version ~= 5 then
+    local previous = env.SnowXArmasAssetCacheV4
     AssetCache = {
-        version = 6,
+        version = 5,
+        -- Instance templates live in three isolated buckets. getgenv() retains them
+        -- across script re-execution in the same client/executor session.
         knives = {},
         guns = {},
-        effects = {},
+        effects = type(previous) == "table" and type(previous.effects) == "table" and previous.effects or {},
         stats = { knifeAdds = 0, gunAdds = 0, effectAdds = 0 },
     }
+    -- Migrate the previous combined weapon bucket without cloning or dropping Instances.
+    if type(previous) == "table" and type(previous.weapons) == "table" then
+        for key, record in pairs(previous.weapons) do
+            local bucket = type(record) == "table" and record.cat == "melee" and AssetCache.knives or AssetCache.guns
+            bucket[key] = record
+        end
+    end
     env[ASSET_CACHE_KEY] = AssetCache
 else
     AssetCache.knives = type(AssetCache.knives) == "table" and AssetCache.knives or {}
@@ -38,7 +45,7 @@ end
 AssetCache.stats.knifeAdds = AssetCache.stats.knifeAdds or 0
 AssetCache.stats.gunAdds = AssetCache.stats.gunAdds or 0
 AssetCache.stats.effectAdds = AssetCache.stats.effectAdds or 0
-AssetCache.sessionSchema = "v6/knives-guns-effects"
+AssetCache.sessionSchema = "knives/guns/effects-v1"
 if env.SnowXArmasVisualCleanup then
     pcall(env.SnowXArmasVisualCleanup)
 elseif env.NexvyrToolsVisualCleanup then
@@ -1992,12 +1999,6 @@ local M = (function()
         if assets then
             add(assets:FindFirstChild("Finishers"))
             add(assets:FindFirstChild("Effects"))
-            local finishers = assets:FindFirstChild("Finishers")
-            if finishers then
-                for _, child in ipairs(finishers:GetChildren()) do
-                    if child:IsA("Folder") or child:IsA("Model") then add(child) end
-                end
-            end
         end
 
         local replicatedSkins = replicated:FindFirstChild("ReplicatedSkins")
@@ -2227,7 +2228,8 @@ local M = (function()
     local function isCachedTemplate(inst)
         if not inst then return false end
         local ok, marker = pcall(function()
-            return inst:GetAttribute("NxTVAssetCacheV6") == true
+            return inst:GetAttribute("NxTVAssetCacheV5") == true
+                or inst:GetAttribute("NxTVAssetCacheV4") == true
         end)
         return ok and marker == true
     end
@@ -2413,7 +2415,7 @@ local M = (function()
         if type(record) ~= "table" then record = {} end
         record.variants = type(record.variants) == "table" and record.variants or {}
 
-        -- Keep legacy-shaped records only if they were created inside this V6 bucket.
+        -- Migrate a V4 single-template cache entry without discarding its clone.
         if record.template and isCachedTemplate(record.template) and next(record.variants) == nil then
             local legacyKey = tostring(record.sourcePath or "legacy") .. "|legacy"
             record.variants[legacyKey] = {
@@ -2436,7 +2438,8 @@ local M = (function()
             local clone = cloneComplete(inst)
             if clone then
                 pcall(function()
-                    clone:SetAttribute("NxTVAssetCacheV6", true)
+                    clone:SetAttribute("NxTVAssetCacheV5", true)
+                    clone:SetAttribute("NxTVAssetCacheV4", true)
                 end)
                 variant = {
                     template = clone,
@@ -2496,18 +2499,15 @@ local M = (function()
         local cat = record.cat
         local key = weaponCacheKey(cat, record.key, side)
         local section = cat == "melee" and "knives" or "guns"
-        local setName = inst:GetAttribute("SetName") or inst:GetAttribute("Set") or inst:GetAttribute("CollectionName")
         return cacheTemplate(section, key, inst, {
             name = record.name, catalogKey = record.key, cat = cat,
-            side = side or "Default", tex = record.image, setName = type(setName) == "string" and setName or nil,
+            side = side or "Default", tex = record.image,
         })
     end
     local function cacheEffectSource(inst, record, tex)
         if not record then return nil end
-        local setName = inst:GetAttribute("SetName") or inst:GetAttribute("Set") or inst:GetAttribute("CollectionName")
         return cacheTemplate("effects", squash(record.key), inst, {
             name = record.name, catalogKey = record.key, tex = record.image or tex,
-            setName = type(setName) == "string" and setName or nil,
         })
     end
     local function addEffect(inst, out, seen, nameOverride, lib, imageOverride)
@@ -2550,15 +2550,12 @@ local M = (function()
             fxCount = count, priority = isPriority(record.name), lib = lib or false,
             imgs = record.image and { record.image } or {}, cacheTemplate = cached and cached.template or nil,
             sourceRank = candidateRank, sourcePath = cached and cached.sourcePath or nil,
-            rarity = record.rarity,
-            setName = inst:GetAttribute("SetName") or inst:GetAttribute("Set") or inst:GetAttribute("CollectionName"),
             catalogOnly = false,
         }
         effectEntriesByKey[key] = entry
         out[#out + 1] = entry
         return true
     end
-    local catalogEffectName
     local function catalogEffectScan(roots, out, seen)
         local replicated = game:GetService("ReplicatedStorage")
         local assets = replicated:FindFirstChild("Assets")
@@ -2587,25 +2584,11 @@ local M = (function()
                 end
                 for _, node in ipairs(nodes) do
                     if not node:IsA("LuaSourceContainer") then
-                        local resolvedName = catalogEffectRecordForName(node.Name) and node.Name or (catalogEffectName and catalogEffectName(node))
-                        local record = catalogEffectRecordForName(resolvedName or "")
+                        local record = catalogEffectRecordForName(node.Name)
                         if record and not claimed[squash(record.key)] then
                             local source = node
                             if not (source:IsA("Model") or source:IsA("Folder") or source:IsA("BasePart")) then
-                                source = node:FindFirstAncestorOfClass("Model") or node:FindFirstAncestorOfClass("Folder")
-                            end
-                            -- If the identity is on an enclosing finisher/effect container,
-                            -- prefer that complete visual root instead of a nested emitter.
-                            local ancestor = node.Parent
-                            while ancestor and ancestor ~= root.Parent do
-                                if (ancestor:IsA("Model") or ancestor:IsA("Folder"))
-                                    and catalogEffectRecordForName(ancestor.Name)
-                                    and (ancestor:IsA("Folder") or ancestor:IsA("Model")) then
-                                    source = ancestor
-                                    break
-                                end
-                                if ancestor == root then break end
-                                ancestor = ancestor.Parent
+                                source = node:FindFirstAncestorOfClass("Model")
                             end
                             local hasVisual = source and source:IsA("BasePart")
                             if source and not hasVisual then
@@ -2634,7 +2617,7 @@ local M = (function()
         rightarm = true, leftleg = true, rightleg = true, lefthand = true,
         righthand = true, leftfoot = true, rightfoot = true,
     }
-    catalogEffectName = function(node)
+    local function catalogEffectName(node)
         if not node then return nil end
         local function resolve(value)
             local record = catalogEffectRecordForName(value)
@@ -3101,8 +3084,6 @@ local M = (function()
             sourcesBySide = {}, sourceRanks = {}, cacheSourcesBySide = {}, cacheSourceRanks = {},
             meshSig = meshSig(inst), meshSigs = {}, meshIds = meshIdsOf(inst), sourceName = displayName or inst.Name,
             sourcePriority = candidateRank, sourcePath = cached and cached.sourcePath or nil,
-            rarity = record.rarity,
-            setName = inst:GetAttribute("SetName") or inst:GetAttribute("Set") or inst:GetAttribute("CollectionName"),
         }
         entry.sourcesBySide[side] = inst
         entry.sourceRanks[side] = candidateRank
@@ -3139,7 +3120,6 @@ local M = (function()
                                 meshSig = meshSig(template), meshSigs = {}, meshIds = meshIdsOf(template),
                                 sourceName = catalogRecord.name, sourcePriority = cacheRecord.rank or 99,
                                 sourcePath = cacheRecord.sourcePath, cached = true, catalogOnly = false,
-                                rarity = catalogRecord.rarity, setName = cacheRecord.setName,
                             }
                             weaponEntriesByKey[key] = entry
                             out[#out + 1] = entry
@@ -3510,7 +3490,6 @@ local M = (function()
                             tex = catalogRecord.image, imgs = catalogRecord.image and { catalogRecord.image } or {},
                             sourceRank = cacheRecord.rank or 99, sourcePath = cacheRecord.sourcePath,
                             fxCount = 0, priority = isPriority(catalogRecord.name), lib = false,
-                            rarity = catalogRecord.rarity, setName = cacheRecord.setName,
                         }
                         effectEntriesByKey[key] = entry
                         out[#out + 1] = entry
@@ -4160,7 +4139,7 @@ local function App()
         return basis.CFrame * CFrame.new(offset) * CFrame.Angles(angles.X, angles.Y, angles.Z)
     end
 
-    local function buildSkin(entry, origRoot, origParts, origGrip, sourceSide, mountCFrame, skipMountWeld)
+    local function buildSkin(entry, origRoot, origParts, origGrip, sourceSide, mountCFrame)
         local src = resolveWeaponSource(entry, sourceSide)
         if not src or not origRoot or not origRoot.Parent then return nil end
 
@@ -4229,14 +4208,6 @@ local function App()
         model.PrimaryPart = sourceRoot
 
         local targetCF = mountCFrame or origRoot.CFrame
-        -- Match the game's actual grip attachment frames when both assets provide them.
-        -- This preserves the source's forward/muzzle axis; no guessed 90/180 degree rotation.
-        local gripAttachmentName = sourceSide == "Left" and "LeftGripAttachment" or "RightGripAttachment"
-        local targetGrip = origRoot:FindFirstChild(gripAttachmentName)
-        local sourceGrip = sourceRoot:FindFirstChild(gripAttachmentName)
-        if targetGrip and targetGrip:IsA("Attachment") and sourceGrip and sourceGrip:IsA("Attachment") then
-            targetCF = (origRoot.CFrame * targetGrip.CFrame) * sourceGrip.CFrame:Inverse()
-        end
         local sourceCF = sourceRoot.CFrame
         local delta = targetCF * sourceCF:Inverse()
         local pivotOk = pcall(function()
@@ -4281,13 +4252,11 @@ local function App()
             end
         end
 
-        if not skipMountWeld then
-            local attachment = Instance.new("WeldConstraint")
-            attachment.Name = "NxTVSkinAttachment"
-            attachment.Part0 = origRoot
-            attachment.Part1 = sourceRoot
-            attachment.Parent = model
-        end
+        local attachment = Instance.new("WeldConstraint")
+        attachment.Name = "NxTVSkinAttachment"
+        attachment.Part0 = origRoot
+        attachment.Part1 = sourceRoot
+        attachment.Parent = model
         return model
     end
     local Applied = {}
@@ -4404,7 +4373,7 @@ local function App()
         if not isHandle then handle = rootPartOf(tool) end
         if not isHandle and (not handle or not handle:IsA("BasePart")) then handle = origParts[1] end
         if not handle then return end
-        local model = buildSkin(rec.entry, handle, origParts, tool.Grip, rec.cat == "gun" and "Right" or "Right")
+        local model = buildSkin(rec.entry, handle, origParts, tool.Grip, rec.cat == "gun" and "Right" or nil)
         if not model then return end
         model.Parent = tool
         local info = {
@@ -4631,20 +4600,19 @@ local function App()
         if (root.Position - hrp.Position).Magnitude > 16 then return end
         projectileSeen[target] = true
         local origParts = partsOf(target)
-        local model = buildSkin(rec.entry, root, origParts, CFrame.new(), nil, nil, true)
+        local model = buildSkin(rec.entry, root, origParts, CFrame.new(), nil)
         if not model then
             projectileSeen[target] = nil
             return
         end
         model.Parent = projFolder()
-        rec.proj[target] = { model = model, parts = origParts, root = root, originalVisualState = suppressOriginalVisuals(origParts) }
+        rec.proj[target] = { model = model, parts = origParts, root = root }
     end
     local function dropWeapon(cat)
         local rec = Applied[cat]
         if not rec then return end
         Applied[cat] = nil
         if rec.projConn then pcall(function() rec.projConn:Disconnect() end) end
-        if rec.projectileFollowConn then pcall(function() rec.projectileFollowConn:Disconnect() end) end
         for _, info in pairs(rec.targets) do pcall(unskin, info) end
         for _, info in pairs(rec.proj) do pcall(unskin, info) end
         rec.targets, rec.proj = {}, {}
@@ -4664,24 +4632,6 @@ local function App()
             rec.projConn = workspace.DescendantAdded:Connect(function(d)
                 if os.clock() - Kill.lastAct < 3.2 and (d:IsA("BasePart") or d:IsA("Model")) then
                     task.defer(tryProjectile, d)
-                end
-            end)
-            rec.projectileFollowConn = RunService.Heartbeat:Connect(function()
-                for target, info in pairs(rec.proj) do
-                    local sourceRoot = info.root
-                    local model = info.model
-                    if not target or not target.Parent or not sourceRoot or not sourceRoot.Parent
-                        or not model or not model.Parent then
-                        restoreOriginalVisuals(info.originalVisualState)
-                        if model then pcall(function() model:Destroy() end) end
-                        rec.proj[target] = nil
-                    else
-                        local cloneRoot = model.PrimaryPart
-                        if cloneRoot and cloneRoot.Parent then
-                            local delta = sourceRoot.CFrame * cloneRoot.CFrame:Inverse()
-                            pcall(function() model:PivotTo(delta * model:GetPivot()) end)
-                        end
-                    end
                 end
             end)
         end
@@ -5064,7 +5014,7 @@ local function App()
         renderVisual(imgHost, entry, false)
         new("TextLabel", {
             Parent = card, Position = UDim2.fromOffset(4, 59), Size = UDim2.new(1, -8, 0, 16),
-            BackgroundTransparency = 1, Text = entry.name .. (explicitSetName(entry) ~= "" and (" · " .. explicitSetName(entry)) or ""), Font = Enum.Font.GothamMedium, TextSize = 10,
+            BackgroundTransparency = 1, Text = entry.name, Font = Enum.Font.GothamMedium, TextSize = 10,
             TextColor3 = IC.title, TextSize = 9, TextTruncate = Enum.TextTruncate.AtEnd,
         })
         local dot = new("Frame", {
@@ -5103,22 +5053,15 @@ local function App()
         cards = {}
         View.more = nil
     end
-    local function buildCards(reset, preservePosition)
+    local function buildCards(reset)
         View.token = View.token + 1
         local my = View.token
-        local restorePosition = nil
         if reset then
-            local oldPosition = listFrame.CanvasPosition
-            local oldLimit = View.limit
             clearCards()
             View.built = 0
-            View.limit = preservePosition and math.max(PAGE, oldLimit) or PAGE
+            View.limit = PAGE
             View.list = filterList()
-            if not preservePosition then
-                listFrame.CanvasPosition = Vector2.new(0, 0)
-            else
-                restorePosition = oldPosition
-            end
+            listFrame.CanvasPosition = Vector2.new(0, 0)
         else
             if View.more then
                 View.more:Destroy()
@@ -5160,9 +5103,6 @@ local function App()
                 View.limit = View.limit + PAGE
                 task.spawn(buildCards, false)
             end)
-        end
-        if restorePosition and View.token == my then
-            listFrame.CanvasPosition = restorePosition
         end
     end
     local function updateLabels()
@@ -5209,49 +5149,6 @@ local function App()
         setTab(entry.tab)
         setStatus("La categoría del catálogo es fija: " .. (entry.tab == "guns" and "Pistolas" or "Cuchillos") .. ".", T.warn)
     end
-    local RARITY_ORDER = { Ancient = 1, Mythic = 2, Legendary = 3, Rare = 4, Uncommon = 5, Common = 6 }
-    local function explicitSetName(entry)
-        if entry.setName and entry.setName ~= "" then return entry.setName end
-        local inst = entry.inst or entry.cacheTemplate
-        local current, depth = inst, 0
-        while current and current ~= game and depth < 8 do
-            for _, key in ipairs({ "SetName", "Set", "CollectionName" }) do
-                local value = current:GetAttribute(key)
-                if type(value) == "string" and value ~= "" then
-                    entry.setName = value
-                    return value
-                end
-            end
-            current = current.Parent
-            depth = depth + 1
-        end
-        return ""
-    end
-    local function sortCatalogEntries(list)
-        local groupRank = {}
-        for _, entry in ipairs(list) do
-            local setName = explicitSetName(entry)
-            if setName ~= "" then
-                local key = setName:lower()
-                local rank = RARITY_ORDER[entry.rarity or (entry.catalogRecord and entry.catalogRecord.rarity)] or 99
-                groupRank[key] = math.min(groupRank[key] or 99, rank)
-            end
-        end
-        table.sort(list, function(a, b)
-            local ar, br = RARITY_ORDER[a.rarity or (a.catalogRecord and a.catalogRecord.rarity)] or 99,
-                RARITY_ORDER[b.rarity or (b.catalogRecord and b.catalogRecord.rarity)] or 99
-            local as, bs = explicitSetName(a), explicitSetName(b)
-            local ag = as ~= "" and as:lower() or ("~" .. a.lname)
-            local bg = bs ~= "" and bs:lower() or ("~" .. b.lname)
-            local agr = as ~= "" and (groupRank[ag] or ar) or ar
-            local bgr = bs ~= "" and (groupRank[bg] or br) or br
-            if agr ~= bgr then return agr < bgr end
-            if ag ~= bg then return ag < bg end
-            if ar ~= br then return ar < br end
-            return a.lname < b.lname
-        end)
-    end
-
     local function runScan()
         if Scan.running or Scan.done then return end
         local scanStartedAt = os.clock()
@@ -5279,8 +5176,8 @@ local function App()
                     guns[#guns + 1] = entry
                 end
             end
-            sortCatalogEntries(knives)
-            sortCatalogEntries(guns)
+            table.sort(knives, function(a, b) return a.lname < b.lname end)
+            table.sort(guns, function(a, b) return a.lname < b.lname end)
             Data.knives, Data.guns = knives, guns
             return knives, guns
         end
@@ -5290,6 +5187,7 @@ local function App()
             weaponInstances = allInstances(weaponRoots())
             scanWeapons(weaponInstances, weapons, seenW, sigW)
             hydrateWeaponCache(weapons, seenW)
+            hydrateWeaponCatalogPlaceholders(weapons, seenW)
             publishWeaponLists()
         end)
         if not weaponOk then
@@ -5323,6 +5221,7 @@ local function App()
             priorityScan(effectInstances, effects, seenE)
             libraryScan(effectInstances, effects, seenE)
             hydrateEffectCache(effects, seenE)
+            hydrateEffectCatalogPlaceholders(effects, seenE)
         end)
         if not effectOk then
             warn("[SnowX-Armas] Effect scan failed: " .. tostring(effectErr))
@@ -5332,7 +5231,11 @@ local function App()
         setProgress(0.78)
         setStatus(#effects .. " efectos encontrados; finalizando catálogo...", IC.soft)
         local knives, guns = publishWeaponLists()
-        sortCatalogEntries(effects)
+        table.sort(effects, function(a, b)
+            if a.priority ~= b.priority then return a.priority end
+            if a.lib ~= b.lib then return not a.lib end
+            return a.lname < b.lname
+        end)
         Data.knives, Data.guns, Data.effects = knives, guns, effects
 
         -- Complete the main catalogue before optional icon/sound enrichment.
@@ -5514,7 +5417,7 @@ local function App()
                     if changed then
                         local newKnives, newGuns = publishWeaponLists()
                         if gui and gui.Parent then
-                            pcall(buildCards, true, true)
+                            pcall(buildCards, true)
                             if Selected[activeTab] then pcall(showSelected, Selected[activeTab]) end
                         end
                         setStatus("Descubrimiento dinámico: " .. #newKnives .. " cuchillos y "
@@ -5527,7 +5430,6 @@ local function App()
                     pcall(buildFxPresence, list)
                     local counter = { n = 0 }
                     local before = #effects
-                    local _, _, effectCacheBefore = assetCacheStats()
                     scanRuntimeEffects(candidate, effects, seenE,
                         Kill.entry and Kill.entry.name or nil)
                     scanGeneric(candidate, false, KILL_CFG, effects, seenE, counter)
@@ -5535,15 +5437,21 @@ local function App()
                     libraryScan(list, effects, seenE)
                     catalogEffectScan(effectRoots(), effects, seenE)
                     hydrateEffectCache(effects, seenE)
-                    local _, _, effectCacheAfter = assetCacheStats()
-                    if #effects > before or effectCacheAfter > effectCacheBefore then
+                    if #effects > before then
                         Data.effects = effects
-                        sortCatalogEntries(effects)
+                        table.sort(effects, function(a, b)
+                            if a.priority ~= b.priority then return a.priority end
+                            if a.lib ~= b.lib then return not a.lib end
+                            return a.lname < b.lname
+                        end)
                         if gui and gui.Parent then
-                            pcall(buildCards, true, true)
+                            pcall(buildCards, true)
                             if Selected.effects then pcall(showSelected, Selected.effects) end
                         end
                         setStatus("Efectos dinámicos detectados: " .. #effects .. "; caché sincronizada.", IC.soft)
+                    elseif gui and gui.Parent then
+                        pcall(buildCards, true)
+                        if Selected.effects then pcall(showSelected, Selected.effects) end
                     end
                 end
 
