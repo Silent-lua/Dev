@@ -2610,9 +2610,9 @@ local M = (function()
                 for _, node in ipairs(nodes) do
                     if not node:IsA("LuaSourceContainer") then
                         local record = catalogEffectRecordForName(node.Name)
-                        if not record and (node:IsA("Model") or node:IsA("Folder")
+                        if not record and (node:IsA("Model")
                             or node:IsA("StringValue") or node:IsA("ObjectValue") or isFx(node)) then
-                            local resolvedName = catalogEffectName and catalogEffectName(node)
+                            local resolvedName = catalogEffectName and catalogEffectName(node, false)
                             record = catalogEffectRecordForName(resolvedName)
                         end
                         if record and not claimed[squash(record.key)] then
@@ -2647,7 +2647,7 @@ local M = (function()
         rightarm = true, leftleg = true, rightleg = true, lefthand = true,
         righthand = true, leftfoot = true, rightfoot = true,
     }
-    catalogEffectName = function(node)
+    catalogEffectName = function(node, includeDescendants)
         if not node then return nil end
         local function resolve(value)
             local record = catalogEffectRecordForName(value)
@@ -2669,6 +2669,14 @@ local M = (function()
             current = current.Parent
             depth = depth + 1
         end
+        if node:IsA("StringValue") then
+            local matched = resolve(node.Value)
+            if matched then return matched end
+        elseif node:IsA("ObjectValue") and node.Value then
+            local matched = resolve(node.Value.Name)
+            if matched then return matched end
+        end
+        if includeDescendants == false then return nil end
         local checked = 0
         for _, descendant in ipairs(descendantsOf(node)) do
             checked = checked + 1
