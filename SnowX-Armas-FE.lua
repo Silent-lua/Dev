@@ -13,28 +13,20 @@ end
 local GUI_NAME = "snowx-arms-visual"
 local env = (getgenv and getgenv()) or _G
 env.NexvyrCatOverride = env.NexvyrCatOverride or {}
--- Session cache: exact cloned Instances survive source removal and script re-execution
--- inside the same executor environment. A client/game restart clears this in-memory cache.
-local ASSET_CACHE_KEY = "SnowXArmasAssetCacheV5"
+-- Reset the legacy V4/V5 cache once. V6 starts empty, then retains only
+-- assets that this version actually discovers during the current executor session.
+env.SnowXArmasAssetCacheV4 = nil
+env.SnowXArmasAssetCacheV5 = nil
+local ASSET_CACHE_KEY = "SnowXArmasAssetCacheV6"
 local AssetCache = env[ASSET_CACHE_KEY]
-if type(AssetCache) ~= "table" or AssetCache.version ~= 5 then
-    local previous = env.SnowXArmasAssetCacheV4
+if type(AssetCache) ~= "table" or AssetCache.version ~= 6 then
     AssetCache = {
-        version = 5,
-        -- Instance templates live in three isolated buckets. getgenv() retains them
-        -- across script re-execution in the same client/executor session.
+        version = 6,
         knives = {},
         guns = {},
-        effects = type(previous) == "table" and type(previous.effects) == "table" and previous.effects or {},
+        effects = {},
         stats = { knifeAdds = 0, gunAdds = 0, effectAdds = 0 },
     }
-    -- Migrate the previous combined weapon bucket without cloning or dropping Instances.
-    if type(previous) == "table" and type(previous.weapons) == "table" then
-        for key, record in pairs(previous.weapons) do
-            local bucket = type(record) == "table" and record.cat == "melee" and AssetCache.knives or AssetCache.guns
-            bucket[key] = record
-        end
-    end
     env[ASSET_CACHE_KEY] = AssetCache
 else
     AssetCache.knives = type(AssetCache.knives) == "table" and AssetCache.knives or {}
@@ -45,7 +37,7 @@ end
 AssetCache.stats.knifeAdds = AssetCache.stats.knifeAdds or 0
 AssetCache.stats.gunAdds = AssetCache.stats.gunAdds or 0
 AssetCache.stats.effectAdds = AssetCache.stats.effectAdds or 0
-AssetCache.sessionSchema = "knives/guns/effects-v1"
+AssetCache.sessionSchema = "fresh-v6/knives-guns-effects"
 if env.SnowXArmasVisualCleanup then
     pcall(env.SnowXArmasVisualCleanup)
 elseif env.NexvyrToolsVisualCleanup then
@@ -3578,9 +3570,7 @@ local function App()
     local cloneComplete = M.cloneComplete
     local partsOf, boundsIn = M.partsOf, M.boundsIn
     local hydrateWeaponCache, resolveWeaponSource = M.hydrateWeaponCache, M.resolveWeaponSource
-    local hydrateWeaponCatalogPlaceholders = M.hydrateWeaponCatalogPlaceholders
     local hydrateEffectCache, resolveEffectSource = M.hydrateEffectCache, M.resolveEffectSource
-    local hydrateEffectCatalogPlaceholders = M.hydrateEffectCatalogPlaceholders
     local scanRuntimeEffects = M.scanRuntimeEffects
     local assetCacheStats = M.assetCacheStats
     local Kill = {
@@ -4164,11 +4154,19 @@ local function App()
         if clone:IsA("BasePart") then
             sourceRoot = clone
         else
+            -- A gun's direct Handle is its authored grip reference. Use it before any
+            -- nested display Handle so its original barrel orientation is preserved.
+            if entry.cat == "gun" then
+                local directHandle = clone:FindFirstChild("Handle")
+                if directHandle and directHandle:IsA("BasePart") then
+                    sourceRoot = directHandle
+                end
+            end
             -- Use the same mount semantic as the live target. The old implementation
             -- always preferred Handle, even when the target was a Root part; this
             -- caused a visible offset and made some weapon models look oversized.
             local preferredName = origRoot.Name
-            if type(preferredName) == "string" and preferredName ~= "" then
+            if not sourceRoot and type(preferredName) == "string" and preferredName ~= "" then
                 local preferred = clone:FindFirstChild(preferredName, true)
                 if preferred and preferred:IsA("BasePart") then sourceRoot = preferred end
             end
@@ -4261,16 +4259,6 @@ local function App()
     end
     local Applied = {}
     local SkinLoop = { conn = nil, last = 0, lastRefresh = 0 }
-    local projFolderObj
-    local function projFolder()
-        if projFolderObj and projFolderObj.Parent then return projFolderObj end
-        local f = Instance.new("Folder")
-        f.Name = "NxTVProj"
-        f:SetAttribute("NxTV", true)
-        f.Parent = workspace
-        projFolderObj = f
-        return f
-    end
     local function suppressOriginalVisuals(parts)
         local snapshot = {}
         for _, part in ipairs(parts or {}) do
@@ -4368,11 +4356,12 @@ local function App()
         for _, p in ipairs(partsOf(tool)) do
             if not p:FindFirstAncestor("NxTVSkin") then origParts[#origParts + 1] = p end
         end
-        local handle = tool:FindFirstChild("Handle", true)
-        local isHandle = handle ~= nil and handle:IsA("BasePart")
-        if not isHandle then handle = rootPartOf(tool) end
-        if not isHandle and (not handle or not handle:IsA("BasePart")) then handle = origParts[1] end
-        if not handle then return end
+        -- Roblox grips a Tool through its direct child named Handle. A nested
+        -- decorative Handle is not the physical hand mount.
+        local handle = tool:FindFirstChild("Handle")
+        if not (handle and handle:IsA("BasePart")) then handle = rootPartOf(tool) end
+        if not (handle and handle:IsA("BasePart")) then handle = origParts[1] end
+        if not (handle and handle:IsA("BasePart")) then return end
         local model = buildSkin(rec.entry, handle, origParts, tool.Grip, rec.cat == "gun" and "Right" or nil)
         if not model then return end
         model.Parent = tool
@@ -4515,20 +4504,6 @@ local function App()
                 end
             end
         end
-        local gone
-        for inst, info in pairs(rec.proj) do
-            if not info.root.Parent or not inst.Parent then
-                gone = gone or {}
-                gone[#gone + 1] = inst
-            end
-        end
-        if gone then
-            for _, inst in ipairs(gone) do
-                local info = rec.proj[inst]
-                rec.proj[inst] = nil
-                if info and info.model then pcall(function() info.model:Destroy() end) end
-            end
-        end
     end
     local function startLoop()
         if SkinLoop.conn then return end
@@ -4557,65 +4532,12 @@ local function App()
         end
         return false
     end
-    local function charLike(m)
-        local p = m
-        while p and p ~= workspace do
-            if p:IsA("Model") and p:FindFirstChildOfClass("Humanoid") then return true end
-            p = p.Parent
-        end
-        return false
-    end
-    local function meleeNamed(d)
-        if catOfName(d.Name) == "melee" then return true end
-        local p = d.Parent
-        if p and p ~= workspace and catOfName(p.Name) == "melee" then return true end
-        return false
-    end
-    local function isLikelyProjectile(d)
-        local projectileTerms = { "knife", "dagger", "cuchillo", "kunai", "scythe", "guadana" }
-        local name = norm(d.Name)
-        if hasAny(name, projectileTerms) then return true end
-        local parent = d.Parent
-        return parent ~= nil and hasAny(norm(parent.Name), projectileTerms)
-    end
-    local projectileSeen = setmetatable({}, { __mode = "k" })
-    local function tryProjectile(d)
-        local rec = Applied.melee
-        if not rec or not d.Parent or not isLikelyProjectile(d) then return end
-        if os.clock() - Kill.lastAct > 3.2 then return end
-        if oursDeep(d) then return end
-        if d:FindFirstAncestorWhichIsA("Tool") or d:FindFirstAncestorOfClass("Backpack") then return end
-        local target = d
-        if d:IsA("BasePart") and d.Parent and d.Parent:IsA("Model") and d.Parent ~= workspace
-            and not d.Parent:FindFirstChildOfClass("Humanoid") then
-            target = d.Parent
-        end
-        if charLike(target) then return end
-        if not (meleeNamed(target) or meleeNamed(d)) then return end
-        task.wait()
-        if not target.Parent or projectileSeen[target] or rec ~= Applied.melee then return end
-        local root = rootPartOf(target)
-        local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if not root or not hrp then return end
-        if (root.Position - hrp.Position).Magnitude > 16 then return end
-        projectileSeen[target] = true
-        local origParts = partsOf(target)
-        local model = buildSkin(rec.entry, root, origParts, CFrame.new(), nil)
-        if not model then
-            projectileSeen[target] = nil
-            return
-        end
-        model.Parent = projFolder()
-        rec.proj[target] = { model = model, parts = origParts, root = root }
-    end
     local function dropWeapon(cat)
         local rec = Applied[cat]
         if not rec then return end
         Applied[cat] = nil
-        if rec.projConn then pcall(function() rec.projConn:Disconnect() end) end
         for _, info in pairs(rec.targets) do pcall(unskin, info) end
-        for _, info in pairs(rec.proj) do pcall(unskin, info) end
-        rec.targets, rec.proj = {}, {}
+        rec.targets = {}
         if next(Applied) == nil and SkinLoop.conn then
             SkinLoop.conn:Disconnect()
             SkinLoop.conn = nil
@@ -4626,15 +4548,8 @@ local function App()
         if cat ~= "melee" and cat ~= "gun" then return false, "Categoria invalida." end
         if not resolveWeaponSource(entry, nil) then return false, "No hay un modelo disponible en la caché ni en el cliente." end
         if Applied[cat] then dropWeapon(cat) end
-        local rec = { cat = cat, entry = entry, targets = {}, proj = {}, toolNames = {}, cc = {} }
+        local rec = { cat = cat, entry = entry, targets = {}, toolNames = {}, cc = {} }
         Applied[cat] = rec
-        if cat == "melee" then
-            rec.projConn = workspace.DescendantAdded:Connect(function(d)
-                if os.clock() - Kill.lastAct < 3.2 and (d:IsA("BasePart") or d:IsA("Model")) then
-                    task.defer(tryProjectile, d)
-                end
-            end)
-        end
         startLoop()
         pcall(refreshRec, rec)
         local n, tools, holsters = 0, 0, 0
@@ -5053,15 +4968,19 @@ local function App()
         cards = {}
         View.more = nil
     end
-    local function buildCards(reset)
+    local function buildCards(reset, preserveScroll)
         View.token = View.token + 1
         local my = View.token
+        local savedCanvas = preserveScroll and listFrame.CanvasPosition or nil
+        local savedLimit = View.limit
         if reset then
             clearCards()
             View.built = 0
-            View.limit = PAGE
+            View.limit = preserveScroll and math.max(PAGE, savedLimit or PAGE) or PAGE
             View.list = filterList()
-            listFrame.CanvasPosition = Vector2.new(0, 0)
+            if not preserveScroll then
+                listFrame.CanvasPosition = Vector2.new(0, 0)
+            end
         else
             if View.more then
                 View.more:Destroy()
@@ -5102,6 +5021,14 @@ local function App()
             more.MouseButton1Click:Connect(function()
                 View.limit = View.limit + PAGE
                 task.spawn(buildCards, false)
+            end)
+        end
+        if savedCanvas then
+            task.defer(function()
+                task.wait()
+                if View.token == my and listFrame.Parent then
+                    listFrame.CanvasPosition = savedCanvas
+                end
             end)
         end
     end
@@ -5187,7 +5114,6 @@ local function App()
             weaponInstances = allInstances(weaponRoots())
             scanWeapons(weaponInstances, weapons, seenW, sigW)
             hydrateWeaponCache(weapons, seenW)
-            hydrateWeaponCatalogPlaceholders(weapons, seenW)
             publishWeaponLists()
         end)
         if not weaponOk then
@@ -5221,7 +5147,6 @@ local function App()
             priorityScan(effectInstances, effects, seenE)
             libraryScan(effectInstances, effects, seenE)
             hydrateEffectCache(effects, seenE)
-            hydrateEffectCatalogPlaceholders(effects, seenE)
         end)
         if not effectOk then
             warn("[SnowX-Armas] Effect scan failed: " .. tostring(effectErr))
@@ -5417,7 +5342,7 @@ local function App()
                     if changed then
                         local newKnives, newGuns = publishWeaponLists()
                         if gui and gui.Parent then
-                            pcall(buildCards, true)
+                            pcall(buildCards, true, true)
                             if Selected[activeTab] then pcall(showSelected, Selected[activeTab]) end
                         end
                         setStatus("Descubrimiento dinámico: " .. #newKnives .. " cuchillos y "
@@ -5445,13 +5370,10 @@ local function App()
                             return a.lname < b.lname
                         end)
                         if gui and gui.Parent then
-                            pcall(buildCards, true)
+                            pcall(buildCards, true, true)
                             if Selected.effects then pcall(showSelected, Selected.effects) end
                         end
                         setStatus("Efectos dinámicos detectados: " .. #effects .. "; caché sincronizada.", IC.soft)
-                    elseif gui and gui.Parent then
-                        pcall(buildCards, true)
-                        if Selected.effects then pcall(showSelected, Selected.effects) end
                     end
                 end
 
