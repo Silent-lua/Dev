@@ -2609,8 +2609,12 @@ local M = (function()
                 end
                 for _, node in ipairs(nodes) do
                     if not node:IsA("LuaSourceContainer") then
-                        local resolvedName = catalogEffectName and catalogEffectName(node)
-                        local record = catalogEffectRecordForName(resolvedName or node.Name)
+                        local record = catalogEffectRecordForName(node.Name)
+                        if not record and (node:IsA("Model") or node:IsA("Folder")
+                            or node:IsA("StringValue") or node:IsA("ObjectValue") or isFx(node)) then
+                            local resolvedName = catalogEffectName and catalogEffectName(node)
+                            record = catalogEffectRecordForName(resolvedName)
+                        end
                         if record and not claimed[squash(record.key)] then
                             local source = node
                             if not (source:IsA("Model") or source:IsA("Folder") or source:IsA("BasePart")) then
@@ -4249,7 +4253,11 @@ local function App()
             if not sourceRoot then
                 local preferredNames
                 if entry.cat == "melee" then
-                    preferredNames = { "KnifeDisplay", "KnifeDisplay2", "Display", "Root", "Handle" }
+                    if sourceSide == "Left" then
+                        preferredNames = { "KnifeDisplay2", "KnifeDisplay", "Display", "Root", "Handle" }
+                    else
+                        preferredNames = { "KnifeDisplay", "KnifeDisplay2", "Display", "Root", "Handle" }
+                    end
                 elseif sourceSide == "Left" then
                     preferredNames = { "GunDisplay2", "GunDisplay", "Display", "Root", "Handle" }
                 else
