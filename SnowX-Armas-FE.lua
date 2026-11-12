@@ -4043,21 +4043,6 @@ local function App()
                         if d.Parent then pcall(function() d.Enabled = previous end) end
                     end)
                 end
-            elseif d:IsA("Sound") then
-                local soundDelay = tonumber(d:GetAttribute("Delay")) or emitDelay
-                local length = 4
-                pcall(function()
-                    if d.TimeLength > 0 then length = d.TimeLength end
-                end)
-                total = math.max(total, math.min(length, 12) + soundDelay)
-                task.delay(soundDelay, function()
-                    if d.Parent then
-                        pcall(function()
-                            d.TimePosition = 0
-                            d:Play()
-                        end)
-                    end
-                end)
             end
         end
         return math.clamp(total + 0.5, 0.75, 15)
@@ -4368,22 +4353,46 @@ local function App()
         if info.throwRemoteConn then pcall(function() info.throwRemoteConn:Disconnect() end) end
         if info.model then pcall(function() info.model:Destroy() end) end
     end
-        local function skinTool(rec, tool)
+        local function weaponVisualAnchor(tool)
+        if not tool then return nil end
+
+        -- Use the weapon's own visual root when it exists. Otherwise use the
+        -- original MeshPart inside Visual; the native Tool/Weld continues to drive it.
+        local root = tool:FindFirstChild("Root")
+        if root and root:IsA("BasePart") then return root end
+
+        local visual = tool:FindFirstChild("Visual")
+        if visual then
+            local visualRoot = visual:FindFirstChild("Root", true)
+            if visualRoot and visualRoot:IsA("BasePart") then return visualRoot end
+            for _, descendant in ipairs(visual:GetDescendants()) do
+                if descendant:IsA("MeshPart") then return descendant end
+            end
+            for _, descendant in ipairs(visual:GetDescendants()) do
+                if descendant:IsA("BasePart") then return descendant end
+            end
+        end
+
+        local handle = tool:FindFirstChild("Handle")
+        if handle and handle:IsA("BasePart") then return handle end
+        return rootPartOf(tool)
+    end
+
+    local function skinTool(rec, tool)
         local origParts = {}
         for _, p in ipairs(partsOf(tool)) do
             if not p:FindFirstAncestor("NxTVSkin") then origParts[#origParts + 1] = p end
         end
-        -- Roblox grips a Tool through its direct child named Handle. A nested
-        -- decorative Handle is not the physical hand mount.
-        local handle = tool:FindFirstChild("Handle")
-        if not (handle and handle:IsA("BasePart")) then handle = rootPartOf(tool) end
-        if not (handle and handle:IsA("BasePart")) then handle = origParts[1] end
-        if not (handle and handle:IsA("BasePart")) then return end
-        local model = buildSkin(rec.entry, handle, origParts, tool.Grip, "Right", handle.CFrame)
+        -- Attach to the native visual anchor, not a guessed Handle transform.
+        -- This leaves grip, height, orientation and movement under the game's control.
+        local mount = weaponVisualAnchor(tool)
+        if not (mount and mount:IsA("BasePart")) then mount = origParts[1] end
+        if not (mount and mount:IsA("BasePart")) then return end
+        local model = buildSkin(rec.entry, mount, origParts, nil, "Right", mount.CFrame)
         if not model then return end
         model.Parent = tool
         local info = {
-            kind = "tool", model = model, parts = origParts, root = handle,
+            kind = "tool", model = model, parts = origParts, root = mount,
             skinParts = partsOf(model), originalVisualState = suppressOriginalVisuals(origParts),
         }
         rec.targets[tool] = info
