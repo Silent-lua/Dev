@@ -5204,16 +5204,13 @@ local function App()
 
         -- Stage 1: scan only the weapon registries, inventory and player rigs.
         weaponOk, weaponErr = pcall(function()
-            weaponInstances = allInstances(weaponRoots())
             local globalRoots = {
                 game:GetService("ReplicatedStorage"),
                 Workspace,
                 game:GetService("Players"),
                 game:GetService("StarterPack"),
             }
-            local already = {}
-            for _, inst in ipairs(weaponInstances) do already[inst] = true end
-            local globalCandidates = allInstances(globalRoots, function(inst)
+            weaponInstances = allInstances(globalRoots, function(inst)
                 if inst:IsA("Tool") then return true end
                 if inst:IsA("Model") then
                     return not inst:FindFirstChildOfClass("Humanoid")
@@ -5226,12 +5223,6 @@ local function App()
                 end
                 return false
             end)
-            for _, inst in ipairs(globalCandidates) do
-                if not already[inst] then
-                    already[inst] = true
-                    weaponInstances[#weaponInstances + 1] = inst
-                end
-            end
             scanWeapons(weaponInstances, weapons, seenW, sigW)
             hydrateWeaponCache(weapons, seenW)
             publishWeaponLists()
@@ -5263,7 +5254,6 @@ local function App()
                 scanRuntimeEffects(root, effects, seenE, nil)
                 scanGeneric(root, false, KILL_CFG, effects, seenE, counter)
             end
-            catalogEffectScan(effectRoots(), effects, seenE)
             catalogEffectScan({
                 game:GetService("ReplicatedStorage"),
                 Workspace,
@@ -5497,7 +5487,6 @@ local function App()
                     scanGeneric(candidate, false, KILL_CFG, effects, seenE, counter)
                     priorityScan(list, effects, seenE)
                     libraryScan(list, effects, seenE)
-                    catalogEffectScan(effectRoots(), effects, seenE)
                     catalogEffectScan({
                         game:GetService("ReplicatedStorage"),
                         Workspace,
