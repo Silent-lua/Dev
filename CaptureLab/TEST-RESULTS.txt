@@ -1,0 +1,18 @@
+SilentHub Capture Lab — registro de prueba
+Dispositivo: Samsung Galaxy A55
+Versión Android / One UI: ______________________________
+Versión de Medal: _______________________________________
+
+MEDAL
+Marcador visible localmente: SÍ / NO
+Marcador ausente en el video guardado: SÍ / NO
+Imagen del juego intacta detrás del marcador: SÍ / NO
+Notas: __________________________________________________
+
+GRABADORA DE PANTALLA SAMSUNG
+Marcador visible localmente: SÍ / NO
+Marcador ausente en el video guardado: SÍ / NO
+Imagen del juego intacta detrás del marcador: SÍ / NO
+Notas: __________________________________________________
+
+Criterio de éxito: el marcador debe seguir visible en el teléfono, no aparecer en el video y no producir un rectángulo negro ni ocultar la imagen del juego que queda detrás.
