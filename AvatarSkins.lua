@@ -509,24 +509,24 @@ local function extractAnimationSets(humanoidDescription)
     local animationSets = {}
     preloadAnimationAssets(humanoidDescription)
 
-    for k, animationScriptName in pairs(animationScriptNames) do
+    for stateName, animationScriptName in pairs(animationScriptNames) do
         local animationAssetId = humanoidDescription[animationScriptName]
 
         if type(animationAssetId) == "number" and animationAssetId > 0 then
             local assetObjects = loadAssetObjects(animationAssetId)
-            local iterateAssetObjects = ipairs
-            local assetObjectList = assetObjects or {}
 
-            for _, assetObject in iterateAssetObjects(assetObjectList) do
-                for _, descendant in ipairs(assetObject:GetDescendants()) do
-                    if descendant:IsA("Animation") and descendant.Parent and descendant.Parent ~= assetObject then
-                        local name = descendant.Parent.Name
-                        animationSets[name] = animationSets[name] or {}
-                        table.insert(animationSets[name], descendant)
-                    elseif descendant:IsA("Animation") then
-                        animationSets[k] = animationSets[k] or {}
-                        table.insert(animationSets[k], descendant)
+            for _, assetObject in ipairs(assetObjects or {}) do
+                local function addAnimation(animation)
+                    if animation and animation:IsA("Animation") then
+                        animationSets[stateName] = animationSets[stateName] or {}
+                        table.insert(animationSets[stateName], animation)
                     end
+                end
+
+                addAnimation(assetObject)
+
+                for _, descendant in ipairs(assetObject:GetDescendants()) do
+                    addAnimation(descendant)
                 end
             end
         end
@@ -574,31 +574,12 @@ local function captureCharacterState(character)
     if originalCharacterStateCache[character] then
         return originalCharacterStateCache[character]
     end
-    local savedCharacterState = { anim = {} }
+
+    local savedCharacterState = {}
     local humanoid = character:FindFirstChildOfClass("Humanoid")
 
     if humanoid then
         savedCharacterState.hipHeight = humanoid.HipHeight
-    end
-
-    local animate = character:FindFirstChild("Animate")
-
-    if animate then
-        for k in pairs(animationScriptNames) do
-            local animationFolder = animate:FindFirstChild(k)
-
-            if animationFolder then
-                savedCharacterState.anim[k] = {}
-
-                for _, child in ipairs(animationFolder:GetChildren()) do
-                    if child:IsA("Animation") then
-                        local clone = child:Clone()
-                        clone.Parent = nil
-                        table.insert(savedCharacterState.anim[k], clone)
-                    end
-                end
-            end
-        end
     end
 
     originalCharacterStateCache[character] = savedCharacterState
@@ -610,95 +591,7 @@ local function noopCharacterStateHook(_character, _snapshot)
     return
 end
 
-local function restartCharacterAnimations(character)
-    local animate = character:FindFirstChild("Animate")
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not (animate and humanoid) then
-        return
-    end
-
-    for _, animationTrack in ipairs(humanoid:GetPlayingAnimationTracks()) do
-        if animationTrack.Priority ~= Enum.AnimationPriority.Action then
-            pcall(animationTrack.Stop, animationTrack, 0)
-        end
-    end
-
-    animate.Disabled = true
-    animate.Disabled = false
-end
-
-local function applyAnimationSet(character, animationSet)
-    local animate = character:FindFirstChild("Animate")
-    if not animate then
-        return 0
-    end
-    local clonedAnimationCount = 0
-
-    for k, savedAnimations in pairs(animationSet) do
-        local animationFolder = animate:FindFirstChild(k)
-
-        if animationFolder and #savedAnimations > 0 then
-            for _, child in ipairs(animationFolder:GetChildren()) do
-                if child:IsA("Animation") then
-                    child:Destroy()
-                end
-            end
-
-            for _, animationTemplate in ipairs(savedAnimations) do
-                animationTemplate:Clone().Parent = animationFolder
-                clonedAnimationCount += 1
-            end
-        end
-    end
-
-    if clonedAnimationCount > 0 then
-        restartCharacterAnimations(character)
-    end
-
-    return clonedAnimationCount
-end
-
-local function restoreAnimationSet(character, savedAnimationSet)
-    local animate = character:FindFirstChild("Animate")
-    if not (animate and savedAnimationSet and savedAnimationSet.anim) then
-        return
-    end
-    local restoredAnyAnimation = false
-
-    for k, savedAnimations in pairs(savedAnimationSet.anim) do
-        local animationFolder = animate:FindFirstChild(k)
-
-        if animationFolder then
-            for _, child in ipairs(animationFolder:GetChildren()) do
-                if child:IsA("Animation") then
-                    child:Destroy()
-                end
-            end
-
-            for _, savedAnimation in ipairs(savedAnimations) do
-                savedAnimation:Clone().Parent = animationFolder
-            end
-
-            restoredAnyAnimation = true
-        end
-    end
-
-    if restoredAnyAnimation then
-        restartCharacterAnimations(character)
-    end
-end
-
 local copiedSkinAnimationData = nil
-local function applyCopiedSkinAnimations(character, enabled)
-    if not character or not character.Parent then return false end
-    local savedCharacterState = captureCharacterState(character)
-    if enabled then
-        if type(copiedSkinAnimationData) ~= "table" then return false end
-        return applyAnimationSet(character, copiedSkinAnimationData) > 0
-    end
-    restoreAnimationSet(character, savedCharacterState)
-    return true
-end
 
 local characterEmoteCache = setmetatable({}, { __mode = "k" })
 
@@ -853,7 +746,268 @@ r6ToR15JointMappings[3] = rightShoulderMapping
 r6ToR15JointMappings[4] = leftShoulderMapping
 r6ToR15JointMappings[5] = rightHipMapping
 r6ToR15JointMappings[6] = leftHipMapping
-local visualModelState = { model = nil, character = nil, jointMappings = {}, folder = nil, renderConnection = nil, physicsConnection = nil, cameraTransparencyConnection = nil, cameraTransparencyRemovingConnection = nil, descendantConnection = nil, hideCharacterAddedConnection = nil, hideCharacterRemovingConnection = nil }
+local visualModelState = {
+    model = nil,
+    character = nil,
+    jointMappings = {},
+    folder = nil,
+    renderConnection = nil,
+    physicsConnection = nil,
+    cameraTransparencyConnection = nil,
+    cameraTransparencyRemovingConnection = nil,
+    descendantConnection = nil,
+    hideCharacterAddedConnection = nil,
+    hideCharacterRemovingConnection = nil,
+    localAnimator = nil,
+    localAnimationFolder = nil,
+    localAnimationTracks = {},
+    localCurrentAnimation = nil,
+    localCurrentTrack = nil,
+    localAnimationPlaying = false,
+    localAnimationConnection = nil,
+}
+
+local localAnimationPriorities = {
+    idle = Enum.AnimationPriority.Idle,
+    walk = Enum.AnimationPriority.Movement,
+    run = Enum.AnimationPriority.Movement,
+    jump = Enum.AnimationPriority.Movement,
+    fall = Enum.AnimationPriority.Movement,
+    climb = Enum.AnimationPriority.Movement,
+    swim = Enum.AnimationPriority.Movement,
+}
+
+local localAnimationFallbacks = {
+    idle = { "idle" },
+    walk = { "walk", "run" },
+    run = { "run", "walk" },
+    jump = { "jump", "fall" },
+    fall = { "fall", "jump" },
+    climb = { "climb", "walk" },
+    swim = { "swim", "walk" },
+}
+
+local function stopLocalSkinAnimations()
+    if visualModelState.localAnimationConnection then
+        visualModelState.localAnimationConnection:Disconnect()
+        visualModelState.localAnimationConnection = nil
+    end
+
+    for _, tracks in pairs(visualModelState.localAnimationTracks) do
+        for _, track in ipairs(tracks) do
+            pcall(function()
+                track:Stop(0.12)
+                track:Destroy()
+            end)
+        end
+    end
+
+    if visualModelState.localAnimationFolder then
+        pcall(function()
+            visualModelState.localAnimationFolder:Destroy()
+        end)
+    end
+
+    visualModelState.localAnimationFolder = nil
+    visualModelState.localAnimationTracks = {}
+    visualModelState.localCurrentAnimation = nil
+    visualModelState.localCurrentTrack = nil
+    visualModelState.localAnimationPlaying = false
+end
+
+local function setLocalSkinAnimation(stateName)
+    local requestedStates = localAnimationFallbacks[stateName]
+    if not requestedStates then
+        requestedStates = { stateName }
+    end
+
+    local selectedTrack = nil
+    local selectedState = nil
+
+    for _, candidateState in ipairs(requestedStates) do
+        local tracks = visualModelState.localAnimationTracks[candidateState]
+        if tracks and #tracks > 0 then
+            selectedState = candidateState
+            selectedTrack = tracks[math.random(1, #tracks)]
+            break
+        end
+    end
+
+    if not selectedTrack then
+        if visualModelState.localCurrentTrack then
+            pcall(function()
+                visualModelState.localCurrentTrack:Stop(0.12)
+            end)
+        end
+        visualModelState.localCurrentAnimation = nil
+        visualModelState.localCurrentTrack = nil
+        visualModelState.localAnimationPlaying = false
+        return false
+    end
+
+    if visualModelState.localCurrentTrack == selectedTrack
+        and visualModelState.localCurrentAnimation == selectedState
+        and selectedTrack.IsPlaying then
+        visualModelState.localAnimationPlaying = true
+        return true
+    end
+
+    if visualModelState.localCurrentTrack then
+        pcall(function()
+            visualModelState.localCurrentTrack:Stop(0.12)
+        end)
+    end
+
+    local ok = pcall(function()
+        selectedTrack:Play(0.12, 1, 1)
+    end)
+
+    if not ok then
+        visualModelState.localCurrentAnimation = nil
+        visualModelState.localCurrentTrack = nil
+        visualModelState.localAnimationPlaying = false
+        return false
+    end
+
+    visualModelState.localCurrentAnimation = selectedState
+    visualModelState.localCurrentTrack = selectedTrack
+    visualModelState.localAnimationPlaying = true
+    return true
+end
+
+local function getLocalSkinAnimationState()
+    local character = visualModelState.character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+
+    if not humanoid or humanoid.Health <= 0 then
+        return nil
+    end
+
+    local state = humanoid:GetState()
+
+    if state == Enum.HumanoidStateType.Swimming then
+        return "swim"
+    end
+
+    if state == Enum.HumanoidStateType.Climbing then
+        return "climb"
+    end
+
+    if state == Enum.HumanoidStateType.Jumping then
+        return "jump"
+    end
+
+    if state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.FallingDown then
+        return "fall"
+    end
+
+    if state == Enum.HumanoidStateType.Seated
+        or state == Enum.HumanoidStateType.PlatformStanding
+        or state == Enum.HumanoidStateType.Dead then
+        return nil
+    end
+
+    local velocity = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
+    local horizontalSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+    local moving = humanoid.MoveDirection.Magnitude > 0.05 or horizontalSpeed > 0.8
+
+    if humanoid.FloorMaterial == Enum.Material.Air then
+        return velocity.Y < -1 and "fall" or "jump"
+    end
+
+    if moving then
+        return horizontalSpeed >= 18 and "run" or "walk"
+    end
+
+    return "idle"
+end
+
+local function applyCopiedSkinAnimations(character, enabled)
+    if not character or not character.Parent then
+        return false
+    end
+
+    if not enabled then
+        stopLocalSkinAnimations()
+        return true
+    end
+
+    local visualModel = visualModelState.model
+    local animator = visualModelState.localAnimator
+    if not (visualModel and visualModel.Parent and animator and type(copiedSkinAnimationData) == "table") then
+        return false
+    end
+
+    stopLocalSkinAnimations()
+
+    local animationFolder = Instance.new("Folder")
+    animationFolder.Name = "LocalSkinAnimations"
+    animationFolder.Parent = visualModel
+    visualModelState.localAnimationFolder = animationFolder
+
+    local loadedTrackCount = 0
+
+    for stateName, templates in pairs(copiedSkinAnimationData) do
+        local normalizedState = string.lower(tostring(stateName))
+        local priority = localAnimationPriorities[normalizedState]
+
+        if priority and type(templates) == "table" then
+            local stateTracks = {}
+
+            for _, template in ipairs(templates) do
+                if typeof(template) == "Instance" and template:IsA("Animation")
+                    and template.AnimationId ~= "" then
+                    local animation = template:Clone()
+                    animation.Parent = animationFolder
+
+                    local ok, track = pcall(function()
+                        return animator:LoadAnimation(animation)
+                    end)
+
+                    if ok and track then
+                        track.Priority = priority
+                        track.Looped = normalizedState ~= "jump"
+                        table.insert(stateTracks, track)
+                        loadedTrackCount += 1
+                    else
+                        animation:Destroy()
+                    end
+                end
+            end
+
+            if #stateTracks > 0 then
+                visualModelState.localAnimationTracks[normalizedState] = stateTracks
+            end
+        end
+    end
+
+    if loadedTrackCount == 0 then
+        stopLocalSkinAnimations()
+        return false
+    end
+
+    visualModelState.localAnimationConnection = RunService.Heartbeat:Connect(function()
+        if visualModelState.model ~= visualModel or not visualModel.Parent then
+            stopLocalSkinAnimations()
+            return
+        end
+
+        local requestedState = getLocalSkinAnimationState()
+        if requestedState then
+            setLocalSkinAnimation(requestedState)
+        else
+            setLocalSkinAnimation(nil)
+        end
+    end)
+
+    local initialState = getLocalSkinAnimationState()
+    if initialState then
+        setLocalSkinAnimation(initialState)
+    end
+
+    return true
+end
 
 local function indexCharacterJoints(character)
     local jointsByName = {}
@@ -1376,6 +1530,9 @@ local function createNativeCameraTransparencyUpdater(character, visualModel)
 end
 
 local function destroySkinVisuals()
+    stopLocalSkinAnimations()
+    visualModelState.localAnimator = nil
+
     if visualModelState.renderConnection then
         visualModelState.renderConnection:Disconnect()
         visualModelState.renderConnection = nil
@@ -1514,6 +1671,13 @@ local function buildR15SkinVisual(character, visualModel)
     visualModel:PivotTo(humanoidRootPart.CFrame * cframe)
     visualModel.Parent = visualFolder
 
+    if visualHumanoid then
+        local localAnimator = Instance.new("Animator")
+        localAnimator.Name = "LocalVisualAnimator"
+        localAnimator.Parent = visualHumanoid
+        visualModelState.localAnimator = localAnimator
+    end
+
     local characterJointMap = indexCharacterJoints(character)
     local jointMappings = {}
 
@@ -1567,9 +1731,11 @@ local function buildR15SkinVisual(character, visualModel)
     local function updateVisualPose()
         humanoidRootPart2.CFrame = humanoidRootPart.CFrame * cframe
 
-        for _, jointMapping in ipairs(jointMappings) do
-            if jointMapping.sourceJoint and jointMapping.sourceJoint.Parent and jointMapping.targetJoint and jointMapping.targetJoint.Parent then
-                pcall(function() jointMapping.targetJoint.Transform = jointMapping.sourceJoint.Transform end)
+        if not visualModelState.localAnimationPlaying then
+            for _, jointMapping in ipairs(jointMappings) do
+                if jointMapping.sourceJoint and jointMapping.sourceJoint.Parent and jointMapping.targetJoint and jointMapping.targetJoint.Parent then
+                    pcall(function() jointMapping.targetJoint.Transform = jointMapping.sourceJoint.Transform end)
+                end
             end
         end
     end
@@ -1797,7 +1963,6 @@ local function restoreCharacterAppearance(character)
         return
     end
     noopCharacterStateHook(character, savedCharacterState)
-    restoreAnimationSet(character, savedCharacterState)
 end
 
 local currentEmoteTrack = nil
@@ -1931,8 +2096,8 @@ end) then
 end
 
 local function loadBackgroundAsset()
-    local url = "https://raw.githubusercontent.com/Silent-lua/Dev/main/assets/avatar-background.jpg"
-    local path = "avatar-tools/avatar-background.jpg"
+    local url = "https://raw.githubusercontent.com/Silent-lua/Dev/main/assets/avatar-background.png"
+    local path = "avatar-tools/avatar-background.png"
     pcall(function()
         if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder("avatar-tools") then
             makefolder("avatar-tools")
@@ -1977,8 +2142,8 @@ backgroundImage.Name = "ReferenceBackground"
 backgroundImage.Size = UDim2.fromScale(1, 1)
 backgroundImage.BackgroundTransparency = 1
 backgroundImage.Image = bgAsset or ""
-backgroundImage.ImageTransparency = bgAsset and 0.38 or 1
-backgroundImage.ScaleType = Enum.ScaleType.Crop
+backgroundImage.ImageTransparency = bgAsset and 0 or 1
+backgroundImage.ScaleType = Enum.ScaleType.Fit
 backgroundImage.ZIndex = 1
 backgroundImage.Parent = mainFrame
 createGuiInstance("UICorner", { CornerRadius = UDim.new(0, 16) }, backgroundImage)
@@ -1988,14 +2153,14 @@ local function animateBackground()
     if backgroundTween then backgroundTween:Cancel() end
     backgroundImage.Position = UDim2.fromScale(-0.018, -0.014)
     backgroundImage.Size = UDim2.fromScale(1.036, 1.028)
-    backgroundImage.ImageTransparency = 0.68
+    backgroundImage.ImageTransparency = 0.18
     backgroundTween = TweenService:Create(
         backgroundImage,
         TweenInfo.new(0.95, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
         {
             Position = UDim2.fromScale(-0.004, -0.003),
             Size = UDim2.fromScale(1.008, 1.006),
-            ImageTransparency = 0.38,
+            ImageTransparency = 0,
         }
     )
     backgroundTween:Play()
@@ -2004,7 +2169,7 @@ createGuiInstance("Frame", {
     Name = "ReferenceBackgroundOverlay",
     Size = UDim2.fromScale(1, 1),
     BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-    BackgroundTransparency = bgAsset and 0.58 or 1,
+    BackgroundTransparency = bgAsset and 0.88 or 1,
     BorderSizePixel = 0,
     ZIndex = 1,
 }, mainFrame)
@@ -3065,7 +3230,10 @@ local function applySkinVisualModel(character, userId, requestedRig, requestGene
     end
     copiedSkinAnimationData = animationData
     if rig == "R15" and skinState.animationsEnabled then
-        applyCopiedSkinAnimations(character, true)
+        if not applyCopiedSkinAnimations(character, true) then
+            skinState.animationsEnabled = false
+            applyCopiedSkinAnimations(character, false)
+        end
     else
         applyCopiedSkinAnimations(character, false)
     end
