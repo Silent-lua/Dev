@@ -2004,13 +2004,25 @@ local function playEmote(emote)
     stopCurrentEmote()
     local character = getLocalCharacter()
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+    local localSkinEmote = avatarBridge.skin.active == true
+    local animator
+
+    if localSkinEmote then
+        animator = visualModelState.localAnimator
+        if not (visualModelState.model and animator) then
+            return false
+        end
+    else
+        animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+    end
+
     if not animator then
         return false
     end
+
     local humanoidDescription = getCharacterHumanoidDescription(character)
 
-    if humanoidDescription then
+    if not localSkinEmote and humanoidDescription then
         local ok, result = pcall(humanoidDescription.GetEmotes, humanoidDescription)
 
         if ok and result[emote.nombre] then
