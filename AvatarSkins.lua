@@ -2109,7 +2109,7 @@ end
 
 local function loadBackgroundAsset()
     local url = "https://raw.githubusercontent.com/Silent-lua/Dev/main/assets/avatar-background.png"
-    local path = "avatar-tools/avatar-background.png"
+    local path = "avatar-tools/avatar-visual.png"
     pcall(function()
         if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder("avatar-tools") then
             makefolder("avatar-tools")
@@ -2577,7 +2577,7 @@ reopenBackground.Size = UDim2.fromScale(1, 1)
 reopenBackground.BackgroundTransparency = 1
 reopenBackground.Image = bgAsset or ""
 reopenBackground.ImageTransparency = bgAsset and 0.5 or 1
-reopenBackground.ScaleType = Enum.ScaleType.Crop
+reopenBackground.ScaleType = Enum.ScaleType.Fit
 reopenBackground.ZIndex = 50
 reopenBackground.Parent = floatingButtonFrame
 createGuiInstance("UICorner", { CornerRadius = UDim.new(0, 12) }, reopenBackground)

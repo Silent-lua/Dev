@@ -2342,8 +2342,8 @@ local function buildUI()
     state.gui = screen
 
     local function loadBackgroundAsset()
-        local url = "https://raw.githubusercontent.com/Silent-lua/Dev/main/assets/avatar-background.jpg"
-        local path = "avatar-tools/avatar-background.jpg"
+        local url = "https://raw.githubusercontent.com/Silent-lua/Dev/main/assets/avatar-background.png"
+        local path = "avatar-tools/avatar-visual.png"
         pcall(function()
             if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder("avatar-tools") then
                 makefolder("avatar-tools")
@@ -2392,8 +2392,8 @@ local function buildUI()
         Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1,
         Image = bgAsset or "",
-        ImageTransparency = bgAsset and 0.38 or 1,
-        ScaleType = Enum.ScaleType.Crop,
+        ImageTransparency = bgAsset and 0 or 1,
+        ScaleType = Enum.ScaleType.Fit,
         ZIndex = 1,
     }, main)
     round(backgroundImage, 16)
@@ -2403,14 +2403,14 @@ local function buildUI()
         if backgroundTween then backgroundTween:Cancel() end
         backgroundImage.Position = UDim2.fromScale(-0.018, -0.014)
         backgroundImage.Size = UDim2.fromScale(1.036, 1.028)
-        backgroundImage.ImageTransparency = 0.68
+        backgroundImage.ImageTransparency = 0.18
         backgroundTween = TweenService:Create(
             backgroundImage,
             TweenInfo.new(0.95, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
             {
                 Position = UDim2.fromScale(-0.004, -0.003),
                 Size = UDim2.fromScale(1.008, 1.006),
-                ImageTransparency = 0.38,
+                ImageTransparency = 0,
             }
         )
         backgroundTween:Play()
@@ -2419,7 +2419,7 @@ local function buildUI()
         Name = "ReferenceBackgroundOverlay",
         Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-        BackgroundTransparency = bgAsset and 0.58 or 1,
+        BackgroundTransparency = 1,
         BorderSizePixel = 0,
         ZIndex = 1,
     }, main)
@@ -2904,7 +2904,7 @@ local function buildUI()
         BackgroundTransparency = 1,
         Image = bgAsset or "",
         ImageTransparency = bgAsset and 0.5 or 1,
-        ScaleType = Enum.ScaleType.Crop,
+        ScaleType = Enum.ScaleType.Fit,
         ZIndex = 50,
     }, minimizedButton)
     round(reopenBackground, 12)
