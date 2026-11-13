@@ -2096,7 +2096,7 @@ removeOldGui(playerGui, "avatar-skins")
 loadConfiguration()
 task.spawn(getLocalPlayerEmoteData)
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "avatar-skins"
+screenGui.Name = "SilentHub-Skins"
 screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true
 screenGui.DisplayOrder = 2147483647
@@ -2162,20 +2162,36 @@ backgroundImage.Parent = mainFrame
 createGuiInstance("UICorner", { CornerRadius = UDim.new(0, 16) }, backgroundImage)
 local backgroundTween
 local function animateBackground()
-    if not bgAsset or not backgroundImage.Parent then return end
+    if not bgAsset or not backgroundImage.Parent or not mainFrame.Visible then return end
     if backgroundTween then backgroundTween:Cancel() end
-    backgroundImage.Position = UDim2.fromScale(-0.018, -0.014)
-    backgroundImage.Size = UDim2.fromScale(1.036, 1.028)
-    backgroundImage.ImageTransparency = 0.18
+    backgroundImage.Position = UDim2.fromScale(-0.022, -0.018)
+    backgroundImage.Size = UDim2.fromScale(1.044, 1.036)
+    backgroundImage.Rotation = -0.55
+    backgroundImage.ImageTransparency = 0.22
     backgroundTween = TweenService:Create(
         backgroundImage,
-        TweenInfo.new(0.95, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+        TweenInfo.new(0.9, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
         {
             Position = UDim2.fromScale(-0.004, -0.003),
             Size = UDim2.fromScale(1.008, 1.006),
+            Rotation = 0,
             ImageTransparency = 0,
         }
     )
+    backgroundTween.Completed:Connect(function(playbackState)
+        if playbackState ~= Enum.PlaybackState.Completed or not backgroundImage.Parent or not mainFrame.Visible then return end
+        backgroundTween = TweenService:Create(
+            backgroundImage,
+            TweenInfo.new(5.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+            {
+                Position = UDim2.fromScale(0.006, 0.005),
+                Size = UDim2.fromScale(1.022, 1.018),
+                Rotation = 0.38,
+                ImageTransparency = 0.06,
+            }
+        )
+        backgroundTween:Play()
+    end)
     backgroundTween:Play()
 end
 createGuiInstance("Frame", {
@@ -2312,7 +2328,7 @@ createGuiInstance("TextLabel", {
     Position = UDim2.fromOffset(19, 32),
     Size = UDim2.fromOffset(250, 12),
     Font = Enum.Font.Gotham,
-    Text = "𝑩𝒚𝑺𝒊𝒍𝒆𝒏𝒕 script: 𝔖𝔦𝔩𝔢𝔫𝔱ℌ𝔲𝔟",
+    Text = "Skins",
     TextSize = 8,
     TextColor3 = COLORS.Faint,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -2656,6 +2672,7 @@ local function initializeFloatingPosition()
 end
 
 local function hideWindow()
+    if backgroundTween then backgroundTween:Cancel(); backgroundTween = nil end
     keepFrameInsideViewport()
     initializeFloatingPosition()
     isWindowMinimized = true
@@ -2685,6 +2702,7 @@ local function setWindowMinimized(visible)
 end
 
 local function closePanelForSwitch()
+    if backgroundTween then backgroundTween:Cancel(); backgroundTween = nil end
     floatingButtonDragState = nil
     mainWindowDragState = nil
     mainFrame.Visible = false
@@ -3791,6 +3809,8 @@ end)
 screenGui.Enabled = false
 
 local skinApi = {
+    Name = "SilentHub",
+    Description = "Skins",
     gui = screenGui,
     setEnabled = function(enabled)
         if not screenGui.Parent then return false end
@@ -3802,6 +3822,7 @@ local skinApi = {
             floatingButtonFrame.Visible = true
             if connectDragConnections then connectDragConnections() end
         else
+            if backgroundTween then backgroundTween:Cancel(); backgroundTween = nil end
             if disconnectDragConnections then disconnectDragConnections() end
             screenGui.Enabled = false
             mainFrame.Visible = false

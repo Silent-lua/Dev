@@ -20,7 +20,7 @@ local skins
 local accessories
 
 local skinsOk, skinsResult = pcall(function()
-    return loadModule("AvatarSkins.lua")
+    return loadModule("SilentHub-Skins.lua")
 end)
 
 if not skinsOk then
@@ -30,7 +30,7 @@ end
 skins = skinsResult
 
 local accessoriesOk, accessoriesResult = pcall(function()
-    return loadModule("AvatarAccessories.lua")
+    return loadModule("SilentHub-Accesorios.lua")
 end)
 
 if not accessoriesOk then

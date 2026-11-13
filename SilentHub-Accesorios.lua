@@ -25,7 +25,7 @@ local function isSkinRendererActive()
     return avatarBridge.skin.active == true or avatarBridge.skin.pending == true
 end
 
-local GUI_NAME = "avatar-accessories"
+local GUI_NAME = "SilentHub-Accesorios"
 local HEADLESS_CLASSIC_HEAD_ID = 134082579
 local HEADLESS_DYNAMIC_HEAD_ID = 15093053680
 local KORBLOX_DEATHSPEAKER_RIGHT_LEG_ID = 139607718
@@ -2397,22 +2397,38 @@ local function buildUI()
         ZIndex = 1,
     }, main)
     round(backgroundImage, 16)
-    local backgroundTween
+local backgroundTween
     local function animateBackground()
-        if not bgAsset or not backgroundImage.Parent then return end
+        if not bgAsset or not backgroundImage.Parent or not main.Visible then return end
         if backgroundTween then backgroundTween:Cancel() end
-        backgroundImage.Position = UDim2.fromScale(-0.018, -0.014)
-        backgroundImage.Size = UDim2.fromScale(1.036, 1.028)
+        backgroundImage.Position = UDim2.fromScale(-0.022, -0.018)
+        backgroundImage.Size = UDim2.fromScale(1.044, 1.036)
+        backgroundImage.Rotation = -0.55
         backgroundImage.ImageTransparency = 0.18
         backgroundTween = TweenService:Create(
             backgroundImage,
-            TweenInfo.new(0.95, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+            TweenInfo.new(0.9, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
             {
                 Position = UDim2.fromScale(-0.004, -0.003),
                 Size = UDim2.fromScale(1.008, 1.006),
+                Rotation = 0,
                 ImageTransparency = 0,
             }
         )
+        backgroundTween.Completed:Connect(function(playbackState)
+            if playbackState ~= Enum.PlaybackState.Completed or not backgroundImage.Parent or not main.Visible then return end
+            backgroundTween = TweenService:Create(
+                backgroundImage,
+                TweenInfo.new(5.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+                {
+                    Position = UDim2.fromScale(0.006, 0.005),
+                    Size = UDim2.fromScale(1.022, 1.018),
+                    Rotation = 0.38,
+                    ImageTransparency = 0.06,
+                }
+            )
+            backgroundTween:Play()
+        end)
         backgroundTween:Play()
     end
     local mainBackgroundOverlay = create("Frame", {
@@ -2555,7 +2571,7 @@ local function buildUI()
         Size = UDim2.fromOffset(250, 12),
         BackgroundTransparency = 1,
         Font = Enum.Font.Gotham,
-        Text = "𝑩𝒚𝑺𝒊𝒍𝒆𝒏𝒕 script: 𝔖𝔦𝔩𝔢𝔫𝔱ℌ𝔲𝔟",
+        Text = "Accesorios",
         TextSize = 8,
         TextColor3 = COLORS.Muted,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -3975,6 +3991,7 @@ local function buildUI()
     local mainDrag = nil
 
     local function hideWindow()
+        if backgroundTween then backgroundTween:Cancel(); backgroundTween = nil end
         keepMainInsideViewport()
         initializeReopenPosition()
         main.Visible = false
@@ -3985,6 +4002,7 @@ local function buildUI()
     end
 
     local function closePanelForSwitch()
+        if backgroundTween then backgroundTween:Cancel(); backgroundTween = nil end
         reopenDrag = nil
         mainDrag = nil
         main.Visible = false
@@ -4393,6 +4411,8 @@ if state.gui then
 end
 
 accessoryApi = {
+    Name = "SilentHub",
+    Description = "Accesorios",
     gui = state.gui,
     State = state,
     Presets = PRESETS,
@@ -4407,6 +4427,7 @@ accessoryApi = {
             if state.reopen then state.reopen.Visible = true end
             if state.connectDragConnections then state.connectDragConnections() end
         else
+            if backgroundTween then backgroundTween:Cancel(); backgroundTween = nil end
             if state.disconnectDragConnections then state.disconnectDragConnections() end
             state.gui.Enabled = false
             if state.main then state.main.Visible = false end
