@@ -4001,7 +4001,7 @@ local function buildUI()
         screen.Enabled = true
         main.Visible = true
         animateBackground()
-        minimizedButton.Visible = true
+        minimizedButton.Visible = false
         setMainCenter(mainCenter)
         if state.connectDragConnections then state.connectDragConnections() end
         updateScale()
