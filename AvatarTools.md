@@ -32,7 +32,7 @@ AvatarTools.Cleanup()
 
 - **On:** reproduce las animaciones de la skin en un rig visual local, dentro de la cámara del cliente. El `Animator` se crea en ese rig local y el módulo no reemplaza ni modifica el `Animate` del personaje real.
 - **Off:** detiene las pistas locales y vuelve a seguir la pose producida por las animaciones originales del personaje.
-- Los demás jugadores siguen viendo el personaje real con sus animaciones normales. El rig cosmético y las animaciones `On` solo se muestran en el cliente local.
+- Los emotes de la skin también se reproducen sobre ese rig local mientras la skin está aplicada. Los demás jugadores siguen viendo el personaje real con sus animaciones normales. El rig cosmético, las animaciones `On` y los emotes de la skin solo se muestran en el cliente local.
 
 La [documentación oficial de Roblox sobre `Animator`](https://create.roblox.com/docs/reference/engine/classes/Animator) indica que un `Animator` creado localmente no replica sus `AnimationTrack` al servidor. Este módulo utiliza ese comportamiento sobre un modelo visual separado del `Player.Character`.
 
