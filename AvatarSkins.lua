@@ -2169,7 +2169,7 @@ createGuiInstance("Frame", {
     Name = "ReferenceBackgroundOverlay",
     Size = UDim2.fromScale(1, 1),
     BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-    BackgroundTransparency = bgAsset and 0.88 or 1,
+    BackgroundTransparency = 1,
     BorderSizePixel = 0,
     ZIndex = 1,
 }, mainFrame)
