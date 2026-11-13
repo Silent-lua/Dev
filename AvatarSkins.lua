@@ -1,3 +1,4 @@
+local skinFunctions = {}
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
@@ -2109,7 +2110,7 @@ end
 
 local function loadBackgroundAsset()
     local url = "https://raw.githubusercontent.com/Silent-lua/Dev/main/assets/avatar-background.png"
-    local path = "avatar-tools/avatar-visual.png"
+    local path = "avatar-tools/avatar-background.png"
     pcall(function()
         if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder("avatar-tools") then
             makefolder("avatar-tools")
@@ -2577,7 +2578,7 @@ reopenBackground.Size = UDim2.fromScale(1, 1)
 reopenBackground.BackgroundTransparency = 1
 reopenBackground.Image = bgAsset or ""
 reopenBackground.ImageTransparency = bgAsset and 0.5 or 1
-reopenBackground.ScaleType = Enum.ScaleType.Fit
+reopenBackground.ScaleType = Enum.ScaleType.Crop
 reopenBackground.ZIndex = 50
 reopenBackground.Parent = floatingButtonFrame
 createGuiInstance("UICorner", { CornerRadius = UDim.new(0, 12) }, reopenBackground)
@@ -2899,7 +2900,7 @@ createGuiInstance("TextButton", {
     closeConfirmationOverlay.Visible = false
 end)
 
-local function preloadSelectedPlayerAnimations()
+skinFunctions.preloadSelectedPlayerAnimations = function()
     if not skinState.userId then
         return
     end
@@ -2916,7 +2917,7 @@ end
 
 local findFavoriteIndex = nil
 
-local function updateFavoriteButton()
+skinFunctions.updateFavoriteButton = function()
     local isFavorite = skinState.userId and findFavoriteIndex(skinState.userId) ~= nil or false
     favoriteButton.Visible = skinState.userId ~= nil
     favoriteButton.Text = isFavorite and "★" or "☆"
@@ -2924,8 +2925,8 @@ local function updateFavoriteButton()
     favoriteButton.BackgroundColor3 = isFavorite and Color3.fromRGB(49, 42, 25) or COLORS.Background
 end
 
-local function updateSelectedPlayerCard()
-    updateFavoriteButton()
+skinFunctions.updateSelectedPlayerCard = function()
+    skinFunctions.updateFavoriteButton()
 
     if not skinState.userId then
         selectedPlayerNameLabel.Text = "Selecciona un jugador"
@@ -2939,12 +2940,12 @@ local function updateSelectedPlayerCard()
     selectedPlayerUsernameLabel.Text = skinState.usuario and "@" .. skinState.usuario or ("ID " .. tostring(skinState.userId))
     skinStatusLabel.Text = ""
     avatarPreviewImage.Image = ("rbxthumb://type=Avatar&id=%d&w=352&h=352"):format(skinState.userId)
-    preloadSelectedPlayerAnimations()
+    skinFunctions.preloadSelectedPlayerAnimations()
 end
 
 local refreshPlayerList = nil
 
-local function updateCachedUserInfo(userId)
+skinFunctions.updateCachedUserInfo = function(userId)
     local displayName, username = getUserNames(userId)
     if not username then
         return false
@@ -2969,7 +2970,7 @@ local function updateCachedUserInfo(userId)
     return hasChanged
 end
 
-local function selectPlayer(targetUserId)
+skinFunctions.selectPlayer = function(targetUserId)
     local userId = tonumber(targetUserId)
     local cachedUserInfo = userInfoCache[userId]
     skinState.userId = userId
@@ -2985,14 +2986,14 @@ local function selectPlayer(targetUserId)
         end
     end
 
-    updateSelectedPlayerCard()
+    skinFunctions.updateSelectedPlayerCard()
     statusTextProxy.Text = ""
     saveConfiguration()
     refreshPlayerList()
 
     task.spawn(function()
-        if updateCachedUserInfo(userId) and skinState.userId == userId then
-            updateSelectedPlayerCard()
+        if skinFunctions.updateCachedUserInfo(userId) and skinState.userId == userId then
+            skinFunctions.updateSelectedPlayerCard()
             saveConfiguration()
             refreshPlayerList()
         end
@@ -3009,7 +3010,7 @@ local function selectPlayer(targetUserId)
     end)
 end
 
-local function createPlayerListItem(displayName, username, layoutOrder, onActivated, isSelected)
+skinFunctions.createPlayerListItem = function(displayName, username, layoutOrder, onActivated, isSelected)
     local playerListItemButton = createGuiInstance("TextButton", {
         Size = UDim2.new(1, -6, 0, 34),
         BackgroundColor3 = isSelected and COLORS.OnFill or COLORS.Surface,
@@ -3109,8 +3110,8 @@ refreshPlayerList = function()
             seen[userId] = true
             favoriteCount += 1
             order += 1
-            createPlayerListItem(favorito.nombre, favorito.usuario and "@" .. favorito.usuario or ("ID " .. tostring(userId)), order, function()
-                selectPlayer(userId)
+            skinFunctions.createPlayerListItem(favorito.nombre, favorito.usuario and "@" .. favorito.usuario or ("ID " .. tostring(userId)), order, function()
+                skinFunctions.selectPlayer(userId)
             end, skinState.userId == userId)
         end
     end
@@ -3132,8 +3133,8 @@ refreshPlayerList = function()
             order += 1
             local displayName = player.DisplayName
             local username = player.Name
-            createPlayerListItem(displayName, "@" .. username, order, function()
-                selectPlayer(userId)
+            skinFunctions.createPlayerListItem(displayName, "@" .. username, order, function()
+                skinFunctions.selectPlayer(userId)
             end, skinState.userId == userId)
         end
     end
@@ -3151,7 +3152,7 @@ local refreshAccessoryWhenIdle = false
 local characterRebuildPending = false
 local characterRebuildGeneration = 0
 
-local function createSkinModel(userId, rigName)
+skinFunctions.createSkinModel = function(userId, rigName)
     local rigName = rigName == "R6" and "R6" or "R15"
     local templateKey = getSkinTemplateKey(userId, rigName)
     local baseDescription = getUserHumanoidDescription(userId)
@@ -3195,9 +3196,9 @@ local function createSkinModel(userId, rigName)
     return baseDescription, model
 end
 
-local function applySkinVisualModel(character, userId, requestedRig, requestGeneration)
+skinFunctions.applySkinVisualModel = function(character, userId, requestedRig, requestGeneration)
     local rig = requestedRig or skinState.rig
-    local baseDescription, visualModel = createSkinModel(userId, rig)
+    local baseDescription, visualModel = skinFunctions.createSkinModel(userId, rig)
     if not baseDescription or not visualModel then
         if visualModel then pcall(function() visualModel:Destroy() end) end
         return nil
@@ -3255,7 +3256,7 @@ local function applySkinVisualModel(character, userId, requestedRig, requestGene
     return result
 end
 
-local function applySkin(targetUserId, targetRig, fromRespawn)
+skinFunctions.applySkin = function(targetUserId, targetRig, fromRespawn)
     local userId = tonumber(targetUserId) or tonumber(skinState.userId)
     local rig = (targetRig == "R6" or targetRig == "R15") and targetRig or skinState.rig
     if not userId then return false end
@@ -3294,7 +3295,7 @@ local function applySkin(targetUserId, targetRig, fromRespawn)
             local result = nil
 
             if character and currentUserId then
-                result = applySkinVisualModel(character, currentUserId, currentRig, requestGeneration)
+                result = skinFunctions.applySkinVisualModel(character, currentUserId, currentRig, requestGeneration)
             end
 
             if requestGeneration == applicationGeneration then
@@ -3353,7 +3354,7 @@ local function applySkin(targetUserId, targetRig, fromRespawn)
     return true
 end
 
-local function removeSkin()
+skinFunctions.removeSkin = function()
     applicationGeneration += 1
     characterRebuildGeneration += 1
     characterRebuildPending = false
@@ -3418,13 +3419,13 @@ avatarBridge.skin.refresh = function()
         or (avatarBridge.skin.active and avatarBridge.skin.rig)
         or skinState.rig
     if not tonumber(userId) then return false end
-    return applySkin(tonumber(userId), rig)
+    return skinFunctions.applySkin(tonumber(userId), rig)
 end
 
-applySkinButton.Activated:Connect(applySkin)
-removeSkinButton.Activated:Connect(removeSkin)
+applySkinButton.Activated:Connect(skinFunctions.applySkin)
+removeSkinButton.Activated:Connect(skinFunctions.removeSkin)
 
-local function setRigType(rig)
+skinFunctions.setRigType = function(rig)
     if skinState.rig == rig then
         return
     end
@@ -3434,16 +3435,16 @@ local function setRigType(rig)
 
     if (skinState.aplicado or isApplyingSkin) and getLocalCharacter() then
         skinState.userId = skinState.userId or skinState.aplicado
-        applySkin()
+        skinFunctions.applySkin()
     end
 end
 
 r15Button.Activated:Connect(function()
-    setRigType("R15")
+    skinFunctions.setRigType("R15")
 end)
 
 r6Button.Activated:Connect(function()
-    setRigType("R6")
+    skinFunctions.setRigType("R6")
 end)
 
 animationToggleButton.Activated:Connect(function()
@@ -3484,24 +3485,24 @@ favoriteButton.Activated:Connect(function()
     end
 
     saveConfiguration()
-    updateFavoriteButton()
+    skinFunctions.updateFavoriteButton()
     refreshPlayerList()
 end)
 
-local function searchPlayer()
+skinFunctions.searchPlayer = function()
     local searchText = playerSearchBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
     if searchText == "" then
         return
     end
     local targetUserId = tonumber(searchText)
     if targetUserId then
-        selectPlayer(targetUserId)
+        skinFunctions.selectPlayer(targetUserId)
         return
     end
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player.Name:lower() == searchText:lower() or player.DisplayName:lower() == searchText:lower() then
-            selectPlayer(player.UserId)
+            skinFunctions.selectPlayer(player.UserId)
             return
         end
     end
@@ -3510,18 +3511,18 @@ local function searchPlayer()
         local ok, result = pcall(Players.GetUserIdFromNameAsync, Players, searchText)
 
         if ok and result then
-            selectPlayer(result)
+            skinFunctions.selectPlayer(result)
         else
             statusTextProxy.Text = "Fallo"
         end
     end)
 end
 
-searchButton.Activated:Connect(searchPlayer)
+searchButton.Activated:Connect(skinFunctions.searchPlayer)
 
 playerSearchBox.FocusLost:Connect(function(enterPressed)
     if enterPressed then
-        searchPlayer()
+        skinFunctions.searchPlayer()
     end
 end)
 
@@ -3530,7 +3531,7 @@ local characterDeathConnection = nil
 local characterHealthConnection = nil
 local characterAppearanceConnection = nil
 
-local function disconnectCharacterLifecycleConnections()
+skinFunctions.disconnectCharacterLifecycleConnections = function()
     if characterDeathConnection then
         pcall(function() characterDeathConnection:Disconnect() end)
         characterDeathConnection = nil
@@ -3553,7 +3554,7 @@ table.insert(lifecycleConnections, Players.PlayerRemoving:Connect(function()
 end))
 
 table.insert(lifecycleConnections, localPlayer.CharacterRemoving:Connect(function(character)
-    disconnectCharacterLifecycleConnections()
+    skinFunctions.disconnectCharacterLifecycleConnections()
     applicationGeneration += 1
     characterRebuildGeneration += 1
     pendingApply = false
@@ -3572,7 +3573,7 @@ table.insert(lifecycleConnections, localPlayer.CharacterRemoving:Connect(functio
 end))
 
 table.insert(lifecycleConnections, localPlayer.CharacterAdded:Connect(function(character)
-    disconnectCharacterLifecycleConnections()
+    skinFunctions.disconnectCharacterLifecycleConnections()
     stopCurrentEmote()
     destroySkinVisuals()
     applicationGeneration += 1
@@ -3652,7 +3653,7 @@ table.insert(lifecycleConnections, localPlayer.CharacterAdded:Connect(function(c
             end
             didDie = false
             characterRebuildPending = false
-            applySkin(savedUserId, skinState.rig, true)
+            skinFunctions.applySkin(savedUserId, skinState.rig, true)
         end)
 
         local appearanceSignalOk, appearanceSignal = pcall(function()
@@ -3673,14 +3674,14 @@ table.insert(lifecycleConnections, localPlayer.CharacterAdded:Connect(function(c
                     appearanceRefreshQueued = false
                     if character == localPlayer.Character and tonumber(skinState.aplicado) == savedUserId
                         and not isApplyingSkin and not avatarBridge.skin.pending then
-                        applySkin(savedUserId, skinState.rig, true)
+                        skinFunctions.applySkin(savedUserId, skinState.rig, true)
                     end
                 end)
             end)
         end
 
         if skinState.aplicado and getLocalCharacter() == character and humanoid.Health > 0 then
-            applySkin(appliedUserId, skinState.rig, true)
+            skinFunctions.applySkin(appliedUserId, skinState.rig, true)
         elseif skinState.aplicado then
             characterRebuildPending = true
             avatarBridge.skin.pending = true
@@ -3700,7 +3701,7 @@ end))
 
 local currentCameraViewportConnection = nil
 
-local function connectCurrentCameraViewport()
+skinFunctions.connectCurrentCameraViewport = function()
     if currentCameraViewportConnection then
         currentCameraViewportConnection:Disconnect()
         for index = #lifecycleConnections, 1, -1 do
@@ -3730,9 +3731,9 @@ local function connectCurrentCameraViewport()
     end
 end
 
-connectCurrentCameraViewport()
+skinFunctions.connectCurrentCameraViewport()
 table.insert(lifecycleConnections, Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-    connectCurrentCameraViewport()
+    skinFunctions.connectCurrentCameraViewport()
     local currentCamera = Workspace.CurrentCamera
     if currentCamera and visualModelState.model then
         local visualFolder = getSkinVisualFolder()
@@ -3765,8 +3766,8 @@ confirmCloseButton.Activated:Connect(function()
     if avatarBridge.uiPanels.activePanel == "skins" then
         avatarBridge.uiPanels.activePanel = "none"
     end
-    disconnectCharacterLifecycleConnections()
-    removeSkin()
+    skinFunctions.disconnectCharacterLifecycleConnections()
+    skinFunctions.removeSkin()
     if avatarBridge.skin.owner == skinBridgeToken then
         avatarBridge.skin.owner = nil
         avatarBridge.skin.getBaseDescription = nil
@@ -3817,9 +3818,9 @@ local skinApi = {
         showWindow()
         return true
     end,
-    aplicar = applySkin,
-    quitar = removeSkin,
-    elegir = selectPlayer,
+    aplicar = skinFunctions.applySkin,
+    quitar = skinFunctions.removeSkin,
+    elegir = skinFunctions.selectPlayer,
     emote = playEmote,
     pararEmote = stopCurrentEmote,
     destroy = function()
@@ -3830,8 +3831,8 @@ local skinApi = {
         if avatarBridge.uiPanels.activePanel == "skins" then
             avatarBridge.uiPanels.activePanel = "none"
         end
-        disconnectCharacterLifecycleConnections()
-        removeSkin()
+        skinFunctions.disconnectCharacterLifecycleConnections()
+        skinFunctions.removeSkin()
         if avatarBridge.skin.owner == skinBridgeToken then
             avatarBridge.skin.owner = nil
             avatarBridge.skin.getBaseDescription = nil
@@ -3868,23 +3869,23 @@ local skinApi = {
     end,
 }
 updateSkinControls()
-updateSelectedPlayerCard()
+skinFunctions.updateSelectedPlayerCard()
 refreshPlayerList()
 
 task.spawn(function()
     local favoriteInfoChanged = false
 
     for _, favorito in ipairs(skinState.favoritos) do
-        favoriteInfoChanged = updateCachedUserInfo(favorito.userId) or favoriteInfoChanged
+        favoriteInfoChanged = skinFunctions.updateCachedUserInfo(favorito.userId) or favoriteInfoChanged
     end
 
     if skinState.userId then
-        favoriteInfoChanged = updateCachedUserInfo(skinState.userId) or favoriteInfoChanged
+        favoriteInfoChanged = skinFunctions.updateCachedUserInfo(skinState.userId) or favoriteInfoChanged
     end
 
     if favoriteInfoChanged then
         saveConfiguration()
-        updateSelectedPlayerCard()
+        skinFunctions.updateSelectedPlayerCard()
         refreshPlayerList()
     end
 end)
