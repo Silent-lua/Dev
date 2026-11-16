@@ -5008,7 +5008,7 @@ end
 
 local function restoreOpenButtonVisuals()
     if openButtonDescendantConnection then
-        openButtonDescendantConnection:Disconnect()
+        pcall(function() openButtonDescendantConnection:Disconnect() end)
         openButtonDescendantConnection = nil
     end
 
