@@ -6064,14 +6064,16 @@ SourceZones.UI.Builders.BuildCombatUI = function()
         local detectionSlider
 
         local configPersistence = SourceZones.Configuration.Persistence
-        local detectionConfigVersion = tonumber(configPersistence.getPersistedValue({
+        local storedDetectionConfigVersion = configPersistence.getPersistedValue({
             flag = "Silent_EnemyDetectionProfileVersion",
-        }, 1)) or 1
+        }, 1)
+        local detectionConfigVersion = tonumber(storedDetectionConfigVersion) or 1
 
         if detectionConfigVersion < 2 then
-            local savedLevel = tonumber(configPersistence.getPersistedValue({
+            local storedDetectionLevel = configPersistence.getPersistedValue({
                 flag = "Silent_EnemyDetectionLevel",
-            }, nil))
+            }, nil)
+            local savedLevel = tonumber(storedDetectionLevel)
 
             if savedLevel then
                 savedLevel = math.clamp(math.floor(savedLevel + 0.5), 1, 5)
