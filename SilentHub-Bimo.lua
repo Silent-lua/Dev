@@ -5096,6 +5096,15 @@ function Window:SetFloatingButtonHidden(hidden)
     return true
 end
 
+local floatingButtonHiddenSetter = function(hidden)
+    if type(Window) ~= "table" or type(Window.SetFloatingButtonHidden) ~= "function" then
+        return false, "El controlador de Ocultar Botón no está disponible."
+    end
+    return Window:SetFloatingButtonHidden(hidden)
+end
+
+getgenv().SilentHubSetFloatingButtonHidden = floatingButtonHiddenSetter
+
 function Window:Unload()
     if self._unloaded then return end
     self._unloaded = true
@@ -5103,6 +5112,11 @@ function Window:Unload()
         pcall(flushConfigSave)
     end
     pcall(function() self:SetFloatingButtonHidden(false) end)
+    pcall(function()
+        if getgenv().SilentHubSetFloatingButtonHidden == floatingButtonHiddenSetter then
+            getgenv().SilentHubSetFloatingButtonHidden = nil
+        end
+    end)
     pcall(AvatarIntegration.Cleanup)
     if self._native and type(self._native.Destroy) == "function" then
         local destroyOk, destroyError = pcall(function()
@@ -5973,13 +5987,34 @@ SourceZones.UI.Builders.BuildConfigurationUI = function()
             flag = "Silent_HideInterface",
             value = false,
             callback = function(v)
-                local applied, hideError = Window:SetFloatingButtonHidden(v == true)
+                local setter
+                pcall(function()
+                    setter = getgenv().SilentHubSetFloatingButtonHidden
+                end)
+
+                local applied, hideError = false, "El controlador de Ocultar Botón no está disponible."
+                if type(setter) == "function" then
+                    local callOk, callResult, callError = pcall(setter, v == true)
+                    if callOk then
+                        applied = callResult == true
+                        hideError = callError
+                    else
+                        hideError = callResult
+                    end
+                end
+
                 if not applied then
-                    Window:Toast({
-                        title = "Interface",
-                        subtitle = tostring(hideError or "No se pudo acceder al botón flotante de WindUI."),
-                        duration = 4,
-                    })
+                    local activeWindow
+                    pcall(function()
+                        activeWindow = getgenv().SilentHubWindow
+                    end)
+                    if type(activeWindow) == "table" and type(activeWindow.Toast) == "function" then
+                        pcall(activeWindow.Toast, activeWindow, {
+                            title = "Interface",
+                            subtitle = tostring(hideError or "No se pudo acceder al botón flotante de WindUI."),
+                            duration = 4,
+                        })
+                    end
                 end
             end,
         })
