@@ -5610,6 +5610,8 @@ local function setAvatarModuleEnabled(moduleName, enabled)
     return true
 end
 
+AvatarIntegration.SetModuleEnabled = setAvatarModuleEnabled
+
 local SilentHubUIZones = {
     Layout = {}, Stats = {}, Toggles = {}, Dropdowns = {}, Sliders = {},
     ColorPickers = {}, Buttons = {}, Inputs = {}, Keybinds = {},
