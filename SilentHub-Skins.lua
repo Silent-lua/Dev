@@ -768,276 +768,257 @@ local visualModelState = {
     localAnimationConnection = nil,
     localAnimationRunningConnection = nil,
     localAnimationRunningSpeed = 0,
-}
-
-local localAnimationPriorities = {
-    idle = Enum.AnimationPriority.Idle,
-    walk = Enum.AnimationPriority.Movement,
-    run = Enum.AnimationPriority.Movement,
-    jump = Enum.AnimationPriority.Movement,
-    fall = Enum.AnimationPriority.Movement,
-    climb = Enum.AnimationPriority.Movement,
-    swim = Enum.AnimationPriority.Movement,
-}
-
-local localAnimationFallbacks = {
-    idle = { "idle" },
-    walk = { "walk", "run" },
-    run = { "run", "walk" },
-    jump = { "jump", "fall" },
-    fall = { "fall", "idle" },
-    climb = { "climb", "walk" },
-    swim = { "swim", "walk" },
+    toolVisualCleanup = nil,
 }
 
 local function stopLocalSkinAnimations()
-    if visualModelState.localAnimationRunningConnection then
-        visualModelState.localAnimationRunningConnection:Disconnect()
-        visualModelState.localAnimationRunningConnection = nil
-    end
-    visualModelState.localAnimationRunningSpeed = 0
-
     if visualModelState.localAnimationConnection then
         visualModelState.localAnimationConnection:Disconnect()
         visualModelState.localAnimationConnection = nil
     end
-
-    for _, tracks in pairs(visualModelState.localAnimationTracks) do
-        for _, track in ipairs(tracks) do
+    if visualModelState.localAnimationRunningConnection then
+        visualModelState.localAnimationRunningConnection:Disconnect()
+        visualModelState.localAnimationRunningConnection = nil
+    end
+    for sourceTrack, record in pairs(visualModelState.localAnimationTracks) do
+        if record.stoppedConnection then
+            pcall(function() record.stoppedConnection:Disconnect() end)
+        end
+        if record.targetTrack then
             pcall(function()
-                track:Stop(0.12)
-                track:Destroy()
+                record.targetTrack:Stop(0)
+                record.targetTrack:Destroy()
             end)
         end
+        if record.animation and record.animation.Parent then
+            pcall(function() record.animation:Destroy() end)
+        end
+        visualModelState.localAnimationTracks[sourceTrack] = nil
     end
-
     if visualModelState.localAnimationFolder then
-        pcall(function()
-            visualModelState.localAnimationFolder:Destroy()
-        end)
+        pcall(function() visualModelState.localAnimationFolder:Destroy() end)
     end
-
     visualModelState.localAnimationFolder = nil
     visualModelState.localAnimationTracks = {}
     visualModelState.localCurrentAnimation = nil
     visualModelState.localCurrentTrack = nil
     visualModelState.localAnimationPlaying = false
+    visualModelState.localAnimationRunningSpeed = 0
 end
 
-local function setLocalSkinAnimation(stateName)
-    if stateName == "fall"
-        and visualModelState.localCurrentAnimation == "jump"
-        and visualModelState.localCurrentTrack
-        and visualModelState.localCurrentTrack.IsPlaying then
-        visualModelState.localAnimationPlaying = true
-        return true
-    end
-
-    local requestedStates = localAnimationFallbacks[stateName]
-    if not requestedStates then
-        requestedStates = { stateName }
-    end
-
-    local selectedTrack = nil
-    local selectedState = nil
-
-    for _, candidateState in ipairs(requestedStates) do
-        local tracks = visualModelState.localAnimationTracks[candidateState]
-        if tracks and #tracks > 0 then
-            selectedState = candidateState
-            selectedTrack = tracks[math.random(1, #tracks)]
-            break
+local function resolveOfficialAnimationState(sourceTrack, animateScript)
+    local sourceAnimation = sourceTrack and sourceTrack.Animation
+    if not sourceAnimation then return nil end
+    local function normalize(name)
+        name = string.lower(tostring(name or "")):gsub("[%s_%-]", "")
+        if name:match("^swimidle") then return "swim" end
+        for stateName in pairs(animationScriptNames) do
+            if name == stateName or name:match("^" .. stateName .. "[%w]*$") then
+                return stateName
+            end
         end
+        return nil
     end
-
-    if not selectedTrack then
-        if visualModelState.localCurrentTrack then
-            pcall(function()
-                visualModelState.localCurrentTrack:Stop(0.12)
-            end)
-        end
-        visualModelState.localCurrentAnimation = nil
-        visualModelState.localCurrentTrack = nil
-        visualModelState.localAnimationPlaying = false
-        return false
+    local cursor = sourceAnimation
+    while cursor and cursor ~= animateScript do
+        local stateName = normalize(cursor.Name)
+        if stateName then return stateName end
+        cursor = cursor.Parent
     end
-
-    if visualModelState.localCurrentTrack == selectedTrack
-        and visualModelState.localCurrentAnimation == selectedState
-        and selectedTrack.IsPlaying then
-        visualModelState.localAnimationPlaying = true
-        return true
-    end
-
-    if visualModelState.localCurrentTrack then
-        pcall(function()
-            visualModelState.localCurrentTrack:Stop(0.12)
-        end)
-    end
-
-    local ok = pcall(function()
-        selectedTrack:Play(0.12, 1, 1)
-    end)
-
-    if not ok then
-        visualModelState.localCurrentAnimation = nil
-        visualModelState.localCurrentTrack = nil
-        visualModelState.localAnimationPlaying = false
-        return false
-    end
-
-    visualModelState.localCurrentAnimation = selectedState
-    visualModelState.localCurrentTrack = selectedTrack
-    visualModelState.localAnimationPlaying = true
-    return true
+    return normalize(sourceAnimation.Name)
 end
 
-local function getLocalSkinAnimationState()
-    local character = visualModelState.character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-
-    if not humanoid or humanoid.Health <= 0 then
-        return nil
+local function getSkinAnimationTemplate(stateName, sourceTrack)
+    local templates = copiedSkinAnimationData and copiedSkinAnimationData[stateName]
+    if type(templates) ~= "table" or #templates == 0 then return nil end
+    local sourceAnimation = sourceTrack and sourceTrack.Animation
+    local sourceName = sourceAnimation and string.lower(sourceAnimation.Name) or ""
+    local variant = tonumber(sourceName:match("(%d+)$"))
+    if variant and templates[variant] then return templates[variant] end
+    for _, template in ipairs(templates) do
+        if sourceName ~= "" and string.lower(template.Name) == sourceName then
+            return template
+        end
     end
-
-    local state = humanoid:GetState()
-
-    if state == Enum.HumanoidStateType.Swimming then
-        return "swim"
-    end
-
-    if state == Enum.HumanoidStateType.Climbing then
-        return "climb"
-    end
-
-    if state == Enum.HumanoidStateType.Jumping then
-        return "jump"
-    end
-
-    if state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.FallingDown then
-        return "fall"
-    end
-
-    if state == Enum.HumanoidStateType.Seated
-        or state == Enum.HumanoidStateType.PlatformStanding
-        or state == Enum.HumanoidStateType.Dead then
-        return nil
-    end
-
-    local velocity = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
-    local horizontalSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
-    local runningSpeed = math.max(
-        horizontalSpeed,
-        visualModelState.localAnimationRunningSpeed or 0
-    )
-    local moving = humanoid.MoveDirection.Magnitude > 0.05 or runningSpeed > 0.8
-
-    if humanoid.FloorMaterial == Enum.Material.Air then
-        return velocity.Y < -1 and "fall" or "jump"
-    end
-
-    if moving then
-        local runThreshold = math.max(6, humanoid.WalkSpeed * 0.9)
-        return runningSpeed >= runThreshold and "run" or "walk"
-    end
-
-    return "idle"
+    return templates[1]
 end
 
 local function applyCopiedSkinAnimations(character, enabled)
-    if not character or not character.Parent then
-        return false
-    end
-
+    if not character or not character.Parent then return false end
     if not enabled then
         stopLocalSkinAnimations()
         return true
     end
 
     local visualModel = visualModelState.model
-    local animator = visualModelState.localAnimator
-    if not (visualModel and visualModel.Parent and animator and type(copiedSkinAnimationData) == "table") then
+    local localAnimator = visualModelState.localAnimator
+    local sourceHumanoid = character:FindFirstChildOfClass("Humanoid")
+    local sourceAnimator = sourceHumanoid and sourceHumanoid:FindFirstChildOfClass("Animator")
+    if not (visualModel and visualModel.Parent and localAnimator and sourceAnimator) then
         return false
     end
 
-    stopLocalSkinAnimations()
+    local hasSkinAnimations = false
+    for _, animations in pairs(copiedSkinAnimationData or {}) do
+        if type(animations) == "table" and #animations > 0 then
+            hasSkinAnimations = true
+            break
+        end
+    end
+    if not hasSkinAnimations then return false end
 
+    stopLocalSkinAnimations()
     local animationFolder = Instance.new("Folder")
-    animationFolder.Name = "LocalSkinAnimations"
+    animationFolder.Name = "MirroredSkinAnimations"
     animationFolder.Parent = visualModel
     visualModelState.localAnimationFolder = animationFolder
 
-    local sourceHumanoid = character:FindFirstChildOfClass("Humanoid")
-    if not sourceHumanoid then
-        stopLocalSkinAnimations()
-        return false
-    end
-
-    visualModelState.localAnimationRunningConnection = sourceHumanoid.Running:Connect(function(speed)
-        visualModelState.localAnimationRunningSpeed = math.max(0, tonumber(speed) or 0)
-    end)
-
-    local loadedTrackCount = 0
-
-    for stateName, templates in pairs(copiedSkinAnimationData) do
-        local normalizedState = string.lower(tostring(stateName))
-        local priority = localAnimationPriorities[normalizedState]
-
-        if priority and type(templates) == "table" then
-            local stateTracks = {}
-
-            for _, template in ipairs(templates) do
-                if typeof(template) == "Instance" and template:IsA("Animation")
-                    and template.AnimationId ~= "" then
-                    local animation = template:Clone()
-                    animation.Parent = animationFolder
-
-                    local ok, track = pcall(function()
-                        return animator:LoadAnimation(animation)
-                    end)
-
-                    if ok and track then
-                        track.Priority = priority
-                        track.Looped = normalizedState ~= "jump"
-                        table.insert(stateTracks, track)
-                        loadedTrackCount += 1
-                    else
-                        animation:Destroy()
-                    end
-                end
-            end
-
-            if #stateTracks > 0 then
-                visualModelState.localAnimationTracks[normalizedState] = stateTracks
-            end
+    local animateScript = character:FindFirstChild("Animate")
+    local function stopMirroredTrack(sourceTrack, record, fadeTime)
+        if not record or record.stopping then return end
+        record.stopping = true
+        if record.targetTrack and record.targetTrack.IsPlaying then
+            pcall(function() record.targetTrack:Stop(fadeTime or 0.1) end)
         end
+        task.delay(fadeTime or 0.12, function()
+            if visualModelState.localAnimationTracks[sourceTrack] == record then
+                visualModelState.localAnimationTracks[sourceTrack] = nil
+            end
+            if record.stoppedConnection then
+                pcall(function() record.stoppedConnection:Disconnect() end)
+            end
+            if record.targetTrack then
+                pcall(function() record.targetTrack:Destroy() end)
+            end
+            if record.animation and record.animation.Parent then
+                pcall(function() record.animation:Destroy() end)
+            end
+            visualModelState.localAnimationPlaying =
+                next(visualModelState.localAnimationTracks) ~= nil
+        end)
     end
 
-    if loadedTrackCount == 0 then
-        stopLocalSkinAnimations()
-        return false
+    local function mirrorTrack(sourceTrack)
+        if not sourceTrack or not sourceTrack.IsPlaying
+            or visualModelState.localAnimationTracks[sourceTrack] then
+            return false
+        end
+        local sourceAnimation = sourceTrack.Animation
+        if not sourceAnimation or sourceAnimation.AnimationId == "" then return false end
+
+        local stateName = resolveOfficialAnimationState(sourceTrack, animateScript)
+        local template = stateName and getSkinAnimationTemplate(stateName, sourceTrack) or sourceAnimation
+        if not template or not template:IsA("Animation") or template.AnimationId == "" then
+            return false
+        end
+
+        local animation = template:Clone()
+        animation.Parent = animationFolder
+        local ok, targetTrack = pcall(function()
+            return localAnimator:LoadAnimation(animation)
+        end)
+        if not ok or not targetTrack then
+            animation:Destroy()
+            return false
+        end
+
+        targetTrack.Priority = sourceTrack.Priority
+        targetTrack.Looped = sourceTrack.Looped
+        local weight = tonumber(sourceTrack.WeightTarget) or 1
+        if weight <= 0 then
+            weight = math.max(tonumber(sourceTrack.WeightCurrent) or 1, 0.01)
+        end
+        local speed = tonumber(sourceTrack.Speed) or 1
+        local record = {
+            targetTrack = targetTrack,
+            animation = animation,
+            stateName = stateName,
+            lastSpeed = speed,
+            lastWeight = weight,
+            phaseSynchronized = false,
+            stopping = false,
+        }
+        visualModelState.localAnimationTracks[sourceTrack] = record
+        visualModelState.localCurrentAnimation = stateName or "action"
+        visualModelState.localCurrentTrack = targetTrack
+        visualModelState.localAnimationPlaying = true
+
+        local playOk = pcall(function() targetTrack:Play(0.1, weight, speed) end)
+        if not playOk then
+            visualModelState.localAnimationTracks[sourceTrack] = nil
+            pcall(function() targetTrack:Destroy() end)
+            pcall(function() animation:Destroy() end)
+            visualModelState.localAnimationPlaying =
+                next(visualModelState.localAnimationTracks) ~= nil
+            return false
+        end
+
+        record.stoppedConnection = sourceTrack.Stopped:Connect(function()
+            stopMirroredTrack(sourceTrack, record, 0.1)
+        end)
+        return true
+    end
+
+    local sourceAnimationConnection = sourceAnimator.AnimationPlayed:Connect(mirrorTrack)
+    for _, sourceTrack in ipairs(sourceAnimator:GetPlayingAnimationTracks()) do
+        mirrorTrack(sourceTrack)
     end
 
     visualModelState.localAnimationConnection = RunService.Heartbeat:Connect(function()
-        if visualModelState.model ~= visualModel or not visualModel.Parent then
+        if visualModelState.model ~= visualModel
+            or not visualModel.Parent or not character.Parent then
             stopLocalSkinAnimations()
             return
         end
-
-        local requestedState = getLocalSkinAnimationState()
-        if requestedState then
-            setLocalSkinAnimation(requestedState)
-        else
-            setLocalSkinAnimation(nil)
+        for sourceTrack, record in pairs(visualModelState.localAnimationTracks) do
+            if not sourceTrack.IsPlaying then
+                stopMirroredTrack(sourceTrack, record, 0.1)
+            elseif record.targetTrack and record.targetTrack.IsPlaying then
+                local speed = tonumber(sourceTrack.Speed) or 1
+                if math.abs(speed - record.lastSpeed) > 0.01 then
+                    record.targetTrack:AdjustSpeed(speed)
+                    record.lastSpeed = speed
+                end
+                local weight = tonumber(sourceTrack.WeightTarget) or record.lastWeight
+                if weight > 0 and math.abs(weight - record.lastWeight) > 0.02 then
+                    record.targetTrack:AdjustWeight(weight, 0.1)
+                    record.lastWeight = weight
+                end
+                if record.targetTrack.Priority ~= sourceTrack.Priority then
+                    record.targetTrack.Priority = sourceTrack.Priority
+                end
+                if record.targetTrack.Looped ~= sourceTrack.Looped then
+                    record.targetTrack.Looped = sourceTrack.Looped
+                end
+                if not record.phaseSynchronized
+                    and sourceTrack.Length > 0 and record.targetTrack.Length > 0 then
+                    local phase = math.clamp(sourceTrack.TimePosition / sourceTrack.Length, 0, 1)
+                    pcall(function()
+                        record.targetTrack.TimePosition = phase * record.targetTrack.Length
+                    end)
+                    record.phaseSynchronized = true
+                end
+            end
         end
+        visualModelState.localAnimationPlaying =
+            next(visualModelState.localAnimationTracks) ~= nil
     end)
 
-    local initialState = getLocalSkinAnimationState()
-    if initialState then
-        setLocalSkinAnimation(initialState)
+    local hasMappedAnimations = false
+    for stateName in pairs(animationScriptNames) do
+        local stateAnimations = copiedSkinAnimationData[stateName]
+        if type(stateAnimations) == "table" and #stateAnimations > 0 then
+            hasMappedAnimations = true
+            break
+        end
+    end
+    if not hasMappedAnimations then
+        sourceAnimationConnection:Disconnect()
+        stopLocalSkinAnimations()
+        return false
     end
 
+    visualModelState.localAnimationRunningConnection = sourceAnimationConnection
     return true
 end
 
@@ -1564,8 +1545,164 @@ local function createNativeCameraTransparencyUpdater(character, visualModel)
     return update, descendantConnection, descendantRemovingConnection
 end
 
+local function startLocalToolVisuals(character, visualModel)
+    if not (character and character.Parent and visualModel and visualModel.Parent) then return nil end
+
+    local activeTool, activeClone, activeGrip, activeSourceGrip
+    local originalModifiers = {}
+
+    local function restoreOriginalTool()
+        for part, originalModifier in pairs(originalModifiers) do
+            if part and part.Parent then
+                pcall(function() part.LocalTransparencyModifier = originalModifier end)
+            end
+            originalModifiers[part] = nil
+        end
+    end
+
+    local function hideOriginalTool(tool)
+        if not tool or not tool.Parent then return end
+        for _, descendant in ipairs(tool:GetDescendants()) do
+            if descendant:IsA("BasePart") then
+                if originalModifiers[descendant] == nil then
+                    local ok, value = pcall(function() return descendant.LocalTransparencyModifier end)
+                    if ok then originalModifiers[descendant] = value end
+                end
+                pcall(function() descendant.LocalTransparencyModifier = 1 end)
+            end
+        end
+    end
+
+    local function destroyActiveTool()
+        restoreOriginalTool()
+        if activeClone then pcall(function() activeClone:Destroy() end) end
+        activeClone, activeGrip, activeSourceGrip, activeTool = nil, nil, nil, nil
+    end
+
+    local function findSourceGrip(tool)
+        local handle = tool and tool:FindFirstChild("Handle")
+        if not (handle and handle:IsA("BasePart")) then return nil end
+        for _, descendant in ipairs(character:GetDescendants()) do
+            if descendant:IsA("Motor6D")
+                and descendant.Part1 == handle
+                and descendant.Part0
+                and descendant.Part0:IsA("BasePart") then
+                return descendant
+            end
+        end
+        return nil
+    end
+
+    local function createLocalToolVisual(tool, sourceGrip)
+        if not (tool and tool.Parent == character and sourceGrip and sourceGrip.Parent) then
+            return false
+        end
+        local cloneOk, clonedTool = pcall(function() return tool:Clone() end)
+        if not cloneOk or not clonedTool then return false end
+
+        for _, descendant in ipairs(clonedTool:GetDescendants()) do
+            if descendant:IsA("BaseScript")
+                or descendant:IsA("RemoteEvent")
+                or descendant:IsA("RemoteFunction")
+                or descendant:IsA("BindableEvent")
+                or descendant:IsA("BindableFunction") then
+                pcall(function() descendant:Destroy() end)
+            elseif descendant:IsA("BasePart") then
+                pcall(function()
+                    descendant.Anchored = false
+                    descendant.CanCollide = false
+                    descendant.CanTouch = false
+                    descendant.CanQuery = false
+                    descendant.Massless = true
+                    descendant.LocalTransparencyModifier = 0
+                end)
+            end
+        end
+
+        local clonedHandle = clonedTool:FindFirstChild("Handle")
+        local sourceHand = sourceGrip.Part0
+        local targetHand = sourceHand and visualModel:FindFirstChild(sourceHand.Name, true)
+        if not (clonedHandle and clonedHandle:IsA("BasePart")
+            and targetHand and targetHand:IsA("BasePart")) then
+            pcall(function() clonedTool:Destroy() end)
+            return false
+        end
+
+        clonedTool.Name = "LocalSkinToolVisual"
+        pcall(function() clonedTool.Enabled = false end)
+        clonedTool.Parent = visualModel
+
+        local grip = Instance.new("Motor6D")
+        grip.Name = "LocalSkinGrip"
+        grip.Part0 = targetHand
+        grip.Part1 = clonedHandle
+        grip.C0 = sourceGrip.C0
+        grip.C1 = sourceGrip.C1
+        grip.Transform = sourceGrip.Transform
+        grip.Parent = targetHand
+
+        activeTool, activeClone, activeGrip, activeSourceGrip = tool, clonedTool, grip, sourceGrip
+        hideOriginalTool(tool)
+        return true
+    end
+
+    local function findEquippedTool()
+        for _, child in ipairs(character:GetChildren()) do
+            if child:IsA("Tool") then
+                local handle = child:FindFirstChild("Handle")
+                if handle and handle:IsA("BasePart") then return child end
+            end
+        end
+        return nil
+    end
+
+    local function update()
+        if not (character.Parent and visualModel.Parent) then
+            destroyActiveTool()
+            return
+        end
+        local currentTool = findEquippedTool()
+        if currentTool ~= activeTool then
+            destroyActiveTool()
+            activeTool = currentTool
+        end
+        if not currentTool then return end
+
+        local sourceGrip = findSourceGrip(currentTool)
+        if not activeClone then
+            if sourceGrip then
+                activeTool = currentTool
+                createLocalToolVisual(currentTool, sourceGrip)
+            end
+            return
+        end
+
+        if sourceGrip and activeGrip and activeGrip.Parent then
+            activeSourceGrip = sourceGrip
+            activeGrip.C0 = sourceGrip.C0
+            activeGrip.C1 = sourceGrip.C1
+            activeGrip.Transform = sourceGrip.Transform
+            hideOriginalTool(currentTool)
+        end
+    end
+
+    local connection = RunService.RenderStepped:Connect(update)
+    task.defer(update)
+    return function()
+        if connection then
+            pcall(function() connection:Disconnect() end)
+            connection = nil
+        end
+        destroyActiveTool()
+    end
+end
+
 local function destroySkinVisuals()
     stopLocalSkinAnimations()
+    if visualModelState.toolVisualCleanup then
+        pcall(visualModelState.toolVisualCleanup)
+        visualModelState.toolVisualCleanup = nil
+    end
     visualModelState.localAnimator = nil
 
     if visualModelState.renderConnection then
@@ -1755,6 +1892,7 @@ local function buildR15SkinVisual(character, visualModel)
     visualModelState.model = visualModel
     characterVisualStateRef.character = character
     jointMappingsVisualStateRef.jointMappings = jointMappings
+    visualModelState.toolVisualCleanup = startLocalToolVisuals(character, visualModel)
     setOriginalCharacterHidden(character, true)
 
     local updateCameraTransparency, cameraDescendantConnection, cameraDescendantRemovingConnection =
@@ -1907,12 +2045,15 @@ local function buildSkinVisual(character, visualModel)
                 end
             end)
         elseif descendant:IsA("BasePart") then
-            descendant.Anchored = true
+            local insideTool = descendant:FindFirstAncestorOfClass("Tool") ~= nil
+            descendant.Anchored = not insideTool
             descendant.CanCollide = false
             descendant.CanTouch = false
             descendant.CanQuery = false
             descendant.Massless = true
-            table.insert(visualParts, descendant)
+            if not insideTool then
+                table.insert(visualParts, descendant)
+            end
         end
     end)
 
@@ -1921,6 +2062,7 @@ local function buildSkinVisual(character, visualModel)
     visualModelState.model = visualModel
     characterVisualStateRef.character = character
     jointMappingsVisualStateRef.jointMappings = jointMappings
+    visualModelState.toolVisualCleanup = startLocalToolVisuals(character, visualModel)
     setOriginalCharacterHidden(character, true)
     local updateCameraTransparency, cameraDescendantConnection, cameraDescendantRemovingConnection =
         createNativeCameraTransparencyUpdater(character, visualModel)
