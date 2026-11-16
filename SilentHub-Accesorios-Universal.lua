@@ -91,6 +91,11 @@ if bridge.loading[MODULE_NAME] then
     error("[SilentHub] " .. MODULE_NAME .. " ya se está cargando.", 0)
 end
 bridge.loading[MODULE_NAME] = true
+pcall(bridge.notify, {
+    title = "SilentHub",
+    content = "Cargando Accesorios...",
+    duration = 3,
+})
 
 local api
 local function cleanupApi(moduleApi)
@@ -160,6 +165,11 @@ end)
 
 bridge.loading[MODULE_NAME] = nil
 if not runOk then
+    pcall(bridge.notify, {
+        title = "SilentHub · Error",
+        content = tostring(runResult),
+        duration = 6,
+    })
     if api then
         local cleanupOk = cleanupApi(api)
         if cleanupOk then
