@@ -876,9 +876,9 @@ local function applyCopiedSkinAnimations(character, enabled)
         if not record or record.stopping then return end
         record.stopping = true
         if record.targetTrack and record.targetTrack.IsPlaying then
-            pcall(function() record.targetTrack:Stop(fadeTime or 0.18) end)
+            pcall(function() record.targetTrack:Stop(0) end)
         end
-        task.delay(fadeTime or 0.18, function()
+        task.delay(0.02, function()
             if visualModelState.localAnimationTracks[sourceTrack] == record then
                 visualModelState.localAnimationTracks[sourceTrack] = nil
             end
@@ -929,9 +929,7 @@ local function applyCopiedSkinAnimations(character, enabled)
         end
 
         targetTrack.Priority = sourceTrack.Priority
-        local usingSkinAnimation = template ~= sourceAnimation
-        local targetLooped = sourceTrack.Looped or (stateName == "jump" and usingSkinAnimation)
-        targetTrack.Looped = targetLooped
+        targetTrack.Looped = sourceTrack.Looped
         local weight = tonumber(sourceTrack.WeightCurrent)
         if weight == nil or weight <= 0 then
             weight = math.max(tonumber(sourceTrack.WeightTarget) or 1, 0.01)
@@ -941,8 +939,6 @@ local function applyCopiedSkinAnimations(character, enabled)
             targetTrack = targetTrack,
             animation = animation,
             stateName = stateName,
-            usingSkinAnimation = usingSkinAnimation,
-            targetLooped = targetLooped,
             lastSpeed = speed,
             lastWeight = weight,
             phaseSynchronized = false,
@@ -953,7 +949,7 @@ local function applyCopiedSkinAnimations(character, enabled)
         visualModelState.localCurrentTrack = targetTrack
         visualModelState.localAnimationPlaying = true
 
-        local playOk = pcall(function() targetTrack:Play(0.18, weight, speed) end)
+        local playOk = pcall(function() targetTrack:Play(0, weight, speed) end)
         if not playOk then
             visualModelState.localAnimationTracks[sourceTrack] = nil
             pcall(function() targetTrack:Destroy() end)
@@ -974,7 +970,7 @@ local function applyCopiedSkinAnimations(character, enabled)
         mirrorTrack(sourceTrack)
     end
 
-    visualModelState.localAnimationConnection = RunService.Heartbeat:Connect(function()
+    visualModelState.localAnimationConnection = RunService.PreAnimation:Connect(function()
         if visualModelState.model ~= visualModel
             or not visualModel.Parent or not character.Parent then
             stopLocalSkinAnimations()
@@ -982,7 +978,7 @@ local function applyCopiedSkinAnimations(character, enabled)
         end
         for sourceTrack, record in pairs(visualModelState.localAnimationTracks) do
             if not sourceTrack.IsPlaying then
-                stopMirroredTrack(sourceTrack, record, 0.18)
+                stopMirroredTrack(sourceTrack, record, 0)
             elseif record.targetTrack and record.targetTrack.IsPlaying then
                 local speed = tonumber(sourceTrack.Speed) or 1
                 if math.abs(speed - record.lastSpeed) > 0.01 then
@@ -992,24 +988,26 @@ local function applyCopiedSkinAnimations(character, enabled)
                 local weight = tonumber(sourceTrack.WeightCurrent)
                     or tonumber(sourceTrack.WeightTarget)
                     or record.lastWeight
-                if math.abs(weight - record.lastWeight) > 0.01 then
-                    record.targetTrack:AdjustWeight(math.max(0, weight), 0.12)
+                if math.abs(weight - record.lastWeight) > 0.002 then
+                    record.targetTrack:AdjustWeight(math.max(0, weight), 0)
                     record.lastWeight = weight
                 end
                 if record.targetTrack.Priority ~= sourceTrack.Priority then
                     record.targetTrack.Priority = sourceTrack.Priority
                 end
-                local targetLooped = sourceTrack.Looped
-                    or (record.stateName == "jump" and record.usingSkinAnimation)
-                if record.targetTrack.Looped ~= targetLooped then
-                    record.targetTrack.Looped = targetLooped
-                    record.targetLooped = targetLooped
+                if record.targetTrack.Looped ~= sourceTrack.Looped then
+                    record.targetTrack.Looped = sourceTrack.Looped
                 end
                 if not record.phaseSynchronized
                     and sourceTrack.Length > 0 and record.targetTrack.Length > 0 then
-                    local phase = math.clamp(sourceTrack.TimePosition / sourceTrack.Length, 0, 1)
+                    local sourcePosition = math.max(0, sourceTrack.TimePosition)
+                    if record.targetTrack.Looped then
+                        sourcePosition %= record.targetTrack.Length
+                    else
+                        sourcePosition = math.min(sourcePosition, record.targetTrack.Length)
+                    end
                     pcall(function()
-                        record.targetTrack.TimePosition = phase * record.targetTrack.Length
+                        record.targetTrack.TimePosition = sourcePosition
                     end)
                     record.phaseSynchronized = true
                 end
@@ -1440,7 +1438,19 @@ local function createNativeCameraTransparencyUpdater(character, visualModel)
             if localPlayer.CameraMode == Enum.CameraMode.LockFirstPerson then
                 targetTransparency = 1
             else
-                local distance = (camera.Focus.Position - camera.CFrame.Position).Magnitude
+                local focusDistance = (camera.Focus.Position - camera.CFrame.Position).Magnitude
+                local sourceHead = character:FindFirstChild("Head")
+                    or character:FindFirstChild("HumanoidRootPart")
+                local distance = focusDistance
+
+                if sourceHead and sourceHead:IsA("BasePart") then
+                    local cameraToHead = (camera.CFrame.Position - sourceHead.Position).Magnitude
+                    local focusToHead = (camera.Focus.Position - sourceHead.Position).Magnitude
+                    if camera.CameraType == Enum.CameraType.Scriptable or focusToHead > 3 then
+                        distance = cameraToHead
+                    end
+                end
+
                 targetTransparency = distance < 2
                     and (1.0 - (distance - 0.5) / 1.5)
                     or 0

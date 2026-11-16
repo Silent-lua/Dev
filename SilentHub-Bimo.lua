@@ -153,7 +153,7 @@ local Silent = {
     State = {
         MatchActive = false, IsPlaying = false,
         Macro = { Active = false, KnifeThrowActive = false, EquipDelay = 0.01, ShootDelay = 0.01, Busy = false, Generation = 0, TouchInputs = {} },
-        Aim = { SilentAim = false, AutoShoot = false, TriggerBot = false, TriggerBotLegit = false, TriggerDetectionLevel = 2, TriggerDetectionInterval = 0.03, TriggerDetectionLastScanAt = 0, TriggerPistolBusy = false, TriggerPistolGeneration = 0, TriggerPistolRetryAt = 0, TriggerPistolWarnedReload = false, TriggerKnifeBusy = false, TriggerKnifeGeneration = 0, TriggerKnifeRetryAt = 0, TriggerLastKnifeTarget = nil, Mode = "FOV", TargetPart = "Cabeza", HitChance = 100, FovVisible = false, FovRadius = 100, ThrowMode = false },
+        Aim = { SilentAim = false, AutoShoot = false, TriggerBot = false, TriggerBotLegit = false, TriggerDetectionLevel = 3, TriggerDetectionInterval = 0.15, TriggerDetectionLastScanAt = 0, TriggerPistolBusy = false, TriggerPistolGeneration = 0, TriggerPistolRetryAt = 0, TriggerPistolWarnedReload = false, TriggerKnifeBusy = false, TriggerKnifeGeneration = 0, TriggerKnifeRetryAt = 0, TriggerLastKnifeTarget = nil, Mode = "FOV", TargetPart = "Cabeza", HitChance = 100, FovVisible = false, FovRadius = 100, ThrowMode = false },
         Vis = { HideName = false, ESP = false, Color = Color3.fromRGB(255, 0, 0), Glow = true, Name = false, Dist = false, Lines = false, Arrows = false },
         Gfx = { BoostFps = false, Low = false, SmartRender = false, RenderDist = 500 },
         UI = { ShowStats = false },
@@ -1734,6 +1734,10 @@ SourceZones.Shooting.Trigger.execPistolTriggerbot = function(targetPart, targetP
     if not humanoid or humanoid.Health <= 0 then return end
 
     local legitMode = aim.TriggerBotLegit == true
+    local weaponTransitionDelay = math.max(
+        0.05,
+        math.clamp(tonumber(aim.TriggerDetectionInterval) or 0.15, 0.025, 0.25)
+    )
     local currentTool = character:FindFirstChildOfClass("Tool")
     local pistol
     local backpack = player:FindFirstChildOfClass("Backpack") or player:FindFirstChild("Backpack")
@@ -1783,6 +1787,13 @@ SourceZones.Shooting.Trigger.execPistolTriggerbot = function(targetPart, targetP
             if not legitMode and pistol.Parent ~= character then
                 backpack = player:FindFirstChildOfClass("Backpack") or player:FindFirstChild("Backpack")
                 if pistol.Parent ~= backpack or character:FindFirstChildOfClass("Tool") then return end
+                task.wait(weaponTransitionDelay)
+                if not triggerContextValid("Pistol", token, character, humanoid) then return end
+                freshPart, freshPlayer = TriggerAim.GetEnemyUnderAim()
+                if not freshPart or freshPlayer ~= targetPlayer then return end
+                currentTool = character:FindFirstChildOfClass("Tool")
+                backpack = player:FindFirstChildOfClass("Backpack") or player:FindFirstChild("Backpack")
+                if currentTool or pistol.Parent ~= backpack then return end
                 humanoid:EquipTool(pistol)
                 equippedByTrigger = true
 
@@ -1810,7 +1821,15 @@ SourceZones.Shooting.Trigger.execPistolTriggerbot = function(targetPart, targetP
 
             -- Automatic mode returns the pistol to Backpack after each shot.
             if not legitMode and pistol.Parent == character then
-                pcall(function() humanoid:UnequipTools() end)
+                task.wait(weaponTransitionDelay)
+                if player.Character == character
+                    and character.Parent
+                    and humanoid.Parent == character
+                    and humanoid.Health > 0
+                    and pistol.Parent == character
+                    and character:FindFirstChildOfClass("Tool") == pistol then
+                    pcall(function() humanoid:UnequipTools() end)
+                end
             end
 
             if reloadTrackable then
@@ -1831,7 +1850,10 @@ SourceZones.Shooting.Trigger.execPistolTriggerbot = function(targetPart, targetP
         if not legitMode and (equippedByTrigger or shotFired) and player.Character == character
             and character.Parent and humanoid.Parent == character and humanoid.Health > 0
             and pistol.Parent == character then
-            pcall(function() humanoid:UnequipTools() end)
+            task.wait(weaponTransitionDelay)
+            if pistol.Parent == character and character:FindFirstChildOfClass("Tool") == pistol then
+                pcall(function() humanoid:UnequipTools() end)
+            end
         end
         finishTriggerOperation("Pistol", token)
         if not operationOK and getgenv().SilentHubRunning then
@@ -1947,7 +1969,7 @@ SourceZones.Shooting.Trigger.triggerbotScheduler = function()
         or not Silent.State.IsPlaying or not TriggerAim.IsAvailable() then return end
 
     local now = os.clock()
-    local detectionInterval = math.clamp(tonumber(aim.TriggerDetectionInterval) or 0.03, 0.01, 0.06)
+    local detectionInterval = math.clamp(tonumber(aim.TriggerDetectionInterval) or 0.15, 0.025, 0.25)
     if now - (aim.TriggerDetectionLastScanAt or 0) < detectionInterval then return end
     aim.TriggerDetectionLastScanAt = now
 
@@ -5585,13 +5607,13 @@ SourceZones.UI.Builders.BuildCombatUI = function()
     zones.Sliders.Combat_MacroDelay = function() tA:CreateSlider({name="Delay de Disparo",range={0.05,0.50},increment=0.05,value=0.05,flag="Silent_MacroShDelay",callback=function(v) Silent.State.Macro.ShootDelay=v end}) end
     zones.Layout.Combat_AimSystem = function() tA:CreateSection({name="AimSystem"}) end
     zones.Toggles.Combat_TriggerBot = function()
-        Silent.Controls.TriggerBot = tA:CreateToggle({name="Triggerbot",description="",flag="Silent_TriggerBotShiftLock",value=false,callback=function(v)
+        Silent.Controls.TriggerBot = tA:CreateToggle({name="TriggerBot",description="",flag="Silent_TriggerBotShiftLock",value=false,callback=function(v)
             Silent.State.Aim.TriggerBot = v == true
             if not v then cancelTriggerbotOperations() end
         end})
     end
     zones.Toggles.Combat_TriggerBotLegit = function()
-        tA:CreateToggle({name="Tiggerbot Legit",description="Equipar Manualmente",flag="Silent_TriggerBotLegit",value=false,callback=function(v)
+        tA:CreateToggle({name="TriggerBot Legit",description="Equipar Manualmente",flag="Silent_TriggerBotLegit",value=false,callback=function(v)
             Silent.State.Aim.TriggerBotLegit = v == true
         end})
     end
@@ -5600,14 +5622,20 @@ SourceZones.UI.Builders.BuildCombatUI = function()
     zones.Sliders.Combat_EnemyDetectionLevel = function()
         tA:CreateSlider({
             name="Enemy Detection",
-            description="1 Lento - 3 Rápido",
-            range={1,3},
+            description="Lento: 1 - Rápido: 5",
+            range={1,5},
             increment=1,
-            value=2,
+            value=3,
             flag="Silent_EnemyDetectionLevel",
             callback=function(v)
-                local level = math.clamp(math.floor((tonumber(v) or 2) + 0.5), 1, 3)
-                local intervals = { [1] = 0.06, [2] = 0.03, [3] = 0.01 }
+                local level = math.clamp(math.floor((tonumber(v) or 3) + 0.5), 1, 5)
+                local intervals = {
+                    [1] = 0.25,
+                    [2] = 0.20,
+                    [3] = 0.15,
+                    [4] = 0.075,
+                    [5] = 0.025
+                }
                 Silent.State.Aim.TriggerDetectionLevel = level
                 Silent.State.Aim.TriggerDetectionInterval = intervals[level]
                 Silent.State.Aim.TriggerDetectionLastScanAt = 0
@@ -5639,10 +5667,10 @@ SourceZones.UI.Builders.BuildCombatUI = function()
         { "Toggles", "Combat_MacroPistol" },
         { "Sliders", "Combat_MacroDelay" },
         { "Layout", "Combat_AimSystem" },
-        { "Layout", "Combat_AimConfig" },
-        { "Sliders", "Combat_EnemyDetectionLevel" },
         { "Toggles", "Combat_TriggerBot" },
         { "Toggles", "Combat_TriggerBotLegit" },
+        { "Sliders", "Combat_EnemyDetectionLevel" },
+        { "Layout", "Combat_AimConfig" },
         { "Toggles", "Combat_ThrowMode" },
         { "Toggles", "Combat_KnifeThrowMacro" },
         { "Keybinds", "Combat_TriggerBotKeybind" }

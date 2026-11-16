@@ -1170,7 +1170,7 @@ local function hideOriginalCharacter(character)
     enforceOriginalCharacterHidden()
 end
 
-local function createNativeCameraTransparencyUpdater(model, beforeTrack)
+local function createNativeCameraTransparencyUpdater(model, beforeTrack, sourceCharacter)
     local entries = {}
     local tracked = setmetatable({}, { __mode = "k" })
     local lastTransparency = nil
@@ -1252,7 +1252,20 @@ local function createNativeCameraTransparencyUpdater(model, beforeTrack)
             if localPlayer.CameraMode == Enum.CameraMode.LockFirstPerson then
                 target = 1
             else
-                local distance = (camera.Focus.Position - camera.CFrame.Position).Magnitude
+                local focusDistance = (camera.Focus.Position - camera.CFrame.Position).Magnitude
+                local sourceHead = sourceCharacter
+                    and (sourceCharacter:FindFirstChild("Head")
+                        or sourceCharacter:FindFirstChild("HumanoidRootPart"))
+                local distance = focusDistance
+
+                if sourceHead and sourceHead:IsA("BasePart") then
+                    local cameraToHead = (camera.CFrame.Position - sourceHead.Position).Magnitude
+                    local focusToHead = (camera.Focus.Position - sourceHead.Position).Magnitude
+                    if camera.CameraType == Enum.CameraType.Scriptable or focusToHead > 3 then
+                        distance = cameraToHead
+                    end
+                end
+
                 target = distance < 2
                     and (1.0 - (distance - 0.5) / 1.5)
                     or 0
@@ -1578,7 +1591,8 @@ local function applyCurrentAppearance()
             visualModel,
             function(descendant)
                 enableNativeEffect(descendant)
-            end
+            end,
+            character
         )
 
     local oldModel = state.overlayModel
