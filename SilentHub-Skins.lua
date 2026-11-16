@@ -907,8 +907,8 @@ local function applyCopiedSkinAnimationsToAnimate(character, enabled)
 
     if #plannedUpdates == 0 then return false end
 
-    -- Remove any previous skin override first so missing animation categories
-    -- always fall back to the character's original Animate IDs.
+    
+    
     restoreSkinAnimateOverrides()
     stopAnimateOwnedTracks(character, animateScript)
 

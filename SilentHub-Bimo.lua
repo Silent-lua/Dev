@@ -24,7 +24,7 @@ local SourceZones = {
 }
 
 local avatarRuntimeEnvironment = getgenv()
-local sharedAvatarBridge = avatarRuntimeEnvironment.SilentHubUniversalAvatarBridge
+local sharedAvatarBridge = avatarRuntimeEnvironment.UniversalAvatarBridge
 if type(sharedAvatarBridge) ~= "table" then
     sharedAvatarBridge = {
         version = 2,
@@ -34,7 +34,7 @@ if type(sharedAvatarBridge) ~= "table" then
         modules = {},
         loading = {},
     }
-    avatarRuntimeEnvironment.SilentHubUniversalAvatarBridge = sharedAvatarBridge
+    avatarRuntimeEnvironment.UniversalAvatarBridge = sharedAvatarBridge
 end
 
 sharedAvatarBridge.version = 2
@@ -96,13 +96,13 @@ AvatarIntegration.Cleanup = function()
         bridge.uiPanels.closeAccessoriesPanel = nil
     end
 
-    -- Bimo owns the active notification provider; standalone loaders will
-    -- reinstall Roblox notifications if they run again after Bimo unloads.
+    
+    
     bridge.notify = nil
     AvatarIntegration.Bridge = bridge
 
-    if avatarRuntimeEnvironment.SilentHubAvatarTools == AvatarIntegration then
-        avatarRuntimeEnvironment.SilentHubAvatarTools = nil
+    if avatarRuntimeEnvironment.AvatarTools == AvatarIntegration then
+        avatarRuntimeEnvironment.AvatarTools = nil
     end
 end
 
@@ -185,12 +185,12 @@ function ContainerManager.Cleanup()
     if ExecutionFolder and ExecutionFolder.Parent then pcall(function() ExecutionFolder:Destroy() end) end
 end
 
-if getgenv().SilentHubCleanup then
-    pcall(getgenv().SilentHubCleanup)
+if getgenv().Cleanup then
+    pcall(getgenv().Cleanup)
     task.wait(0.1)
 end
 
-getgenv().SilentHubAvatarTools = AvatarIntegration
+getgenv().AvatarTools = AvatarIntegration
 
 local Silent = {
     State = {
@@ -234,7 +234,7 @@ getgenv().SilentSpoofProfiles = {
 }
 
 getgenv().SilentRecordSpoofShot = function()
-    if not getgenv().SilentHubRunning then return end
+    if not getgenv().Running then return end
     local spoof = Silent.State and Silent.State.Spoof
     if not spoof or spoof.Device ~= "Default" then return end 
 
@@ -256,7 +256,7 @@ end
 
 local SkyboxEngine
 
-getgenv().SilentHubRunning = true 
+getgenv().Running = true 
 
 function Silent.Resources:TrackConn(c) if c then table.insert(self.Conns, c) end return c end
 function Silent.Resources:TrackInst(i) if i then table.insert(self.Insts, i) end return i end
@@ -304,7 +304,7 @@ end
 function Silent.Scheduler:Start(RunService)
     if self.Conn and self.Conn.Connected then return end
     self.Conn = Silent.Resources:TrackConn(RunService.Heartbeat:Connect(function()
-        if not getgenv().SilentHubRunning then return end
+        if not getgenv().Running then return end
         local now = os.clock()
         for _, t in pairs(self.Tasks) do
             if not t.paused and not t.Running and (now - t.last) >= (1 / math.max(t.hz, 1)) then
@@ -312,10 +312,10 @@ function Silent.Scheduler:Start(RunService)
                 t.Running = true
                 task.spawn(function()
                     local success, err = xpcall(function()
-                        if getgenv().SilentHubRunning then t.cb() end
+                        if getgenv().Running then t.cb() end
                     end, debug.traceback)
                     t.Running = false
-                    if not success and getgenv().SilentHubRunning then
+                    if not success and getgenv().Running then
                         warn("[SilentHub] scheduler task failed: " .. tostring(err))
                     end
                 end)
@@ -329,10 +329,10 @@ function Silent.Pool:Get(t) local p=self.Pools[t] if #p>0 then return table.remo
 function Silent.Pool:Release(t, o) pcall(function() self.Factories[t].r(o) table.insert(self.Pools[t], o) end) end
 
 
-getgenv().SilentHubCleanup = function()
+getgenv().Cleanup = function()
     getgenv().SilentProfileSpoofHooked = nil
     getgenv().SilentReplaySpoofHooked = nil
-    getgenv().SilentHubRunning = false
+    getgenv().Running = false
     if type(getgenv().SilentReplaySpoofRestore) == "function" then
         pcall(getgenv().SilentReplaySpoofRestore)
     end
@@ -350,16 +350,16 @@ getgenv().SilentHubCleanup = function()
     end)
 
     pcall(function() Silent.Scheduler:Stop() end)
-    if type(getgenv().SilentHubGraphicsRestore) == "function" then
-        pcall(getgenv().SilentHubGraphicsRestore)
-        getgenv().SilentHubGraphicsRestore = nil
+    if type(getgenv().GraphicsRestore) == "function" then
+        pcall(getgenv().GraphicsRestore)
+        getgenv().GraphicsRestore = nil
     end
     Silent.Resources:CleanAll()
     for _, pool in pairs(Silent.Pool.Pools) do
         table.clear(pool)
     end
     pcall(AvatarIntegration.Cleanup)
-    pcall(function() if getgenv().SilentHubWindow then getgenv().SilentHubWindow:Unload() end end)
+    pcall(function() if getgenv().Window then getgenv().Window:Unload() end end)
     
     table.clear(Silent.Cache.ValidCandidates)
     table.clear(Silent.Cache.PlayerState)
@@ -442,7 +442,7 @@ while not player do task.wait() player = Players.LocalPlayer end
 local mouse = player:GetMouse()
 
 local screenGui = ContainerManager.new("ScreenGui", "GUI")
-screenGui.Name = "SilentHub_Overlays" 
+screenGui.Name = "Overlays" 
 screenGui.ResetOnSpawn = false 
 screenGui.IgnoreGuiInset = true 
 screenGui.DisplayOrder = 999 
@@ -504,7 +504,7 @@ local fpsFrames = 0
 local lastStats = os.clock()
 
 Silent.Resources:TrackConn(RunService.RenderStepped:Connect(function()
-    if not getgenv().SilentHubRunning then return end
+    if not getgenv().Running then return end
     fpsFrames = fpsFrames + 1 
     local now = os.clock()
     local elapsed = now - lastStats
@@ -1059,7 +1059,7 @@ function SkyboxEngine:Restore()
     if owned then pcall(function() owned:Destroy() end) end
     local filesDeleted, failedFiles = skyboxDeleteTempFiles(self.ActiveTempFiles)
     self.ActiveTempFiles = failedFiles
-    if not filesDeleted and #failedFiles > 0 and getgenv().SilentHubRunning then
+    if not filesDeleted and #failedFiles > 0 and getgenv().Running then
         Silent.Events:Emit("Toast", "Skybox: el executor no pudo eliminar todos los archivos temporales")
     end
 
@@ -1359,15 +1359,15 @@ do
         if preferredInput ~= nil then
             return tostring(preferredInput) == "Enum.PreferredInput.Touch"
         end
-        -- Compatibility fallback for older clients without PreferredInput.
+        
         return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
     end
 
-    -- Keep automatic knife activation Touch-only; PC aiming uses the native input path.
+    
 
     function TriggerAim.IsAvailable()
         if TriggerAim.IsTouchPreferredInput() then
-            -- Preserve the existing mobile requirement: the game's ShiftLock reticle must be active.
+            
             return shiftLockGui() ~= nil
         end
         return workspace.CurrentCamera ~= nil
@@ -1402,8 +1402,8 @@ do
             return nil
         end
 
-        -- GetMouseLocation is screen-relative; convert it to viewport coordinates
-        -- before calling ViewportPointToRay so the Core UI inset is not applied twice.
+        
+        
         local insetOK, topLeftInset = pcall(function()
             return GuiService:GetGuiInset()
         end)
@@ -1412,11 +1412,11 @@ do
             return camera:ViewportPointToRay(viewportPosition.X, viewportPosition.Y, 0)
         end
 
-        -- Fallback retains correct screen/inset handling if GuiService is unavailable.
+        
         return camera:ScreenPointToRay(mousePosition.X, mousePosition.Y, 0)
     end
 
-    -- Ray A checks queryable geometry and non-collidable character hitboxes.
+    
     local triggerRayParams = RaycastParams.new()
     triggerRayParams.FilterType = Enum.RaycastFilterType.Exclude
     triggerRayParams.IgnoreWater = true
@@ -1424,9 +1424,9 @@ do
         triggerRayParams.RespectCanCollide = false
     end)
 
-    -- Ray B uses CanCollide instead of CanQuery, so collidable walls remain
-    -- detectable even when CanQuery is disabled. The first ray still sees
-    -- queryable non-collidable character hitboxes.
+    
+    
+    
     local triggerCollisionRayParams = RaycastParams.new()
     triggerCollisionRayParams.FilterType = Enum.RaycastFilterType.Exclude
     triggerCollisionRayParams.IgnoreWater = true
@@ -1445,7 +1445,7 @@ do
             return cached.IsEnemy
         end
 
-        -- Recompute for the trigger path instead of trusting the slower shared team cache.
+        
         local relationOK, enemy = pcall(computeEnemyRelation, targetPlayer)
         if not relationOK or type(enemy) ~= "boolean" then
             Silent.Cache.Enemies[targetPlayer] = nil
@@ -1472,9 +1472,9 @@ do
         local queryResult = workspace:Raycast(unitRay.Origin, rayDirection, triggerRayParams)
         local collisionResult = workspace:Raycast(unitRay.Origin, rayDirection, triggerCollisionRayParams)
 
-        -- Use whichever result is physically closer. On near-ties prefer the
-        -- collidable ray, conservatively treating an overlapping wall as an
-        -- obstruction rather than firing through it.
+        
+        
+        
         local result
         if queryResult and collisionResult then
             if collisionResult.Distance <= queryResult.Distance + 0.015 then
@@ -1489,7 +1489,7 @@ do
         local hitPart = result and result.Instance
         if not hitPart or not hitPart:IsA("BasePart") then return nil, nil end
 
-        -- Resolve a hit on any body part or accessory back to its owning Player.Character.
+        
         local ancestor = hitPart
         while ancestor and ancestor ~= workspace do
             if ancestor:IsA("Model") then
@@ -1567,7 +1567,7 @@ SourceZones.Shooting.Trigger.resolveTriggerReload = function(pistol)
         return nil
     end
 
-    -- Prefer the exact pistol currently owned by the local player.
+    
     local reload = readableReloadFromWeapon(pistol)
     if reload then return reload end
 
@@ -1575,7 +1575,7 @@ SourceZones.Shooting.Trigger.resolveTriggerReload = function(pistol)
     reload = readableReloadFromWeapon(localBackpack and localBackpack:FindFirstChild("DefaultGun"))
     if reload then return reload end
 
-    -- Additional game paths supplied for Bimo's replicated weapon instances.
+    
     local worldOwner = workspace:FindFirstChild("Joexcr79")
     reload = readableReloadFromWeapon(worldOwner and worldOwner:FindFirstChild("FlareGun"))
     if reload then return reload end
@@ -1593,7 +1593,7 @@ resolveTriggerReload = SourceZones.Shooting.Trigger.resolveTriggerReload
 local macroContextValid
 SourceZones.Shooting.Macro.macroContextValid = function(token, character, humanoid)
     local macro = Silent.State.Macro
-    if getgenv().SilentHubRunning ~= true
+    if getgenv().Running ~= true
         or macro.Generation ~= token
         or macro.Active ~= true
         or Silent.State.MatchActive ~= true
@@ -1679,7 +1679,7 @@ SourceZones.Shooting.Macro.execMacro = function(inputPosition)
         end
 
         if macro.Generation == token then macro.Busy = false end
-        if not operationOK and getgenv().SilentHubRunning then
+        if not operationOK and getgenv().Running then
             warn("[SilentHub] Macro Pistol: " .. tostring(operationError))
         end
     end)
@@ -1690,7 +1690,7 @@ local triggerContextValid
 SourceZones.Shooting.Trigger.triggerContextValid = function(kind, token, character, humanoid)
     local aim = Silent.State.Aim
     local generationKey = "Trigger" .. kind .. "Generation"
-    if getgenv().SilentHubRunning ~= true
+    if getgenv().Running ~= true
         or aim.TriggerBot ~= true
         or aim[generationKey] ~= token
         or Silent.State.MatchActive ~= true
@@ -1788,11 +1788,11 @@ SourceZones.Shooting.Trigger.execPistolTriggerbot = function(targetPart, targetP
     local backpack = player:FindFirstChildOfClass("Backpack") or player:FindFirstChild("Backpack")
 
     if legitMode then
-        -- Legit mode requires the player to equip the pistol manually.
+        
         pistol = currentTool
         if not pistol or not esPistola(pistol) or pistol.Parent ~= character then return end
     else
-        -- Automatic mode only replaces an empty hand or an already equipped pistol.
+        
         if currentTool and not esPistola(currentTool) then return end
         pistol = currentTool or getPistola()
         if not pistol or not pistol:IsA("Tool") then return end
@@ -1854,7 +1854,7 @@ SourceZones.Shooting.Trigger.execPistolTriggerbot = function(targetPart, targetP
             freshPart, freshPlayer = TriggerAim.GetEnemyUnderAim()
             if not freshPart or freshPlayer ~= targetPlayer then return end
 
-            -- Keep AutoShoot/SilentAim target attribution synchronized with this shot.
+            
             getgenv().SilentTargetLock = freshPart
             getgenv().SilentLockExpiration = os.clock() + 0.25
             local shotAt = os.clock()
@@ -1864,7 +1864,7 @@ SourceZones.Shooting.Trigger.execPistolTriggerbot = function(targetPart, targetP
             task.wait(0.05)
             pcall(function() pistol:Deactivate() end)
 
-            -- Automatic mode returns the pistol to Backpack after each shot.
+            
             if not legitMode and pistol.Parent == character then
                 task.wait(weaponTransitionDelay)
                 if player.Character == character
@@ -1880,13 +1880,13 @@ SourceZones.Shooting.Trigger.execPistolTriggerbot = function(targetPart, targetP
             if reloadTrackable then
                 if not waitForReloadCycle(triggerReload, token, character, humanoid)
                     and triggerContextValid("Pistol", token, character, humanoid) then
-                    -- Never retry sooner than two seconds after this shot. If
-                    -- reload observation itself took longer, retry on next tick.
+                    
+                    
                     aim.TriggerPistolRetryAt = math.max(shotAt + 2, os.clock())
                 end
             else
-                -- When both Reload paths are unavailable/unreadable, keep shooting
-                -- available but cap attempts to one shot every two seconds.
+                
+                
                 aim.TriggerPistolRetryAt = shotAt + 2
             end
         end, debug.traceback)
@@ -1901,7 +1901,7 @@ SourceZones.Shooting.Trigger.execPistolTriggerbot = function(targetPart, targetP
             end
         end
         finishTriggerOperation("Pistol", token)
-        if not operationOK and getgenv().SilentHubRunning then
+        if not operationOK and getgenv().Running then
             warn("[SilentHub] Triggerbot/Pistol: " .. tostring(operationError))
         end
     end)
@@ -1930,7 +1930,7 @@ SourceZones.Shooting.Trigger.execKnifeTriggerbot = function(knife, targetPart, t
             local freshPart, freshPlayer = TriggerAim.GetEnemyUnderAim()
             if not freshPart or freshPlayer ~= targetPlayer then return end
 
-            -- Preserve the shared target lock used by AutoShoot/SilentAim.
+            
             getgenv().SilentTargetLock = freshPart
             getgenv().SilentLockExpiration = os.clock() + 0.25
             knife:Activate()
@@ -1941,11 +1941,11 @@ SourceZones.Shooting.Trigger.execKnifeTriggerbot = function(knife, targetPart, t
 
         if activated then
             pcall(function() knife:Deactivate() end)
-            -- Do not equip or unequip the knife automatically. Its lifecycle stays manual.
+            
             aim.TriggerKnifeRetryAt = os.clock() + 0.25
         end
         finishTriggerOperation("Knife", token)
-        if not operationOK and getgenv().SilentHubRunning then
+        if not operationOK and getgenv().Running then
             warn("[SilentHub] Triggerbot/Knife: " .. tostring(operationError))
         end
     end)
@@ -1957,7 +1957,7 @@ SourceZones.Shooting.Trigger.cancelTriggerbotOperations = function()
     local aim = Silent.State.Aim
     aim.TriggerPistolGeneration = (aim.TriggerPistolGeneration or 0) + 1
     aim.TriggerKnifeGeneration = (aim.TriggerKnifeGeneration or 0) + 1
-    -- Do not clear Busy here: each worker releases its own lock after cleanup.
+    
     aim.TriggerLastKnifeTarget = nil
 end
 cancelTriggerbotOperations = SourceZones.Shooting.Trigger.cancelTriggerbotOperations
@@ -1975,8 +1975,8 @@ SourceZones.Shooting.Macro.cancelMacroOperation = function()
 end
 cancelMacroOperation = SourceZones.Shooting.Macro.cancelMacroOperation
 
--- Only accept genuine, unprocessed gameplay clicks/taps. CoreGui controls such
--- as jump, movement and ShiftLock must never arm the pistol macro.
+
+
 Silent.Resources:TrackConn(UserInputService.InputBegan:Connect(function(input, processed)
     local macro = Silent.State.Macro
     if processed or not macro.Active then return end
@@ -2028,8 +2028,8 @@ SourceZones.Shooting.Trigger.triggerbotScheduler = function()
     if not character then return end
     local currentTool = character:FindFirstChildOfClass("Tool")
 
-    -- After a knife strike, do not auto-equip the pistol against the same target.
-    -- Manually equipping either weapon re-arms its own route.
+    
+    
     if not currentTool and aim.TriggerLastKnifeTarget then
         if aim.TriggerLastKnifeTarget == targetPlayer then return end
         aim.TriggerLastKnifeTarget = nil
@@ -2051,11 +2051,11 @@ triggerbotScheduler = SourceZones.Shooting.Trigger.triggerbotScheduler
 
 Silent.Scheduler:Register("TriggerbotPCMobile", 100, triggerbotScheduler)
 
--- PC-only native E macro. Keep all helper locals inside this block to avoid
--- increasing the main chunk's active local-register count.
+
+
 do
     local ContextActions = game:GetService("ContextActionService")
-    local ThrowActionName = "SilentHubMacroKnifeThrowPC"
+    local ThrowActionName = "MacroKnifeThrowPC"
 
     local function keyboardPreferred()
         local ok, preferred = pcall(function()
@@ -2085,7 +2085,7 @@ do
             end
         end
 
-        -- Executor fallback used by desktop executors that expose keypress/keyrelease.
+        
         if type(keypress) == "function" and type(keyrelease) == "function" then
             local pressOK = pcall(keypress, 0x45)
             if pressOK then
@@ -2099,7 +2099,7 @@ do
 
     local function throwContextValid(token, character, humanoid, knife)
         local macro = Silent.State.Macro
-        return getgenv().SilentHubRunning == true
+        return getgenv().Running == true
             and macro.KnifeThrowActive == true
             and macro.KnifeThrowGeneration == token
             and Silent.State.MatchActive == true
@@ -2156,8 +2156,8 @@ do
                 task.wait(0.06)
                 if not throwContextValid(token, character, humanoid, knife) or knife.Parent ~= character then return end
 
-                -- The physical E was sunk by ContextActionService. Temporarily
-                -- unbind so this one synthetic E reaches the game's native handler.
+                
+                
                 unbindThrowAction()
                 local sent = sendNativeE()
                 if sent then shouldUnequip = true end
@@ -2189,7 +2189,7 @@ do
                 pcall(function() humanoid:UnequipTools() end)
             end
             macro.KnifeThrowBusy = false
-            if not operationOK and getgenv().SilentHubRunning then
+            if not operationOK and getgenv().Running then
                 warn("[SilentHub] Macro KnifeThrow PC: " .. tostring(operationError))
             end
         end)
@@ -2656,7 +2656,7 @@ if not getgenv().SilentAimServiceHooked then
         end
 
         for attempt = 1, 20 do
-            if not getgenv().SilentHubRunning then return end
+            if not getgenv().Running then return end
             AimService = findAimServiceModule()
             if AimService then break end
             task.wait(0.25)
@@ -2672,7 +2672,7 @@ if not getgenv().SilentAimServiceHooked then
         end
 
         local function redirectActive()
-            return getgenv().SilentHubRunning == true
+            return getgenv().Running == true
                 and (Silent.State.Aim.SilentAim == true or Silent.State.Aim.AutoShoot == true)
         end
 
@@ -2929,7 +2929,7 @@ if not getgenv().SilentReplaySpoofHooked then
         local old_BuildView = ViewRecorder.BuildView
         local function new_BuildView(self, subjectUserId, fromTime, toTime)
             local result = old_BuildView(self, subjectUserId, fromTime, toTime)
-            if not getgenv().SilentHubRunning then return result end
+            if not getgenv().Running then return result end
             if type(result) ~= "table" or type(result.frames) ~= "table" or #result.frames == 0 then return result end
 
             local resultCloneOk, resultCopy = pcall(table.clone, result)
@@ -3039,7 +3039,7 @@ if not getgenv().SilentReplaySpoofHooked then
         if type(ViewCodec.Encode) == "function" then
             local old_Encode = ViewCodec.Encode
             local function new_Encode(payload)
-                if type(payload) == "table" and getgenv().SilentHubRunning then
+                if type(payload) == "table" and getgenv().Running then
                     local cloneOk, payloadCopy = pcall(table.clone, payload)
                     if not cloneOk or type(payloadCopy) ~= "table" then
                         return old_Encode(payload)
@@ -3078,7 +3078,7 @@ if not getgenv().SilentHookIndexIniciado then
     getgenv().SilentHookIndexIniciado = true
     local oldI
     oldI = hookmetamethod(game, "__index", function(t, k)
-        if getgenv().SilentHubRunning and not checkcaller() and t == mouse and getgenv().SilentWeaponEquipped then
+        if getgenv().Running and not checkcaller() and t == mouse and getgenv().SilentWeaponEquipped then
             local aT = getValidatedHookTarget()
             if aT then
                 if k == "Hit" or k == "hit" then
@@ -3097,7 +3097,7 @@ if not getgenv().SilentHookIniciado then
     getgenv().SilentHookIniciado = true
     local oldNC
     oldNC = hookmetamethod(game, "__namecall", function(self, ...)
-        if getgenv().SilentHubRunning and not checkcaller() and not getgenv().SilentVisCheckActive and self == workspace and getgenv().SilentWeaponEquipped then
+        if getgenv().Running and not checkcaller() and not getgenv().SilentVisCheckActive and self == workspace and getgenv().SilentWeaponEquipped then
             local m = getnamecallmethod()
             if m == "Raycast" or m == "FindPartOnRay" or m == "FindPartOnRayWithIgnoreList" or m == "FindPartOnRayWithWhitelist" then
 
@@ -3159,7 +3159,7 @@ SourceZones.ESP.Arrows.drawOffscreenArrow = function(targetPlayer, screenPositio
     local arrow = aArrows[targetPlayer]
     if not arrow or not arrow.Parent then
         arrow = Instance.new("TextLabel")
-        arrow.Name = "SilentHubOffscreenArrow"
+        arrow.Name = "OffscreenArrow"
         arrow.BackgroundTransparency = 1
         arrow.AnchorPoint = Vector2_new(0.5, 0.5)
         arrow.Size = UDim2.fromOffset(20, 20)
@@ -3289,7 +3289,7 @@ Silent.Scheduler:Register("ESPUpdate", 15, function()
         if targetPlayer.Parent ~= Players then cleanArrow(targetPlayer) end
     end
 
-    if not getgenv().SilentHubRunning or not Silent.State.Vis.ESP or not Silent.State.MatchActive then
+    if not getgenv().Running or not Silent.State.Vis.ESP or not Silent.State.MatchActive then
         cleanAllESPDrawings()
         return
     end
@@ -3348,7 +3348,7 @@ pcall(function() FOVCircle = Drawing.new("Circle") FOVCircle.Filled = false FOVC
 
 local lastESPRender = 0
 Silent.Resources:TrackConn(RunService.RenderStepped:Connect(function()
-    if not getgenv().SilentHubRunning then return end
+    if not getgenv().Running then return end
     local aAim = Silent.State.Aim.SilentAim or Silent.State.Aim.AutoShoot
     local nowESP = os.clock()
     if nowESP - lastESPRender < (1 / 30) then return end
@@ -3368,7 +3368,7 @@ Silent.Resources:TrackConn(RunService.RenderStepped:Connect(function()
         FOVCircle.Color = aT and Color3.fromRGB(255,0,0) or Color3.fromRGB(255,255,255)
     else if FOVCircle and FOVCircle.Visible then FOVCircle.Visible = false end end
 
-    if not getgenv().SilentHubRunning or not Silent.State.Vis.ESP or not Silent.State.MatchActive then
+    if not getgenv().Running or not Silent.State.Vis.ESP or not Silent.State.MatchActive then
         cleanAllESPDrawings()
         return
     end
@@ -3749,7 +3749,7 @@ SourceZones.Graphics.SmartRender.graphicsScanTree = function(root, generation)
     local timeBudget = mobile and 0.0015 or 0.0025
 
     while #stack > 0 do
-        if generation ~= scan.Generation or not graphicsAnyActive() or not getgenv().SilentHubRunning then
+        if generation ~= scan.Generation or not graphicsAnyActive() or not getgenv().Running then
             return false
         end
 
@@ -3815,7 +3815,7 @@ graphicsStartWorker = function()
 
     task.spawn(function()
         local ok, err = xpcall(function()
-            while getgenv().SilentHubRunning and graphicsAnyActive()
+            while getgenv().Running and graphicsAnyActive()
                 and (scan.NeedsFullScan or scan.Head <= scan.Tail) do
                 if scan.NeedsFullScan then
                     scan.NeedsFullScan = false
@@ -3843,10 +3843,10 @@ graphicsStartWorker = function()
 
         scan.Running = false
         GraphicsEngine.ScanRunning = false
-        if not ok and getgenv().SilentHubRunning then
+        if not ok and getgenv().Running then
             warn("[SilentHub] graphics worker failed: " .. tostring(err))
         end
-        if getgenv().SilentHubRunning and graphicsAnyActive()
+        if getgenv().Running and graphicsAnyActive()
             and (scan.NeedsFullScan or scan.Head <= scan.Tail) then
             graphicsStartWorker()
         end
@@ -3940,7 +3940,7 @@ graphicsOnDescendantAdded = SourceZones.Graphics.SmartRender.graphicsOnDescendan
 Silent.Resources:TrackConn(workspace.DescendantAdded:Connect(graphicsOnDescendantAdded))
 Silent.Resources:TrackConn(Lighting.DescendantAdded:Connect(graphicsOnDescendantAdded))
 
-getgenv().SilentHubGraphicsRestore = function()
+getgenv().GraphicsRestore = function()
     GraphicsEngine.Low.Active = false
     GraphicsEngine.Boost.Active = false
     GraphicsEngine.Scan.Generation += 1
@@ -4494,8 +4494,8 @@ windUILoadError = loadedWindUIError
 end
 
 if not WindUI then
-    if type(getgenv().SilentHubCleanup) == "function" then
-        pcall(getgenv().SilentHubCleanup)
+    if type(getgenv().Cleanup) == "function" then
+        pcall(getgenv().Cleanup)
     end
     error("SilentHub/WindUI " .. tostring(windUILoadError or "No se pudo cargar la biblioteca"), 0)
 end
@@ -4960,8 +4960,8 @@ if not successWindow or type(NativeWindow) ~= "table" or type(NativeWindow.Tab) 
     if type(NativeWindow) == "table" and type(NativeWindow.Destroy) == "function" then
         pcall(function() NativeWindow:Destroy() end)
     end
-    if type(getgenv().SilentHubCleanup) == "function" then
-        pcall(getgenv().SilentHubCleanup)
+    if type(getgenv().Cleanup) == "function" then
+        pcall(getgenv().Cleanup)
     end
     error("No se pudo crear la ventana: " .. tostring(NativeWindow), 0)
 end
@@ -5103,7 +5103,7 @@ local floatingButtonHiddenSetter = function(hidden)
     return Window:SetFloatingButtonHidden(hidden)
 end
 
-getgenv().SilentHubSetFloatingButtonHidden = floatingButtonHiddenSetter
+getgenv().SetFloatingButtonHidden = floatingButtonHiddenSetter
 
 function Window:Unload()
     if self._unloaded then return end
@@ -5113,8 +5113,8 @@ function Window:Unload()
     end
     pcall(function() self:SetFloatingButtonHidden(false) end)
     pcall(function()
-        if getgenv().SilentHubSetFloatingButtonHidden == floatingButtonHiddenSetter then
-            getgenv().SilentHubSetFloatingButtonHidden = nil
+        if getgenv().SetFloatingButtonHidden == floatingButtonHiddenSetter then
+            getgenv().SetFloatingButtonHidden = nil
         end
     end)
     pcall(AvatarIntegration.Cleanup)
@@ -5531,7 +5531,7 @@ end
 end 
 
 local uiBuildOk, uiBuildError = xpcall(function()
-getgenv().SilentHubWindow = Window
+getgenv().Window = Window
 Silent.Events:Sub("Toast", "UI", function(msg)
     if not Window then return end
     pcall(function()
@@ -5697,7 +5697,7 @@ local function setAvatarModuleEnabled(moduleName, enabled, fromControl)
     enabled = enabled == true
     AvatarIntegration[definition.enabledKey] = enabled
 
-    -- External loaders drive the existing Bimo control so the UI stays in sync.
+    
     if not fromControl then
         local control = AvatarIntegration[definition.controlKey]
         if control and type(control.Set) == "function" then
@@ -5792,7 +5792,7 @@ end
 
 AvatarIntegration.SetModuleEnabled = setAvatarModuleEnabled
 
-local SilentHubUIZones = {
+local UIZones = {
     Layout = {}, Stats = {}, Toggles = {}, Dropdowns = {}, Sliders = {},
     ColorPickers = {}, Buttons = {}, Inputs = {}, Keybinds = {},
 }
@@ -5812,7 +5812,7 @@ runSilentHubUIZones = SourceZones.UI.Execution.runSilentHubUIZones
 
 local BuildHomeUI
 SourceZones.UI.Builders.BuildHomeUI = function()
-    local zones = SilentHubUIZones
+    local zones = UIZones
     zones.Layout.Home_Profile = function() tH:CreateSection({name="Perfil del Jugador"}) end
     zones.Stats.Home_CurrentUser = function() tH:CreateStat({name="Current User", value=player.DisplayName.."｜@"..player.Name.." "}) end
     zones.Stats.Home_Identity = function() tH:CreateStat({name="Identity", value="ID: "..player.UserId.." | Edad: "..player.AccountAge.." días"}) end
@@ -5850,9 +5850,9 @@ SourceZones.UI.Builders.BuildConfigurationUI = function()
             return
         end
 
-        local webhookUrl = tostring(getgenv().SilentHubSuggestionsWebhook or "https://discord.com/api/webhooks/1563792294820319262/9u21xZaStxMcZQBPR9hV7eoXJ1LgMEKRppI1iogNNS-jS-i63tBGhYHlpAgB8XH8D7ld")
+        local webhookUrl = tostring(getgenv().SuggestionsWebhook or "https://discord.com/api/webhooks/1563792294820319262/9u21xZaStxMcZQBPR9hV7eoXJ1LgMEKRppI1iogNNS-jS-i63tBGhYHlpAgB8XH8D7ld")
         if webhookUrl == "" then
-            Window:Toast({title="Webhook pendiente", subtitle="Configura getgenv().SilentHubSuggestionsWebhook con tu webhook de Discord", duration=5})
+            Window:Toast({title="Webhook pendiente", subtitle="Configura getgenv().SuggestionsWebhook con tu webhook de Discord", duration=5})
             return
         end
         if not webhookUrl:match("^https://discord%.com/api/webhooks/")
@@ -5967,7 +5967,7 @@ SourceZones.UI.Builders.BuildConfigurationUI = function()
         end)
     end
 
-    local zones = SilentHubUIZones
+    local zones = UIZones
     zones.Layout.Configuration_Settings = function() tC:CreateSection({name="Configuración"}) end
     zones.Toggles.Configuration_ShowStats = function()
         tC:CreateToggle({
@@ -5989,7 +5989,7 @@ SourceZones.UI.Builders.BuildConfigurationUI = function()
             callback = function(v)
                 local setter
                 pcall(function()
-                    setter = getgenv().SilentHubSetFloatingButtonHidden
+                    setter = getgenv().SetFloatingButtonHidden
                 end)
 
                 local applied, hideError = false, "El controlador de Ocultar Botón no está disponible."
@@ -6006,7 +6006,7 @@ SourceZones.UI.Builders.BuildConfigurationUI = function()
                 if not applied then
                     local activeWindow
                     pcall(function()
-                        activeWindow = getgenv().SilentHubWindow
+                        activeWindow = getgenv().Window
                     end)
                     if type(activeWindow) == "table" and type(activeWindow.Toast) == "function" then
                         pcall(activeWindow.Toast, activeWindow, {
@@ -6060,7 +6060,7 @@ BuildConfigurationUI = SourceZones.UI.Builders.BuildConfigurationUI
 local BuildCombatUI
 SourceZones.UI.Builders.BuildCombatUI = function()
     local tgMac
-    local zones = SilentHubUIZones
+    local zones = UIZones
     zones.Layout.Combat_Macro = function() tA:CreateSection({name="Zone Macro"}) end
     zones.Toggles.Combat_MacroPistol = function()
         tgMac=tA:CreateToggle({name="Macro Pistol",flag="Silent_MacroToggle",value=false,callback=function(v)
@@ -6182,7 +6182,7 @@ BuildCombatUI = SourceZones.UI.Builders.BuildCombatUI
 
 local BuildVisualsUI
 SourceZones.UI.Builders.BuildVisualsUI = function()
-    local zones = SilentHubUIZones
+    local zones = UIZones
     zones.Layout.Visuals_PlayerOptions = function() tV:CreateSection({name="Opciones Visuales"}) end
     zones.Toggles.Visuals_HideName = function() tV:CreateToggle({name="Ocultar mi Nombre", flag="Silent_HideName", value=false, callback=function(v) Silent.State.Vis.HideName=v Silent.Events:Emit("UpdateHideName") end}) end
     zones.Layout.Visuals_EspOptions = function() tV:CreateSection({name="Configuración de ESP"}) end
@@ -6267,7 +6267,7 @@ BuildVisualsUI = SourceZones.UI.Builders.BuildVisualsUI
 
 local BuildExtrasPerformanceUI
 SourceZones.UI.Builders.BuildExtrasPerformanceUI = function()
-    local zones = SilentHubUIZones
+    local zones = UIZones
     zones.Layout.ExtrasPerformance_Performance = function() tG:CreateSection({name="Optimización de FPS"}) end
     zones.Toggles.ExtrasPerformance_LowGraphics = function() tG:CreateToggle({name="LowGraphics Mode",flag="Silent_LowGfx",value=false,callback=function(v) Silent.State.Gfx.Low=v Silent.Events:Emit("ToggleLowGfx",v) end}) end
     zones.Toggles.ExtrasPerformance_BoostFps = function() tG:CreateToggle({name="BoostFps Mode",flag="Silent_BoostFps",value=false,callback=function(v) Silent.State.Gfx.BoostFps=v Silent.Events:Emit("ToggleBoostFps",v) end}) end
@@ -6288,7 +6288,7 @@ local BuildExtrasUI
 SourceZones.UI.Builders.BuildExtrasUI = function()
     local skyboxDropdown
 
-    local zones = SilentHubUIZones
+    local zones = UIZones
     zones.Layout.Extras_Skybox = function() tG:CreateSection({name="Skybox / Cielos"}) end
     zones.Dropdowns.Extras_SkyboxSelect = function()
         skyboxDropdown = tG:CreateDropdown({ name="Seleccionar cielo", flag="Silent_Skybox", options=skyboxNames, currentOption={"Original"}, multipleOptions=false, callback=function(name) if type(name) == "table" then name = name[1] end SkyboxEngine:Request(name or "Original") end })
@@ -6360,8 +6360,8 @@ Silent.Scheduler:Start(RunService)
 end, debug.traceback)
 
 if not uiBuildOk then
-    if type(getgenv().SilentHubCleanup) == "function" then
-        pcall(getgenv().SilentHubCleanup)
+    if type(getgenv().Cleanup) == "function" then
+        pcall(getgenv().Cleanup)
     elseif Window then
         pcall(function() Window:Unload() end)
     end

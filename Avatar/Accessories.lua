@@ -1,6 +1,6 @@
--- SilentHub Universal Accesorios
--- Independent entrypoint. It can run without SilentHub-Bimo.lua.
--- Requires an executor that provides game:HttpGet and loadstring.
+
+
+
 
 local MODULE_NAME = "accessories"
 local MODULE_URL = "https://raw.githubusercontent.com/Silent-lua/Dev/2ed0e0a385af0790d5cd8d5ebb24f0ea659aa1c1/SilentHub-Accesorios.lua"
@@ -17,9 +17,9 @@ end
 
 local runtimeEnvironment = getRuntimeEnvironment()
 
--- Reuse the Bimo host when it is already running; never create a second UI
--- on top of a detected but incompatible Bimo host.
-local bimoHost = runtimeEnvironment.SilentHubAvatarTools
+
+
+local bimoHost = runtimeEnvironment.AvatarTools
 if bimoHost ~= nil then
     if type(bimoHost) ~= "table"
         or type(bimoHost.Bridge) ~= "table"
@@ -38,8 +38,8 @@ if bimoHost ~= nil then
     return bimoHost
 end
 
--- Independent universal bridge shared by both standalone entrypoints.
-local bridge = runtimeEnvironment.SilentHubUniversalAvatarBridge
+
+local bridge = runtimeEnvironment.UniversalAvatarBridge
 if type(bridge) ~= "table" then
     bridge = {
         version = 2,
@@ -49,7 +49,7 @@ if type(bridge) ~= "table" then
         modules = {},
         loading = {},
     }
-    runtimeEnvironment.SilentHubUniversalAvatarBridge = bridge
+    runtimeEnvironment.UniversalAvatarBridge = bridge
 end
 
 bridge.version = 2
@@ -59,8 +59,8 @@ bridge.uiPanels = type(bridge.uiPanels) == "table" and bridge.uiPanels or { acti
 bridge.modules = type(bridge.modules) == "table" and bridge.modules or {}
 bridge.loading = type(bridge.loading) == "table" and bridge.loading or {}
 
--- Keep a notification provider installed by another host. Roblox's native
--- SetCore notification is only the fallback for standalone use.
+
+
 if type(bridge.notify) ~= "function" then
     local StarterGui = game:GetService("StarterGui")
     bridge.notify = function(config)
@@ -113,7 +113,7 @@ local function cleanupApi(moduleApi)
 end
 
 local runOk, runResult = pcall(function()
-    -- Rerunning this entrypoint replaces only its own module.
+    
     local previousApi = bridge.modules[MODULE_NAME]
     if previousApi then
         local cleanupOk, cleanupError = cleanupApi(previousApi)
