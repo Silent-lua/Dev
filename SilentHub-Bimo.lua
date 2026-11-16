@@ -5001,12 +5001,10 @@ AvatarIntegration.Bridge.notify = function(config)
     return Window:Toast(config)
 end
 
-local FloatingButtonController = {
-    FloatingButtonVisualSnapshot = nil,
-    FloatingButtonHidden = false,
-}
+Window.FloatingButtonVisualSnapshot = nil
+Window.FloatingButtonHidden = false
 
-function FloatingButtonController:SetFloatingButtonHidden(hidden)
+function Window:SetFloatingButtonHidden(hidden)
     hidden = hidden == true
     local native = Window and Window._native
     local openButton = native and native.OpenButtonMain
@@ -5104,7 +5102,7 @@ function Window:Unload()
     if configSaveQueued then
         pcall(flushConfigSave)
     end
-    pcall(function() FloatingButtonController:SetFloatingButtonHidden(false) end)
+    pcall(function() self:SetFloatingButtonHidden(false) end)
     pcall(AvatarIntegration.Cleanup)
     if self._native and type(self._native.Destroy) == "function" then
         local destroyOk, destroyError = pcall(function()
@@ -5975,7 +5973,7 @@ SourceZones.UI.Builders.BuildConfigurationUI = function()
             flag = "Silent_HideInterface",
             value = false,
             callback = function(v)
-                local applied, hideError = FloatingButtonController:SetFloatingButtonHidden(v == true)
+                local applied, hideError = Window:SetFloatingButtonHidden(v == true)
                 if not applied then
                     Window:Toast({
                         title = "Interface",
