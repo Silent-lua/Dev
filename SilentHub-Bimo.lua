@@ -5002,107 +5002,134 @@ AvatarIntegration.Bridge.notify = function(config)
 end
 
 local openButtonVisualHidden = false
-local originalOpenButtonVisuals = setmetatable({}, { __mode = "k" })
-local openButtonDescendantConnection
+local floatingButtonSnapshot = {}
+local floatingButtonCaptured = setmetatable({}, { __mode = "k" })
+local floatingButtonDescendantConnection
 
-local function captureAndHideOpenButtonVisual(instance)
+local function captureFloatingButtonProperty(instance, propertyName, hiddenValue)
     if typeof(instance) ~= "Instance" then return end
 
-    local originalProperties = originalOpenButtonVisuals[instance] or {}
-    local function setTransparent(propertyName, hiddenValue)
+    local properties = floatingButtonCaptured[instance]
+    if not properties then
+        properties = {}
+        floatingButtonCaptured[instance] = properties
+    end
+
+    if not properties[propertyName] then
         local readOk, originalValue = pcall(function()
             return instance[propertyName]
         end)
         if not readOk then return end
 
-        if originalProperties[propertyName] == nil then
-            originalProperties[propertyName] = originalValue
-        end
-        pcall(function()
-            instance[propertyName] = hiddenValue
-        end)
+        properties[propertyName] = true
+        floatingButtonSnapshot[#floatingButtonSnapshot + 1] = {
+            Instance = instance,
+            Property = propertyName,
+            Value = originalValue,
+        }
     end
 
+    pcall(function()
+        instance[propertyName] = hiddenValue
+    end)
+end
+
+local function hideFloatingButtonVisuals(instance)
+    if typeof(instance) ~= "Instance" then return end
+
     if instance:IsA("GuiObject") then
-        setTransparent("BackgroundTransparency", 1)
+        captureFloatingButtonProperty(instance, "BackgroundTransparency", 1)
     end
 
     if instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox") then
-        setTransparent("TextTransparency", 1)
-        setTransparent("TextStrokeTransparency", 1)
-    end
-
-    if instance:IsA("ImageLabel") or instance:IsA("ImageButton") then
-        setTransparent("ImageTransparency", 1)
-    end
-
-    if instance:IsA("UIStroke") then
-        setTransparent("Transparency", 1)
+        captureFloatingButtonProperty(instance, "TextTransparency", 1)
+        captureFloatingButtonProperty(instance, "TextStrokeTransparency", 1)
+    elseif instance:IsA("ImageLabel") or instance:IsA("ImageButton") then
+        captureFloatingButtonProperty(instance, "ImageTransparency", 1)
+    elseif instance:IsA("UIStroke") then
+        captureFloatingButtonProperty(instance, "Transparency", 1)
     elseif instance:IsA("UIGradient") then
-        setTransparent("Transparency", NumberSequence.new(1))
+        captureFloatingButtonProperty(instance, "Transparency", NumberSequence.new(1))
     elseif instance:IsA("CanvasGroup") then
-        setTransparent("GroupTransparency", 1)
-    end
-
-    if next(originalProperties) then
-        originalOpenButtonVisuals[instance] = originalProperties
+        captureFloatingButtonProperty(instance, "GroupTransparency", 1)
     end
 end
 
-local function restoreOpenButtonVisuals()
-    if openButtonDescendantConnection then
-        pcall(function() openButtonDescendantConnection:Disconnect() end)
-        openButtonDescendantConnection = nil
+local function restoreFloatingButtonVisuals()
+    if floatingButtonDescendantConnection then
+        pcall(function()
+            floatingButtonDescendantConnection:Disconnect()
+        end)
+        floatingButtonDescendantConnection = nil
     end
 
-    for instance, properties in pairs(originalOpenButtonVisuals) do
-        for propertyName, originalValue in pairs(properties) do
+    for index = #floatingButtonSnapshot, 1, -1 do
+        local entry = floatingButtonSnapshot[index]
+        if entry.Instance and entry.Instance.Parent then
             pcall(function()
-                instance[propertyName] = originalValue
+                entry.Instance[entry.Property] = entry.Value
             end)
         end
     end
 
-    table.clear(originalOpenButtonVisuals)
+    table.clear(floatingButtonSnapshot)
+    floatingButtonCaptured = setmetatable({}, { __mode = "k" })
     openButtonVisualHidden = false
 end
 
 local function setOpenButtonVisualHidden(hidden)
     hidden = hidden == true
 
-    if not hidden then
-        restoreOpenButtonVisuals()
+    local native = Window and Window._native
+    local openButtonMain = native and native.OpenButtonMain
+    local button = openButtonMain and openButtonMain.Button
+    if not button or not button.Parent then
+        if not hidden then
+            restoreFloatingButtonVisuals()
+            return true
+        end
+        return false
+    end
+
+    if hidden then
+        if openButtonVisualHidden then return true end
+
+        hideFloatingButtonVisuals(button)
+        for _, object in ipairs(button:GetDescendants()) do
+            hideFloatingButtonVisuals(object)
+        end
+
+        -- Keep the original button container and its hit target alive.
+        captureFloatingButtonProperty(button.Parent, "Visible", true)
+        captureFloatingButtonProperty(button, "Visible", true)
+
+        local textButton = button:FindFirstChildOfClass("TextButton")
+        if textButton then
+            captureFloatingButtonProperty(textButton, "Visible", true)
+            captureFloatingButtonProperty(textButton, "Active", true)
+            captureFloatingButtonProperty(textButton, "Selectable", true)
+            captureFloatingButtonProperty(textButton, "AutoButtonColor", false)
+        end
+
+        local connected, connection = pcall(function()
+            return button.DescendantAdded:Connect(function(descendant)
+                hideFloatingButtonVisuals(descendant)
+                for _, nested in ipairs(descendant:GetDescendants()) do
+                    hideFloatingButtonVisuals(nested)
+                end
+            end)
+        end)
+        if not connected then
+            restoreFloatingButtonVisuals()
+            return false
+        end
+
+        floatingButtonDescendantConnection = connection
+        openButtonVisualHidden = true
         return true
     end
 
-    if openButtonVisualHidden then return true end
-
-    local openButtonMain = NativeWindow and NativeWindow.OpenButtonMain
-    local openButton = openButtonMain and openButtonMain.Button
-    if typeof(openButton) ~= "Instance" then
-        return false
-    end
-
-    openButtonVisualHidden = true
-    captureAndHideOpenButtonVisual(openButton)
-    for _, descendant in ipairs(openButton:GetDescendants()) do
-        captureAndHideOpenButtonVisual(descendant)
-    end
-
-    local connected, connection = pcall(function()
-        return openButton.DescendantAdded:Connect(function(descendant)
-            captureAndHideOpenButtonVisual(descendant)
-            for _, nested in ipairs(descendant:GetDescendants()) do
-                captureAndHideOpenButtonVisual(nested)
-            end
-        end)
-    end)
-    if not connected then
-        restoreOpenButtonVisuals()
-        return false
-    end
-
-    openButtonDescendantConnection = connection
+    restoreFloatingButtonVisuals()
     return true
 end
 
