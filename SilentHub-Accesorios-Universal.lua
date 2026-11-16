@@ -77,7 +77,7 @@ if type(bridge.notify) ~= "function" then
                         Text = content,
                         Duration = duration,
                     })
-                })
+                end)
                 if notified then return end
                 task.wait(0.4)
             end
