@@ -915,8 +915,16 @@ local function applyCopiedSkinAnimations(character, enabled)
         local ok, targetTrack = pcall(function()
             return localAnimator:LoadAnimation(animation)
         end)
+        if (not ok or not targetTrack) and template ~= sourceAnimation then
+            pcall(function() animation:Destroy() end)
+            animation = sourceAnimation:Clone()
+            animation.Parent = animationFolder
+            ok, targetTrack = pcall(function()
+                return localAnimator:LoadAnimation(animation)
+            end)
+        end
         if not ok or not targetTrack then
-            animation:Destroy()
+            pcall(function() animation:Destroy() end)
             return false
         end
 
@@ -929,6 +937,11 @@ local function applyCopiedSkinAnimations(character, enabled)
             weight = math.max(tonumber(sourceTrack.WeightCurrent) or 1, 0.01)
         end
         local speed = tonumber(sourceTrack.Speed) or 1
+        local sourceLength = sourceTrack.Length
+        local targetLength = targetTrack.Length
+        if sourceLength > 0 and targetLength > 0 then
+            speed *= targetLength / sourceLength
+        end
         local record = {
             targetTrack = targetTrack,
             animation = animation,
@@ -977,13 +990,18 @@ local function applyCopiedSkinAnimations(character, enabled)
                 stopMirroredTrack(sourceTrack, record, 0.1)
             elseif record.targetTrack and record.targetTrack.IsPlaying then
                 local speed = tonumber(sourceTrack.Speed) or 1
+                local sourceLength = sourceTrack.Length
+                local targetLength = record.targetTrack.Length
+                if sourceLength > 0 and targetLength > 0 then
+                    speed *= targetLength / sourceLength
+                end
                 if math.abs(speed - record.lastSpeed) > 0.01 then
                     record.targetTrack:AdjustSpeed(speed)
                     record.lastSpeed = speed
                 end
                 local weight = tonumber(sourceTrack.WeightTarget) or record.lastWeight
-                if weight > 0 and math.abs(weight - record.lastWeight) > 0.02 then
-                    record.targetTrack:AdjustWeight(weight, 0.1)
+                if math.abs(weight - record.lastWeight) > 0.02 then
+                    record.targetTrack:AdjustWeight(math.max(0, weight), 0.1)
                     record.lastWeight = weight
                 end
                 if record.targetTrack.Priority ~= sourceTrack.Priority then
