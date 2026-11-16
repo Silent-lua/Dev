@@ -766,6 +766,8 @@ local visualModelState = {
     localCurrentTrack = nil,
     localAnimationPlaying = false,
     localAnimationConnection = nil,
+    localAnimationRunningConnection = nil,
+    localAnimationRunningSpeed = 0,
 }
 
 local localAnimationPriorities = {
@@ -783,12 +785,18 @@ local localAnimationFallbacks = {
     walk = { "walk", "run" },
     run = { "run", "walk" },
     jump = { "jump", "fall" },
-    fall = { "fall", "jump" },
+    fall = { "fall", "idle" },
     climb = { "climb", "walk" },
     swim = { "swim", "walk" },
 }
 
 local function stopLocalSkinAnimations()
+    if visualModelState.localAnimationRunningConnection then
+        visualModelState.localAnimationRunningConnection:Disconnect()
+        visualModelState.localAnimationRunningConnection = nil
+    end
+    visualModelState.localAnimationRunningSpeed = 0
+
     if visualModelState.localAnimationConnection then
         visualModelState.localAnimationConnection:Disconnect()
         visualModelState.localAnimationConnection = nil
@@ -817,6 +825,14 @@ local function stopLocalSkinAnimations()
 end
 
 local function setLocalSkinAnimation(stateName)
+    if stateName == "fall"
+        and visualModelState.localCurrentAnimation == "jump"
+        and visualModelState.localCurrentTrack
+        and visualModelState.localCurrentTrack.IsPlaying then
+        visualModelState.localAnimationPlaying = true
+        return true
+    end
+
     local requestedStates = localAnimationFallbacks[stateName]
     if not requestedStates then
         requestedStates = { stateName }
@@ -911,14 +927,19 @@ local function getLocalSkinAnimationState()
 
     local velocity = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
     local horizontalSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
-    local moving = humanoid.MoveDirection.Magnitude > 0.05 or horizontalSpeed > 0.8
+    local runningSpeed = math.max(
+        horizontalSpeed,
+        visualModelState.localAnimationRunningSpeed or 0
+    )
+    local moving = humanoid.MoveDirection.Magnitude > 0.05 or runningSpeed > 0.8
 
     if humanoid.FloorMaterial == Enum.Material.Air then
         return velocity.Y < -1 and "fall" or "jump"
     end
 
     if moving then
-        return horizontalSpeed >= 18 and "run" or "walk"
+        local runThreshold = math.max(6, humanoid.WalkSpeed * 0.9)
+        return runningSpeed >= runThreshold and "run" or "walk"
     end
 
     return "idle"
@@ -946,6 +967,16 @@ local function applyCopiedSkinAnimations(character, enabled)
     animationFolder.Name = "LocalSkinAnimations"
     animationFolder.Parent = visualModel
     visualModelState.localAnimationFolder = animationFolder
+
+    local sourceHumanoid = character:FindFirstChildOfClass("Humanoid")
+    if not sourceHumanoid then
+        stopLocalSkinAnimations()
+        return false
+    end
+
+    visualModelState.localAnimationRunningConnection = sourceHumanoid.Running:Connect(function(speed)
+        visualModelState.localAnimationRunningSpeed = math.max(0, tonumber(speed) or 0)
+    end)
 
     local loadedTrackCount = 0
 
@@ -1413,22 +1444,25 @@ local function createNativeCameraTransparencyUpdater(character, visualModel)
             if localPlayer.CameraMode == Enum.CameraMode.LockFirstPerson then
                 targetTransparency = 1
             else
-                local distance = (camera.Focus.Position - camera.CFrame.Position).Magnitude
-                if distance >= 2 then
-                    local reference = visualModel:FindFirstChild("Head")
-                        or character:FindFirstChild("Head")
-                        or visualModel:FindFirstChild("HumanoidRootPart")
-                    if reference and reference:IsA("BasePart") then
-                        local lookVector = camera.CFrame.LookVector
-                        local toReference = reference.Position - camera.CFrame.Position
-                        local forwardDistance = toReference:Dot(lookVector)
-                        local lateralDistance = (toReference - lookVector * forwardDistance).Magnitude
-                        if forwardDistance > 0 and lateralDistance <= 2.5 then
-                            distance = math.min(distance, forwardDistance)
-                        end
+                local reference = visualModel:FindFirstChild("Head")
+                    or character:FindFirstChild("Head")
+                    or visualModel:FindFirstChild("HumanoidRootPart")
+                if reference and reference:IsA("BasePart") then
+                    local cameraPosition = camera.CFrame.Position
+                    local localCameraPosition = reference.CFrame:PointToObjectSpace(cameraPosition)
+                    local halfSize = reference.Size * 0.5 + Vector3.new(0.65, 0.75, 0.85)
+                    local cameraInsideReference =
+                        math.abs(localCameraPosition.X) <= halfSize.X
+                        and math.abs(localCameraPosition.Y) <= halfSize.Y
+                        and math.abs(localCameraPosition.Z) <= halfSize.Z
+                    local distance = (cameraPosition - reference.Position).Magnitude
+
+                    if cameraInsideReference or distance <= 1.25 then
+                        targetTransparency = 1
+                    elseif distance < 2.75 then
+                        targetTransparency = 1 - (distance - 1.25) / 1.5
                     end
                 end
-                if distance < 2 then targetTransparency = 1 - (distance - 0.5) / 1.5 end
                 if targetTransparency < 0.5 then targetTransparency = 0 end
             end
         end
