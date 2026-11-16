@@ -3923,93 +3923,87 @@ end)
 
 local statsC = ContainerManager.new("Frame", "GUI")
 statsC.Name = "StatsPanel"
-local statsCardWidth = 100
-local statsCardHeight = 38
-local statsCardGap = 5
-statsC.Size = UDim2.fromOffset(statsCardWidth * 2 + statsCardGap, statsCardHeight)
 statsC.AnchorPoint = Vector2.new(1, 0)
-do
-    local ok, inset = pcall(function() return GuiService:GetGuiInset() end)
-    local topInset = (ok and inset and inset.Y or 0)
-    statsC.Position = UDim2.new(1, -12, 0, math.max(72, topInset + 42))
-end
 statsC.BackgroundTransparency = 1
 statsC.BorderSizePixel = 0
 statsC.Visible = false
 statsC.Active = false
 statsC.Selectable = false
-pcall(function() statsC.InputSink = Enum.InputSink.None end)
 statsC.ZIndex = 100
 statsC.Parent = screenGui
 
-local function createStatsMetricCard(name, value, xOffset)
+local function setStatsInputPassThrough(guiObject)
+    guiObject.Active = false
+    guiObject.Selectable = false
+    pcall(function()
+        guiObject.Interactable = false
+    end)
+    pcall(function()
+        guiObject.InputSink = Enum.InputSink.None
+    end)
+end
+
+setStatsInputPassThrough(statsC)
+
+local statsCardWidth = 72
+local statsCardHeight = 28
+local statsCardGap = 3
+local statsCards = {}
+
+local function createStatsMetricCard(name, value)
     local card = Instance.new("Frame")
     card.Name = name .. "Metric"
-    card.Position = UDim2.fromOffset(xOffset, 0)
-    card.Size = UDim2.fromOffset(statsCardWidth, statsCardHeight)
     card.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     card.BackgroundTransparency = 0.25
     card.BorderSizePixel = 0
-    card.Active = false
-    card.Selectable = false
-    pcall(function() card.InputSink = Enum.InputSink.None end)
     card.ZIndex = 100
     card.Parent = statsC
-    local cardCorner = Instance.new("UICorner")
-    cardCorner.CornerRadius = UDim.new(0, 6)
-    cardCorner.Parent = card
+    setStatsInputPassThrough(card)
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 4)
+    corner.Parent = card
 
     local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(150, 150, 150)
-    stroke.Transparency = 0.82
+    stroke.Color = Color3.fromRGB(160, 160, 160)
+    stroke.Transparency = 0.9
     stroke.Thickness = 1
     stroke.Parent = card
 
     local title = Instance.new("TextLabel")
     title.Name = "Title"
-    title.Position = UDim2.fromOffset(7, 4)
-    title.Size = UDim2.new(1, -14, 0, 11)
     title.BackgroundTransparency = 1
     title.Text = name
-    title.TextColor3 = Color3.fromRGB(245, 247, 249)
-    title.TextTransparency = 0.04
-    title.Font = Enum.Font.GothamSemibold
+    title.TextColor3 = Color3.fromRGB(245, 245, 245)
+    title.Font = Enum.Font.Gotham
     title.TextSize = 8
     title.TextXAlignment = Enum.TextXAlignment.Left
+    title.TextYAlignment = Enum.TextYAlignment.Center
     title.ZIndex = 101
-    title.Active = false
-    title.Selectable = false
-    pcall(function() title.InputSink = Enum.InputSink.None end)
     title.Parent = card
+    setStatsInputPassThrough(title)
 
     local valueLabel = Instance.new("TextLabel")
     valueLabel.Name = "Value"
-    valueLabel.Position = UDim2.fromOffset(7, 15)
-    valueLabel.Size = UDim2.new(1, -14, 0, 13)
     valueLabel.BackgroundTransparency = 1
     valueLabel.Text = value
     valueLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     valueLabel.Font = Enum.Font.GothamMedium
-    valueLabel.TextSize = 10
+    valueLabel.TextSize = 9
     valueLabel.TextXAlignment = Enum.TextXAlignment.Left
+    valueLabel.TextYAlignment = Enum.TextYAlignment.Center
     valueLabel.ZIndex = 101
-    valueLabel.Active = false
-    valueLabel.Selectable = false
-    pcall(function() valueLabel.InputSink = Enum.InputSink.None end)
     valueLabel.Parent = card
+    setStatsInputPassThrough(valueLabel)
 
     local lineTrack = Instance.new("Frame")
     lineTrack.Name = "LineTrack"
-    lineTrack.Position = UDim2.fromOffset(7, 31)
-    lineTrack.Size = UDim2.new(1, -14, 0, 3)
-    lineTrack.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
-    lineTrack.BackgroundTransparency = 0.05
+    lineTrack.BackgroundColor3 = Color3.fromRGB(34, 34, 34)
+    lineTrack.BackgroundTransparency = 0.08
     lineTrack.BorderSizePixel = 0
     lineTrack.ZIndex = 101
-    lineTrack.Active = false
-    lineTrack.Selectable = false
-    pcall(function() lineTrack.InputSink = Enum.InputSink.None end)
     lineTrack.Parent = card
+    setStatsInputPassThrough(lineTrack)
 
     local lineFill = Instance.new("Frame")
     lineFill.Name = "Line"
@@ -4017,16 +4011,151 @@ local function createStatsMetricCard(name, value, xOffset)
     lineFill.BackgroundColor3 = Color3.fromRGB(111, 202, 108)
     lineFill.BorderSizePixel = 0
     lineFill.ZIndex = 102
-    lineFill.Active = false
-    lineFill.Selectable = false
-    pcall(function() lineFill.InputSink = Enum.InputSink.None end)
     lineFill.Parent = lineTrack
+    setStatsInputPassThrough(lineFill)
 
-    return { Value = valueLabel, Line = lineFill }
+    local cardData = {
+        Card = card,
+        Corner = corner,
+        Title = title,
+        Value = valueLabel,
+        LineTrack = lineTrack,
+        Line = lineFill,
+    }
+    table.insert(statsCards, cardData)
+    return cardData
 end
 
-local pingStats = createStatsMetricCard("Ping", "-- ms", 0)
-local fpsStats = createStatsMetricCard("Fps", "--", statsCardWidth + statsCardGap)
+local pingStats = createStatsMetricCard("Ping", "-- ms")
+local fpsStats = createStatsMetricCard("Fps", "--")
+
+local function updateStatsLayout()
+    local camera = workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize or Vector2.new(800, 600)
+    local topLeftInset, bottomRightInset = Vector2.zero, Vector2.zero
+
+    pcall(function()
+        topLeftInset, bottomRightInset = GuiService:GetGuiInset()
+    end)
+
+    if typeof(topLeftInset) ~= "Vector2" then topLeftInset = Vector2.zero end
+    if typeof(bottomRightInset) ~= "Vector2" then bottomRightInset = Vector2.zero end
+
+    local availableWidth = math.max(
+        1,
+        viewport.X - topLeftInset.X - bottomRightInset.X
+    )
+    local touchDevice = UserInputService.TouchEnabled
+    local compactTouchLayout = touchDevice and availableWidth < 760
+    local widthRatio = touchDevice
+        and (compactTouchLayout and 0.12 or 0.105)
+        or 0.065
+    local minCardWidth = touchDevice
+        and (compactTouchLayout and 62 or 72)
+        or 82
+    local deviceMaxCardWidth = touchDevice
+        and (compactTouchLayout and 80 or 94)
+        or 112
+    local edgeMargin = touchDevice and 4 or 8
+    local desiredGap = touchDevice and 3 or 5
+    local maxCardWidthThatFits = math.floor(
+        (availableWidth - (edgeMargin * 2) - desiredGap) / 2
+    )
+    local maxCardWidth = math.max(44, math.min(deviceMaxCardWidth, maxCardWidthThatFits))
+    minCardWidth = math.min(minCardWidth, maxCardWidth)
+
+    statsCardWidth = math.clamp(
+        math.floor(availableWidth * widthRatio),
+        minCardWidth,
+        maxCardWidth
+    )
+    statsCardHeight = math.clamp(
+        math.floor(statsCardWidth * 0.39 + 0.5),
+        26,
+        42
+    )
+    statsCardGap = math.min(
+        desiredGap,
+        math.max(2, availableWidth - (edgeMargin * 2) - (statsCardWidth * 2))
+    )
+
+    local padding = math.clamp(math.floor(statsCardWidth * 0.09 + 0.5), 5, 8)
+    local titleSize = math.clamp(math.floor(statsCardWidth * 0.10 + 0.5), 7, 10)
+    local valueSize = math.clamp(math.floor(statsCardWidth * 0.12 + 0.5), 8, 12)
+    local titleY = math.max(2, math.floor(statsCardHeight * 0.12))
+    local valueY = math.floor(statsCardHeight * 0.40)
+    local lineHeight = 2
+    local lineY = statsCardHeight - lineHeight - 3
+    local topMargin = math.clamp(math.floor(statsCardHeight * 0.14), 3, 6)
+
+    statsC.Size = UDim2.fromOffset(
+        statsCardWidth * 2 + statsCardGap,
+        statsCardHeight
+    )
+    statsC.Position = UDim2.new(
+        1,
+        -(bottomRightInset.X + edgeMargin),
+        0,
+        topLeftInset.Y + topMargin
+    )
+
+    for index, cardData in ipairs(statsCards) do
+        local xOffset = (index - 1) * (statsCardWidth + statsCardGap)
+        cardData.Card.Position = UDim2.fromOffset(xOffset, 0)
+        cardData.Card.Size = UDim2.fromOffset(statsCardWidth, statsCardHeight)
+        cardData.Corner.CornerRadius = UDim.new(
+            0,
+            math.clamp(math.floor(statsCardHeight * 0.16), 3, 5)
+        )
+
+        cardData.Title.Position = UDim2.fromOffset(padding, titleY)
+        cardData.Title.Size = UDim2.new(
+            1,
+            -(padding * 2),
+            0,
+            math.max(8, math.floor(statsCardHeight * 0.28))
+        )
+        cardData.Title.TextSize = titleSize
+
+        cardData.Value.Position = UDim2.fromOffset(padding, valueY)
+        cardData.Value.Size = UDim2.new(
+            1,
+            -(padding * 2),
+            0,
+            math.max(9, math.floor(statsCardHeight * 0.34))
+        )
+        cardData.Value.TextSize = valueSize
+
+        cardData.LineTrack.Position = UDim2.fromOffset(padding, lineY)
+        cardData.LineTrack.Size = UDim2.new(
+            1,
+            -(padding * 2),
+            0,
+            lineHeight
+        )
+    end
+end
+
+local statsViewportConnection
+local function bindStatsViewport()
+    if statsViewportConnection then
+        statsViewportConnection:Disconnect()
+        statsViewportConnection = nil
+    end
+
+    local camera = workspace.CurrentCamera
+    if camera then
+        statsViewportConnection = Silent.Resources:TrackConn(
+            camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateStatsLayout)
+        )
+    end
+    updateStatsLayout()
+end
+
+Silent.Resources:TrackConn(
+    workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(bindStatsViewport)
+)
+bindStatsViewport()
 
 Silent.Events:Sub("UpdateStatsUI", "UI", function(fps, ping)
     fps = math.max(0, math.floor(tonumber(fps) or 0))
