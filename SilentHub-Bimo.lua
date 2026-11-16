@@ -1734,9 +1734,8 @@ SourceZones.Shooting.Trigger.execPistolTriggerbot = function(targetPart, targetP
     if not humanoid or humanoid.Health <= 0 then return end
 
     local legitMode = aim.TriggerBotLegit == true
-    local weaponTransitionDelay = math.max(
-        0.05,
-        math.clamp(tonumber(aim.TriggerDetectionInterval) or 0.15, 0.025, 0.25)
+    local weaponTransitionDelay = math.clamp(
+        tonumber(aim.TriggerDetectionInterval) or 0.15, 0.025, 0.25
     )
     local currentTool = character:FindFirstChildOfClass("Tool")
     local pistol
@@ -5620,27 +5619,42 @@ SourceZones.UI.Builders.BuildCombatUI = function()
     
     zones.Layout.Combat_AimConfig = function() tA:CreateSection({name="Configuración"}) end
     zones.Sliders.Combat_EnemyDetectionLevel = function()
-        tA:CreateSlider({
-            name="Enemy Detection",
-            description="Detección de enemigos: 0.25 s a 0.025 s. Equipar/guardar es complementario.",
-            range={1,5},
-            increment=1,
-            value=3,
-            flag="Silent_EnemyDetectionLevel",
-            callback=function(v)
-                local level = math.clamp(math.floor((tonumber(v) or 3) + 0.5), 1, 5)
-                local intervals = {
-                    [1] = 0.25,
-                    [2] = 0.20,
-                    [3] = 0.15,
-                    [4] = 0.075,
-                    [5] = 0.025
-                }
-                Silent.State.Aim.TriggerDetectionLevel = level
-                Silent.State.Aim.TriggerDetectionInterval = intervals[level]
-                Silent.State.Aim.TriggerDetectionLastScanAt = 0
+        local detectionSlider
+        local detectionProfiles = {
+            [1] = { interval = 0.25, description = "Lento: 0.25" },
+            [2] = { interval = 0.20, description = "Medio Lento: 0.20" },
+            [3] = { interval = 0.15, description = "Medio: 0.15" },
+            [4] = { interval = 0.075, description = "Medio Rapido: 0.075" },
+            [5] = { interval = 0.025, description = "Rapido: 0.025" },
+        }
+
+        local function applyDetectionProfile(value)
+            local level = math.clamp(math.floor((tonumber(value) or 3) + 0.5), 1, 5)
+            local profile = detectionProfiles[level]
+            Silent.State.Aim.TriggerDetectionLevel = level
+            Silent.State.Aim.TriggerDetectionInterval = profile.interval
+            Silent.State.Aim.TriggerDetectionLastScanAt = 0
+
+            local nativeSlider = detectionSlider and detectionSlider._native
+            if nativeSlider and type(nativeSlider.SetDesc) == "function" then
+                pcall(function()
+                    nativeSlider:SetDesc(profile.description)
+                end)
             end
+        end
+
+        detectionSlider = tA:CreateSlider({
+            name = "Enemy Detection",
+            description = "Medio: 0.15",
+            range = { 1, 5 },
+            increment = 1,
+            value = 3,
+            flag = "Silent_EnemyDetectionLevel",
+            callback = applyDetectionProfile,
         })
+
+        Silent.Controls.EnemyDetection = detectionSlider
+        applyDetectionProfile(detectionSlider:Get())
     end
     zones.Toggles.Combat_ThrowMode = function() tA:CreateToggle({name="Lock Throw Mode (Movil)",flag="Silent_ThrowMode",value=false,callback=function(v) Silent.State.Aim.ThrowMode=v Silent.Events:Emit("ToggleThrowMode",v) end}) end
     zones.Toggles.Combat_KnifeThrowMacro = function()
