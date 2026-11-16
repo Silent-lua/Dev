@@ -155,7 +155,7 @@ local Silent = {
         Macro = { Active = false, KnifeThrowActive = false, EquipDelay = 0.01, ShootDelay = 0.01, Busy = false, Generation = 0, TouchInputs = {} },
         Aim = { SilentAim = false, AutoShoot = false, TriggerBot = false, TriggerBotLegit = false, TriggerDetectionLevel = 3, TriggerDetectionInterval = 0.15, TriggerDetectionLastScanAt = 0, TriggerPistolBusy = false, TriggerPistolGeneration = 0, TriggerPistolRetryAt = 0, TriggerPistolWarnedReload = false, TriggerKnifeBusy = false, TriggerKnifeGeneration = 0, TriggerKnifeRetryAt = 0, TriggerLastKnifeTarget = nil, Mode = "FOV", TargetPart = "Cabeza", HitChance = 100, FovVisible = false, FovRadius = 100, ThrowMode = false },
         Vis = { HideName = false, ESP = false, Color = Color3.fromRGB(255, 0, 0), Glow = true, Name = false, Dist = false, Lines = false, Arrows = false },
-        Gfx = { BoostFps = false, Low = false, SmartRender = false, RenderDist = 500 },
+        Gfx = { BoostFps = false, Low = false, SmartRender = true, RenderDist = 500 },
         UI = { ShowStats = false },
         Spoof = { Device = "PC" }
     },
@@ -5622,7 +5622,7 @@ SourceZones.UI.Builders.BuildCombatUI = function()
     zones.Sliders.Combat_EnemyDetectionLevel = function()
         tA:CreateSlider({
             name="Enemy Detection",
-            description="Lento: 1 - Rápido: 5",
+            description="Detección de enemigos: 0.25 s a 0.025 s. Equipar/guardar es complementario.",
             range={1,5},
             increment=1,
             value=3,
@@ -5762,7 +5762,7 @@ SourceZones.UI.Builders.BuildExtrasPerformanceUI = function()
     zones.Layout.ExtrasPerformance_Performance = function() tG:CreateSection({name="Optimización de FPS"}) end
     zones.Toggles.ExtrasPerformance_LowGraphics = function() tG:CreateToggle({name="LowGraphics Mode",flag="Silent_LowGfx",value=false,callback=function(v) Silent.State.Gfx.Low=v Silent.Events:Emit("ToggleLowGfx",v) end}) end
     zones.Toggles.ExtrasPerformance_BoostFps = function() tG:CreateToggle({name="BoostFps Mode",flag="Silent_BoostFps",value=false,callback=function(v) Silent.State.Gfx.BoostFps=v Silent.Events:Emit("ToggleBoostFps",v) end}) end
-    zones.Toggles.ExtrasPerformance_SmartRender = function() tG:CreateToggle({name="Smart Render",flag="Silent_SmartRender",value=false,callback=function(v) Silent.State.Gfx.SmartRender=v Silent.Events:Emit("ToggleSmartRender",v) end}) end
+    zones.Toggles.ExtrasPerformance_SmartRender = function() tG:CreateToggle({name="Smart Render",flag="Silent_SmartRender",value=true,callback=function(v) Silent.State.Gfx.SmartRender=v Silent.Events:Emit("ToggleSmartRender",v) end}) end
     zones.Sliders.ExtrasPerformance_RenderDistance = function() tG:CreateSlider({name="Distancia de Renderizado",range={50,2000},increment=25,value=500,flag="Silent_RenderDist",callback=function(v) Silent.State.Gfx.RenderDist=v end}) end
     local sequence = {
         { "Layout", "ExtrasPerformance_Performance" },
