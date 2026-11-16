@@ -23,14 +23,38 @@ local SourceZones = {
     UI = { Configuration = {}, Execution = {}, Builders = {} },
 }
 
+local avatarRuntimeEnvironment = getgenv()
+local sharedAvatarBridge = avatarRuntimeEnvironment.SilentHubUniversalAvatarBridge
+if type(sharedAvatarBridge) ~= "table" then
+    sharedAvatarBridge = {
+        version = 2,
+        skin = {},
+        accessory = {},
+        uiPanels = { activePanel = "none" },
+        modules = {},
+        loading = {},
+    }
+    avatarRuntimeEnvironment.SilentHubUniversalAvatarBridge = sharedAvatarBridge
+end
+
+sharedAvatarBridge.version = 2
+sharedAvatarBridge.skin = type(sharedAvatarBridge.skin) == "table" and sharedAvatarBridge.skin or {}
+sharedAvatarBridge.accessory = type(sharedAvatarBridge.accessory) == "table" and sharedAvatarBridge.accessory or {}
+sharedAvatarBridge.uiPanels = type(sharedAvatarBridge.uiPanels) == "table" and sharedAvatarBridge.uiPanels or { activePanel = "none" }
+sharedAvatarBridge.modules = type(sharedAvatarBridge.modules) == "table" and sharedAvatarBridge.modules or {}
+sharedAvatarBridge.loading = type(sharedAvatarBridge.loading) == "table" and sharedAvatarBridge.loading or {}
+
+local preloadedSkinsApi = sharedAvatarBridge.modules.skins
+local preloadedAccessoriesApi = sharedAvatarBridge.modules.accessories
+
 local AvatarIntegration = {
-    Bridge = { version = 2, skin = {}, accessory = {}, uiPanels = {} },
-    Skins = nil,
-    Accessories = nil,
-    SkinsEnabled = false,
-    AccessoriesEnabled = false,
-    SkinsLoading = false,
-    AccessoriesLoading = false,
+    Bridge = sharedAvatarBridge,
+    Skins = type(preloadedSkinsApi) == "table" and preloadedSkinsApi or nil,
+    Accessories = type(preloadedAccessoriesApi) == "table" and preloadedAccessoriesApi or nil,
+    SkinsEnabled = type(preloadedSkinsApi) == "table",
+    AccessoriesEnabled = type(preloadedAccessoriesApi) == "table",
+    SkinsLoading = sharedAvatarBridge.loading.skins == true,
+    AccessoriesLoading = sharedAvatarBridge.loading.accessories == true,
     SkinsControl = nil,
     AccessoriesControl = nil,
     Generation = 0,
@@ -45,6 +69,7 @@ AvatarIntegration.Cleanup = function()
     AvatarIntegration.SkinsControl = nil
     AvatarIntegration.AccessoriesControl = nil
 
+    local bridge = AvatarIntegration.Bridge
     local accessories = AvatarIntegration.Accessories
     AvatarIntegration.Accessories = nil
     if accessories and type(accessories.Cleanup) == "function" then
@@ -57,9 +82,27 @@ AvatarIntegration.Cleanup = function()
         pcall(skins.destroy)
     end
 
-    AvatarIntegration.Bridge = { version = 2, skin = {}, accessory = {}, uiPanels = {} }
-    if getgenv().SilentHubAvatarTools == AvatarIntegration then
-        getgenv().SilentHubAvatarTools = nil
+    if type(bridge.modules) == "table" then
+        bridge.modules.skins = nil
+        bridge.modules.accessories = nil
+    end
+    if type(bridge.loading) == "table" then
+        bridge.loading.skins = nil
+        bridge.loading.accessories = nil
+    end
+    if type(bridge.uiPanels) == "table" then
+        bridge.uiPanels.activePanel = "none"
+        bridge.uiPanels.closeSkinsPanel = nil
+        bridge.uiPanels.closeAccessoriesPanel = nil
+    end
+
+    -- Bimo owns the active notification provider; standalone loaders will
+    -- reinstall Roblox notifications if they run again after Bimo unloads.
+    bridge.notify = nil
+    AvatarIntegration.Bridge = bridge
+
+    if avatarRuntimeEnvironment.SilentHubAvatarTools == AvatarIntegration then
+        avatarRuntimeEnvironment.SilentHubAvatarTools = nil
     end
 end
 
@@ -5480,6 +5523,18 @@ local function ensureAvatarModule(moduleName, generation)
         return true
     end
 
+    local sharedModules = AvatarIntegration.Bridge.modules
+    local sharedApi = type(sharedModules) == "table" and sharedModules[moduleName] or nil
+    if sharedApi ~= nil then
+        if type(sharedApi) ~= "table"
+            or type(sharedApi[definition.setterKey]) ~= "function"
+            or type(sharedApi[definition.cleanupKey]) ~= "function" then
+            return false, "La instancia independiente de " .. definition.fileName .. " no expone una API compatible"
+        end
+        AvatarIntegration[definition.apiKey] = sharedApi
+        return true
+    end
+
     local api, loadError = compileAvatarModule(definition.fileName, AvatarIntegration.Bridge)
     if not api then
         return false, loadError
@@ -5506,6 +5561,9 @@ local function ensureAvatarModule(moduleName, generation)
     end
 
     AvatarIntegration[definition.apiKey] = api
+    AvatarIntegration.Bridge.modules = type(AvatarIntegration.Bridge.modules) == "table"
+        and AvatarIntegration.Bridge.modules or {}
+    AvatarIntegration.Bridge.modules[moduleName] = api
     return true
 end
 
@@ -5520,7 +5578,7 @@ local function resetAvatarModuleToggle(moduleName)
     end)
 end
 
-local function setAvatarModuleEnabled(moduleName, enabled)
+local function setAvatarModuleEnabled(moduleName, enabled, fromControl)
     local definition = AVATAR_MODULES[moduleName]
     if not definition then
         return false, "Módulo de avatar desconocido: " .. tostring(moduleName)
@@ -5528,6 +5586,18 @@ local function setAvatarModuleEnabled(moduleName, enabled)
 
     enabled = enabled == true
     AvatarIntegration[definition.enabledKey] = enabled
+
+    -- External loaders drive the existing Bimo control so the UI stays in sync.
+    if not fromControl then
+        local control = AvatarIntegration[definition.controlKey]
+        if control and type(control.Set) == "function" then
+            local syncOk, syncResult = pcall(control.Set, control, enabled)
+            if not syncOk or syncResult == false then
+                return false, tostring(syncResult)
+            end
+            return true
+        end
+    end
 
     local api = AvatarIntegration[definition.apiKey]
     if not enabled then
@@ -5609,6 +5679,8 @@ local function setAvatarModuleEnabled(moduleName, enabled)
 
     return true
 end
+
+AvatarIntegration.SetModuleEnabled = setAvatarModuleEnabled
 
 local SilentHubUIZones = {
     Layout = {}, Stats = {}, Toggles = {}, Dropdowns = {}, Sliders = {},
@@ -5960,9 +6032,9 @@ SourceZones.UI.Builders.BuildVisualsUI = function()
             name = "Skins",
             description = "Mostrar u ocultar el botón flotante",
             flag = "Silent_AvatarSkins",
-            value = false,
+            value = AvatarIntegration.SkinsEnabled == true,
             callback = function(value)
-                local ok, toggleError = setAvatarModuleEnabled("skins", value)
+                local ok, toggleError = setAvatarModuleEnabled("skins", value, true)
                 if not ok then
                     AvatarIntegration.SkinsEnabled = false
                     resetAvatarModuleToggle("skins")
@@ -5974,15 +6046,19 @@ SourceZones.UI.Builders.BuildVisualsUI = function()
                 end
             end,
         })
+        if AvatarIntegration.Skins and AvatarIntegration.SkinsControl then
+            AvatarIntegration.SkinsEnabled = true
+            pcall(AvatarIntegration.SkinsControl.Set, AvatarIntegration.SkinsControl, true)
+        end
     end
     zones.Toggles.Visuals_AvatarAccessories = function()
         AvatarIntegration.AccessoriesControl = tV:CreateToggle({
             name = "Accessorios",
             description = "Mostrar u ocultar el botón flotante",
             flag = "Silent_AvatarAccessories",
-            value = false,
+            value = AvatarIntegration.AccessoriesEnabled == true,
             callback = function(value)
-                local ok, toggleError = setAvatarModuleEnabled("accessories", value)
+                local ok, toggleError = setAvatarModuleEnabled("accessories", value, true)
                 if not ok then
                     AvatarIntegration.AccessoriesEnabled = false
                     resetAvatarModuleToggle("accessories")
@@ -5994,6 +6070,10 @@ SourceZones.UI.Builders.BuildVisualsUI = function()
                 end
             end,
         })
+        if AvatarIntegration.Accessories and AvatarIntegration.AccessoriesControl then
+            AvatarIntegration.AccessoriesEnabled = true
+            pcall(AvatarIntegration.AccessoriesControl.Set, AvatarIntegration.AccessoriesControl, true)
+        end
     end
 
     local sequence = {
