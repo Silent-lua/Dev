@@ -6,7 +6,6 @@ local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local CoreGui = game:GetService("CoreGui")
-local StarterGui = game:GetService("StarterGui")
 local UserService = game:GetService("UserService")
 local CONFIG_PATH = "avatar-tools/skins.json"
 local localPlayer = Players.LocalPlayer
@@ -847,20 +846,14 @@ local function restoreSkinAnimateOverrides()
 end
 
 local function notifySkinAnimationWarning()
-    task.spawn(function()
-        for _ = 1, 5 do
-            local ok = pcall(function()
-                StarterGui:SetCore("SendNotification", {
-                    Title = "Advertencia ⚠️",
-                    Text = "Todos pueden ver tu Animacion",
-                    Duration = 6,
-                })
-            end)
+    local notify = avatarBridge.notify
+    if type(notify) ~= "function" then return end
 
-            if ok then return end
-            task.wait(0.4)
-        end
-    end)
+    pcall(notify, {
+        title = "Advertencia ⚠️",
+        subtitle = "Todos pueden ver tu Animacion",
+        duration = 6,
+    })
 end
 
 local function applyCopiedSkinAnimationsToAnimate(character, enabled)
