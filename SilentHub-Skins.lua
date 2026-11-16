@@ -766,8 +766,7 @@ local visualModelState = {
     localCurrentTrack = nil,
     localAnimationPlaying = false,
     localAnimationConnection = nil,
-    localAnimationRunningConnection = nil,
-    localAnimationRunningSpeed = 0,
+    localAnimationEventConnection = nil,
     toolVisualCleanup = nil,
 }
 
@@ -776,9 +775,9 @@ local function stopLocalSkinAnimations()
         visualModelState.localAnimationConnection:Disconnect()
         visualModelState.localAnimationConnection = nil
     end
-    if visualModelState.localAnimationRunningConnection then
-        visualModelState.localAnimationRunningConnection:Disconnect()
-        visualModelState.localAnimationRunningConnection = nil
+    if visualModelState.localAnimationEventConnection then
+        visualModelState.localAnimationEventConnection:Disconnect()
+        visualModelState.localAnimationEventConnection = nil
     end
     for sourceTrack, record in pairs(visualModelState.localAnimationTracks) do
         if record.stoppedConnection then
@@ -803,7 +802,6 @@ local function stopLocalSkinAnimations()
     visualModelState.localCurrentAnimation = nil
     visualModelState.localCurrentTrack = nil
     visualModelState.localAnimationPlaying = false
-    visualModelState.localAnimationRunningSpeed = 0
 end
 
 local function resolveOfficialAnimationState(sourceTrack, animateScript)
@@ -923,7 +921,9 @@ local function applyCopiedSkinAnimations(character, enabled)
         end
 
         targetTrack.Priority = sourceTrack.Priority
-        targetTrack.Looped = sourceTrack.Looped
+        local usingSkinAnimation = template ~= sourceAnimation
+        local targetLooped = sourceTrack.Looped or (stateName == "jump" and usingSkinAnimation)
+        targetTrack.Looped = targetLooped
         local weight = tonumber(sourceTrack.WeightTarget) or 1
         if weight <= 0 then
             weight = math.max(tonumber(sourceTrack.WeightCurrent) or 1, 0.01)
@@ -933,6 +933,8 @@ local function applyCopiedSkinAnimations(character, enabled)
             targetTrack = targetTrack,
             animation = animation,
             stateName = stateName,
+            usingSkinAnimation = usingSkinAnimation,
+            targetLooped = targetLooped,
             lastSpeed = speed,
             lastWeight = weight,
             phaseSynchronized = false,
@@ -987,8 +989,11 @@ local function applyCopiedSkinAnimations(character, enabled)
                 if record.targetTrack.Priority ~= sourceTrack.Priority then
                     record.targetTrack.Priority = sourceTrack.Priority
                 end
-                if record.targetTrack.Looped ~= sourceTrack.Looped then
-                    record.targetTrack.Looped = sourceTrack.Looped
+                local targetLooped = sourceTrack.Looped
+                    or (record.stateName == "jump" and record.usingSkinAnimation)
+                if record.targetTrack.Looped ~= targetLooped then
+                    record.targetTrack.Looped = targetLooped
+                    record.targetLooped = targetLooped
                 end
                 if not record.phaseSynchronized
                     and sourceTrack.Length > 0 and record.targetTrack.Length > 0 then
@@ -1018,7 +1023,7 @@ local function applyCopiedSkinAnimations(character, enabled)
         return false
     end
 
-    visualModelState.localAnimationRunningConnection = sourceAnimationConnection
+    visualModelState.localAnimationEventConnection = sourceAnimationConnection
     return true
 end
 
@@ -1855,7 +1860,9 @@ local function buildR15SkinVisual(character, visualModel)
 
     local function configureVisualJoint(joint)
 
-        if joint:FindFirstAncestorOfClass("Accessory") then
+        if joint:FindFirstAncestorOfClass("Accessory")
+            or joint:FindFirstAncestorOfClass("Tool")
+            or joint.Name == "LocalSkinGrip" then
             return
         end
 
@@ -2036,11 +2043,13 @@ local function buildSkinVisual(character, visualModel)
     visualModelState.descendantConnection = visualModel.DescendantAdded:Connect(function(descendant)
         if (descendant:IsA("Constraint") or descendant:IsA("JointInstance"))
             and not descendant:FindFirstAncestorOfClass("Accessory")
-            and not descendant:FindFirstAncestorOfClass("Tool") then
+            and not descendant:FindFirstAncestorOfClass("Tool")
+            and descendant.Name ~= "LocalSkinGrip" then
             task.defer(function()
                 if descendant.Parent
                     and not descendant:FindFirstAncestorOfClass("Accessory")
-                    and not descendant:FindFirstAncestorOfClass("Tool") then
+                    and not descendant:FindFirstAncestorOfClass("Tool")
+                    and descendant.Name ~= "LocalSkinGrip" then
                     descendant:Destroy()
                 end
             end)
