@@ -94,21 +94,25 @@ bridge.loading[MODULE_NAME] = true
 
 local api
 local function cleanupApi(moduleApi)
-    if type(moduleApi) ~= "table" then return end
+    if type(moduleApi) ~= "table" then return true end
     local cleanup = moduleApi.destroy
-    if type(cleanup) == "function" then
-        local ok, cleanupError = pcall(cleanup)
-        if not ok then
-            warn("[SilentHub] Error limpiando " .. MODULE_NAME .. ": " .. tostring(cleanupError))
-        end
+    if type(cleanup) ~= "function" then return true end
+
+    local ok, cleanupResult = pcall(cleanup)
+    if not ok or cleanupResult == false then
+        return false, tostring(cleanupResult)
     end
+    return true
 end
 
 local runOk, runResult = pcall(function()
     -- Rerunning this entrypoint replaces only its own module.
     local previousApi = bridge.modules[MODULE_NAME]
     if previousApi then
-        cleanupApi(previousApi)
+        local cleanupOk, cleanupError = cleanupApi(previousApi)
+        if not cleanupOk then
+            error("No se pudo limpiar la instancia anterior: " .. tostring(cleanupError), 0)
+        end
         bridge.modules[MODULE_NAME] = nil
     end
 
@@ -154,8 +158,10 @@ end)
 
 bridge.loading[MODULE_NAME] = nil
 if not runOk then
-    cleanupApi(api)
-    bridge.modules[MODULE_NAME] = nil
+    if api then
+        cleanupApi(api)
+        bridge.modules[MODULE_NAME] = nil
+    end
     error("[SilentHub] " .. tostring(runResult), 0)
 end
 
