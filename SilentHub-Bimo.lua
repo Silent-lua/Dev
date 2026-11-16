@@ -6173,7 +6173,8 @@ SourceZones.UI.Builders.BuildVisualsUI = function()
                 end
             end,
         })
-        if AvatarIntegration.SkinsEnabled and AvatarIntegration.SkinsControl then
+        if AvatarIntegration.Skins and AvatarIntegration.SkinsControl then
+            AvatarIntegration.SkinsEnabled = true
             pcall(AvatarIntegration.SkinsControl.Set, AvatarIntegration.SkinsControl, true)
         end
     end
@@ -6196,7 +6197,8 @@ SourceZones.UI.Builders.BuildVisualsUI = function()
                 end
             end,
         })
-        if AvatarIntegration.AccessoriesEnabled and AvatarIntegration.AccessoriesControl then
+        if AvatarIntegration.Accessories and AvatarIntegration.AccessoriesControl then
+            AvatarIntegration.AccessoriesEnabled = true
             pcall(AvatarIntegration.AccessoriesControl.Set, AvatarIntegration.AccessoriesControl, true)
         end
     end
