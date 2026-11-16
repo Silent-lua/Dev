@@ -3923,12 +3923,16 @@ end)
 
 local statsC = ContainerManager.new("Frame", "GUI")
 statsC.Name = "StatsPanel"
-statsC.Size = UDim2.fromOffset(278, 54)
+local statsViewportWidth = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize.X or 1536
+local statsCardWidth = math.min(220, math.max(136, math.floor((statsViewportWidth - 48) / 2)))
+local statsCardHeight = 85
+local statsCardGap = 8
+statsC.Size = UDim2.fromOffset(statsCardWidth * 2 + statsCardGap, statsCardHeight)
 statsC.AnchorPoint = Vector2.new(0.5, 0)
 do
     local ok, inset = pcall(function() return GuiService:GetGuiInset() end)
     local topInset = (ok and inset and inset.Y or 0)
-    statsC.Position = UDim2.new(0.5, 0, 0, math.max(82, topInset + 48))
+    statsC.Position = UDim2.new(0.5, 0, 0, math.max(168, topInset + 132))
 end
 statsC.BackgroundTransparency = 1
 statsC.BorderSizePixel = 0
@@ -3942,9 +3946,9 @@ local function createStatsMetricCard(name, value, xOffset)
     local card = Instance.new("Frame")
     card.Name = name .. "Metric"
     card.Position = UDim2.fromOffset(xOffset, 0)
-    card.Size = UDim2.fromOffset(136, 52)
-    card.BackgroundColor3 = Color3.fromRGB(48, 53, 59)
-    card.BackgroundTransparency = 0.22
+    card.Size = UDim2.fromOffset(statsCardWidth, statsCardHeight)
+    card.BackgroundColor3 = Color3.fromRGB(38, 59, 52)
+    card.BackgroundTransparency = 0.14
     card.BorderSizePixel = 0
     card.Active = false
     card.Selectable = false
@@ -3952,21 +3956,21 @@ local function createStatsMetricCard(name, value, xOffset)
     card.Parent = statsC
 
     local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(128, 134, 141)
-    stroke.Transparency = 0.72
+    stroke.Color = Color3.fromRGB(168, 181, 174)
+    stroke.Transparency = 0.58
     stroke.Thickness = 1
     stroke.Parent = card
 
     local title = Instance.new("TextLabel")
     title.Name = "Title"
-    title.Position = UDim2.fromOffset(8, 4)
-    title.Size = UDim2.new(1, -16, 0, 15)
+    title.Position = UDim2.fromOffset(14, 10)
+    title.Size = UDim2.new(1, -28, 0, 18)
     title.BackgroundTransparency = 1
     title.Text = name
     title.TextColor3 = Color3.fromRGB(245, 247, 249)
     title.TextTransparency = 0.04
     title.Font = Enum.Font.GothamSemibold
-    title.TextSize = 10
+    title.TextSize = 14
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.ZIndex = 101
     title.Active = false
@@ -3975,13 +3979,13 @@ local function createStatsMetricCard(name, value, xOffset)
 
     local valueLabel = Instance.new("TextLabel")
     valueLabel.Name = "Value"
-    valueLabel.Position = UDim2.fromOffset(8, 19)
-    valueLabel.Size = UDim2.new(1, -16, 0, 16)
+    valueLabel.Position = UDim2.fromOffset(14, 34)
+    valueLabel.Size = UDim2.new(1, -28, 0, 20)
     valueLabel.BackgroundTransparency = 1
     valueLabel.Text = value
     valueLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     valueLabel.Font = Enum.Font.GothamMedium
-    valueLabel.TextSize = 12
+    valueLabel.TextSize = 16
     valueLabel.TextXAlignment = Enum.TextXAlignment.Left
     valueLabel.ZIndex = 101
     valueLabel.Active = false
@@ -3990,8 +3994,8 @@ local function createStatsMetricCard(name, value, xOffset)
 
     local lineTrack = Instance.new("Frame")
     lineTrack.Name = "LineTrack"
-    lineTrack.Position = UDim2.fromOffset(8, 42)
-    lineTrack.Size = UDim2.new(1, -16, 0, 3)
+    lineTrack.Position = UDim2.fromOffset(14, 68)
+    lineTrack.Size = UDim2.new(1, -28, 0, 4)
     lineTrack.BackgroundColor3 = Color3.fromRGB(23, 27, 31)
     lineTrack.BackgroundTransparency = 0.2
     lineTrack.BorderSizePixel = 0
@@ -4014,7 +4018,7 @@ local function createStatsMetricCard(name, value, xOffset)
 end
 
 local pingStats = createStatsMetricCard("Ping", "-- ms", 0)
-local fpsStats = createStatsMetricCard("Fps", "--", 142)
+local fpsStats = createStatsMetricCard("Fps", "--", statsCardWidth + statsCardGap)
 
 Silent.Events:Sub("UpdateStatsUI", "UI", function(fps, ping)
     fps = math.max(0, math.floor(tonumber(fps) or 0))
@@ -5255,7 +5259,7 @@ local tV = Window:CreateTab({name="Visuals"})
 local tG = Window:CreateTab({name="Extras"})
 local tC = Window:CreateTab({name="Configuration"})
 
-local AVATAR_MODULE_BASE_URL = "https://raw.githubusercontent.com/Silent-lua/Dev/5b95a797528a99b26aa334707408c1a008ac374b/"
+local AVATAR_MODULE_BASE_URL = "https://raw.githubusercontent.com/Silent-lua/Dev/2ed0e0a385af0790d5cd8d5ebb24f0ea659aa1c1/"
 
 local function resolveAvatarCompiler()
     local compiler
