@@ -4958,12 +4958,113 @@ AvatarIntegration.Bridge.notify = function(config)
     return Window:Toast(config)
 end
 
+local openButtonVisualHidden = false
+local originalOpenButtonVisuals = setmetatable({}, { __mode = "k" })
+local openButtonDescendantConnection
+
+local function captureAndHideOpenButtonVisual(instance)
+    if typeof(instance) ~= "Instance" then return end
+
+    local originalProperties = originalOpenButtonVisuals[instance] or {}
+    local function setTransparent(propertyName, hiddenValue)
+        local readOk, originalValue = pcall(function()
+            return instance[propertyName]
+        end)
+        if not readOk then return end
+
+        if originalProperties[propertyName] == nil then
+            originalProperties[propertyName] = originalValue
+        end
+        pcall(function()
+            instance[propertyName] = hiddenValue
+        end)
+    end
+
+    if instance:IsA("GuiObject") then
+        setTransparent("BackgroundTransparency", 1)
+    end
+
+    if instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox") then
+        setTransparent("TextTransparency", 1)
+        setTransparent("TextStrokeTransparency", 1)
+    end
+
+    if instance:IsA("ImageLabel") or instance:IsA("ImageButton") then
+        setTransparent("ImageTransparency", 1)
+    end
+
+    if instance:IsA("UIStroke") then
+        setTransparent("Transparency", 1)
+    elseif instance:IsA("UIGradient") then
+        setTransparent("Transparency", NumberSequence.new(1))
+    elseif instance:IsA("CanvasGroup") then
+        setTransparent("GroupTransparency", 1)
+    end
+
+    if next(originalProperties) then
+        originalOpenButtonVisuals[instance] = originalProperties
+    end
+end
+
+local function restoreOpenButtonVisuals()
+    if openButtonDescendantConnection then
+        openButtonDescendantConnection:Disconnect()
+        openButtonDescendantConnection = nil
+    end
+
+    for instance, properties in pairs(originalOpenButtonVisuals) do
+        for propertyName, originalValue in pairs(properties) do
+            pcall(function()
+                instance[propertyName] = originalValue
+            end)
+        end
+    end
+
+    table.clear(originalOpenButtonVisuals)
+    openButtonVisualHidden = false
+end
+
+local function setOpenButtonVisualHidden(hidden)
+    hidden = hidden == true
+
+    if not hidden then
+        restoreOpenButtonVisuals()
+        return true
+    end
+
+    if openButtonVisualHidden then return true end
+
+    local openButtonMain = NativeWindow and NativeWindow.OpenButtonMain
+    local openButton = openButtonMain and openButtonMain.Button
+    if typeof(openButton) ~= "Instance" then
+        return false
+    end
+
+    openButtonVisualHidden = true
+    captureAndHideOpenButtonVisual(openButton)
+    for _, descendant in ipairs(openButton:GetDescendants()) do
+        captureAndHideOpenButtonVisual(descendant)
+    end
+
+    local connected, connection = pcall(function()
+        return openButton.DescendantAdded:Connect(captureAndHideOpenButtonVisual)
+    end)
+    if not connected then
+        restoreOpenButtonVisuals()
+        return false
+    end
+
+    openButtonDescendantConnection = connection
+    return true
+end
+
 function Window:Unload()
     if self._unloaded then return end
     self._unloaded = true
     if configSaveQueued then
         pcall(flushConfigSave)
     end
+    pcall(setOpenButtonVisualHidden, false)
     pcall(AvatarIntegration.Cleanup)
     if self._native and type(self._native.Destroy) == "function" then
         local destroyOk, destroyError = pcall(function()
@@ -5800,6 +5901,23 @@ SourceZones.UI.Builders.BuildConfigurationUI = function()
             end,
         })
     end
+    zones.Toggles.Configuration_HideInterface = function()
+        tC:CreateToggle({
+            name = "Ocultar Interface",
+            flag = "Silent_HideInterface",
+            value = false,
+            callback = function(v)
+                local applied = setOpenButtonVisualHidden(v == true)
+                if not applied then
+                    Window:Toast({
+                        title = "Interface",
+                        subtitle = "No se pudo acceder al botón flotante de WindUI.",
+                        duration = 4,
+                    })
+                end
+            end,
+        })
+    end
     zones.Layout.Configuration_ClientServer = function() tC:CreateSection({name="Client Server"}) end
     zones.Buttons.Configuration_ChangeServer = function() tC:CreateButton({name="Cambiar de Servidor", callback=function() Silent.Events:Emit("Toast", "Buscando servidor...") local a="https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100" task.spawn(function() local s,e=pcall(function() local r=request or http_request or (syn and syn.request) if r then local res=r({Url=a, Method="GET"}) if res.StatusCode==200 then local d=HttpService:JSONDecode(res.Body) local sv={} if d and d.data then for _,v in pairs(d.data) do if v.playing<v.maxPlayers and v.id~=game.JobId then table.insert(sv,v.id) end end end if #sv>0 then local rs=sv[math.random(1,#sv)] Silent.Events:Emit("Toast", "¡Servidor encontrado!") TPS:TeleportToPlaceInstance(game.PlaceId,rs,player) else Silent.Events:Emit("Toast", "No hay servidores disponibles.") end end end end) end) end}) end
     zones.Buttons.Configuration_Rejoin = function() tC:CreateButton({name="Volver a unirse", callback=function() Silent.Events:Emit("Toast", "Reconectando al servidor...") task.wait(0.5) if #Players:GetPlayers()<=1 then TPS:Teleport(game.PlaceId,player) else TPS:TeleportToPlaceInstance(game.PlaceId,game.JobId,player) end end}) end
@@ -5826,6 +5944,7 @@ SourceZones.UI.Builders.BuildConfigurationUI = function()
     local sequence = {
         { "Layout", "Configuration_Settings" },
         { "Toggles", "Configuration_ShowStats" },
+        { "Toggles", "Configuration_HideInterface" },
         { "Layout", "Configuration_ClientServer" },
         { "Buttons", "Configuration_ChangeServer" },
         { "Buttons", "Configuration_Rejoin" },
