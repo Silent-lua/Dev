@@ -1,7 +1,3 @@
-
-
-
-
 local MODULE_NAME = "skins"
 local MODULE_URL = "https://raw.githubusercontent.com/Silent-lua/Dev/2ed0e0a385af0790d5cd8d5ebb24f0ea659aa1c1/SilentHub-Skins.lua"
 
@@ -17,14 +13,12 @@ end
 
 local runtimeEnvironment = getRuntimeEnvironment()
 
-
-
 local bimoHost = runtimeEnvironment.AvatarTools
 if bimoHost ~= nil then
     if type(bimoHost) ~= "table"
         or type(bimoHost.Bridge) ~= "table"
         or type(bimoHost.SetModuleEnabled) ~= "function" then
-        error("[SilentHub] Bimo detectado, pero no expone el contrato de avatar compatible. Actualiza Bimo.", 0)
+        error("Bimo detectado, pero no expone el contrato de avatar compatible", 0)
     end
 
     local callOk, enabled, loadError = pcall(
@@ -33,11 +27,10 @@ if bimoHost ~= nil then
         true
     )
     if not callOk or enabled ~= true then
-        error("[SilentHub] Bimo no pudo activar " .. MODULE_NAME .. ": " .. tostring(loadError or enabled), 0)
+        error("Bimo no pudo activar " .. MODULE_NAME .. ": " .. tostring(loadError or enabled), 0)
     end
     return bimoHost
 end
-
 
 local bridge = runtimeEnvironment.UniversalAvatarBridge
 if type(bridge) ~= "table" then
@@ -59,8 +52,6 @@ bridge.uiPanels = type(bridge.uiPanels) == "table" and bridge.uiPanels or { acti
 bridge.modules = type(bridge.modules) == "table" and bridge.modules or {}
 bridge.loading = type(bridge.loading) == "table" and bridge.loading or {}
 
-
-
 if type(bridge.notify) ~= "function" then
     local StarterGui = game:GetService("StarterGui")
     bridge.notify = function(config)
@@ -81,7 +72,7 @@ if type(bridge.notify) ~= "function" then
                 if notified then return end
                 task.wait(0.4)
             end
-            warn("[SilentHub] No se pudo mostrar la notificación nativa.")
+            warn("No se pudo mostrar la notificación nativa.")
         end)
         return true
     end
@@ -140,23 +131,23 @@ local runOk, runResult = pcall(function()
 
     local compiled, compileError = compiler(source)
     if type(compiled) ~= "function" then
-        error("No se pudo compilar SilentHub-Skins.lua: " .. tostring(compileError), 0)
+        error("No se pudo compilar Skins: " .. tostring(compileError), 0)
     end
 
     local apiOk, moduleApi = pcall(compiled, bridge)
     if not apiOk or type(moduleApi) ~= "table" then
-        error("No se pudo iniciar SilentHub-Skins.lua: " .. tostring(moduleApi), 0)
+        error("No se pudo iniciar Skins: " .. tostring(moduleApi), 0)
     end
     api = moduleApi
 
     local setter = api.setEnabled
     if type(setter) ~= "function" then
-        error("SilentHub-Skins.lua no expone setEnabled.", 0)
+        error("Skins no expone setEnabled.", 0)
     end
 
     local enableOk, enableResult = pcall(setter, true)
     if not enableOk or enableResult == false then
-        error("No se pudo activar SilentHub-Skins.lua: " .. tostring(enableResult), 0)
+        error("No se pudo activar Skins: " .. tostring(enableResult), 0)
     end
 
     bridge.modules[MODULE_NAME] = api
