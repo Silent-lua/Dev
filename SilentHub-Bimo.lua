@@ -3923,16 +3923,15 @@ end)
 
 local statsC = ContainerManager.new("Frame", "GUI")
 statsC.Name = "StatsPanel"
-local statsViewportWidth = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize.X or 1536
-local statsCardWidth = math.min(220, math.max(136, math.floor((statsViewportWidth - 48) / 2)))
-local statsCardHeight = 85
-local statsCardGap = 8
-statsC.Size = UDim2.fromOffset(statsCardWidth * 2 + statsCardGap, statsCardHeight)
+local statsCardWidth = 136
+local statsCardHeight = 52
+local statsCardGap = 5
+statsC.Size = UDim2.fromOffset(statsCardWidth * 2 + statsCardGap, 54)
 statsC.AnchorPoint = Vector2.new(0.5, 0)
 do
     local ok, inset = pcall(function() return GuiService:GetGuiInset() end)
     local topInset = (ok and inset and inset.Y or 0)
-    statsC.Position = UDim2.new(0.5, 0, 0, math.max(168, topInset + 132))
+    statsC.Position = UDim2.new(0.5, 0, 0, math.max(82, topInset + 48))
 end
 statsC.BackgroundTransparency = 1
 statsC.BorderSizePixel = 0
@@ -3947,8 +3946,8 @@ local function createStatsMetricCard(name, value, xOffset)
     card.Name = name .. "Metric"
     card.Position = UDim2.fromOffset(xOffset, 0)
     card.Size = UDim2.fromOffset(statsCardWidth, statsCardHeight)
-    card.BackgroundColor3 = Color3.fromRGB(38, 59, 52)
-    card.BackgroundTransparency = 0.14
+    card.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    card.BackgroundTransparency = 0.42
     card.BorderSizePixel = 0
     card.Active = false
     card.Selectable = false
@@ -3956,21 +3955,21 @@ local function createStatsMetricCard(name, value, xOffset)
     card.Parent = statsC
 
     local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(168, 181, 174)
-    stroke.Transparency = 0.58
+    stroke.Color = Color3.fromRGB(150, 150, 150)
+    stroke.Transparency = 0.82
     stroke.Thickness = 1
     stroke.Parent = card
 
     local title = Instance.new("TextLabel")
     title.Name = "Title"
-    title.Position = UDim2.fromOffset(14, 10)
-    title.Size = UDim2.new(1, -28, 0, 18)
+    title.Position = UDim2.fromOffset(8, 10)
+    title.Size = UDim2.new(1, -16, 0, 12)
     title.BackgroundTransparency = 1
     title.Text = name
     title.TextColor3 = Color3.fromRGB(245, 247, 249)
     title.TextTransparency = 0.04
     title.Font = Enum.Font.GothamSemibold
-    title.TextSize = 14
+    title.TextSize = 9
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.ZIndex = 101
     title.Active = false
@@ -3979,13 +3978,13 @@ local function createStatsMetricCard(name, value, xOffset)
 
     local valueLabel = Instance.new("TextLabel")
     valueLabel.Name = "Value"
-    valueLabel.Position = UDim2.fromOffset(14, 34)
-    valueLabel.Size = UDim2.new(1, -28, 0, 20)
+    valueLabel.Position = UDim2.fromOffset(8, 25)
+    valueLabel.Size = UDim2.new(1, -16, 0, 14)
     valueLabel.BackgroundTransparency = 1
     valueLabel.Text = value
     valueLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     valueLabel.Font = Enum.Font.GothamMedium
-    valueLabel.TextSize = 16
+    valueLabel.TextSize = 11
     valueLabel.TextXAlignment = Enum.TextXAlignment.Left
     valueLabel.ZIndex = 101
     valueLabel.Active = false
@@ -3994,8 +3993,8 @@ local function createStatsMetricCard(name, value, xOffset)
 
     local lineTrack = Instance.new("Frame")
     lineTrack.Name = "LineTrack"
-    lineTrack.Position = UDim2.fromOffset(14, 68)
-    lineTrack.Size = UDim2.new(1, -28, 0, 4)
+    lineTrack.Position = UDim2.fromOffset(8, 42)
+    lineTrack.Size = UDim2.new(1, -16, 0, 3)
     lineTrack.BackgroundColor3 = Color3.fromRGB(23, 27, 31)
     lineTrack.BackgroundTransparency = 0.2
     lineTrack.BorderSizePixel = 0
