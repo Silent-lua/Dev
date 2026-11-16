@@ -1252,24 +1252,13 @@ local function createNativeCameraTransparencyUpdater(model, beforeTrack)
             if localPlayer.CameraMode == Enum.CameraMode.LockFirstPerson then
                 target = 1
             else
-                local reference = model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart")
-                if reference and reference:IsA("BasePart") then
-                    local cameraPosition = camera.CFrame.Position
-                    local localCameraPosition = reference.CFrame:PointToObjectSpace(cameraPosition)
-                    local halfSize = reference.Size * 0.5 + Vector3.new(0.65, 0.75, 0.85)
-                    local cameraInsideReference =
-                        math.abs(localCameraPosition.X) <= halfSize.X
-                        and math.abs(localCameraPosition.Y) <= halfSize.Y
-                        and math.abs(localCameraPosition.Z) <= halfSize.Z
-                    local distance = (cameraPosition - reference.Position).Magnitude
-
-                    if cameraInsideReference or distance <= 1.25 then
-                        target = 1
-                    elseif distance < 2.75 then
-                        target = 1 - (distance - 1.25) / 1.5
-                    end
+                local distance = (camera.Focus.Position - camera.CFrame.Position).Magnitude
+                target = distance < 2
+                    and (1.0 - (distance - 0.5) / 1.5)
+                    or 0
+                if target < 0.5 then
+                    target = 0
                 end
-                if target < 0.5 then target = 0 end
             end
         end
 

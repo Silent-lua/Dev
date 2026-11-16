@@ -876,9 +876,9 @@ local function applyCopiedSkinAnimations(character, enabled)
         if not record or record.stopping then return end
         record.stopping = true
         if record.targetTrack and record.targetTrack.IsPlaying then
-            pcall(function() record.targetTrack:Stop(fadeTime or 0.1) end)
+            pcall(function() record.targetTrack:Stop(fadeTime or 0.18) end)
         end
-        task.delay(fadeTime or 0.12, function()
+        task.delay(fadeTime or 0.18, function()
             if visualModelState.localAnimationTracks[sourceTrack] == record then
                 visualModelState.localAnimationTracks[sourceTrack] = nil
             end
@@ -932,16 +932,11 @@ local function applyCopiedSkinAnimations(character, enabled)
         local usingSkinAnimation = template ~= sourceAnimation
         local targetLooped = sourceTrack.Looped or (stateName == "jump" and usingSkinAnimation)
         targetTrack.Looped = targetLooped
-        local weight = tonumber(sourceTrack.WeightTarget) or 1
-        if weight <= 0 then
-            weight = math.max(tonumber(sourceTrack.WeightCurrent) or 1, 0.01)
+        local weight = tonumber(sourceTrack.WeightCurrent)
+        if weight == nil or weight <= 0 then
+            weight = math.max(tonumber(sourceTrack.WeightTarget) or 1, 0.01)
         end
         local speed = tonumber(sourceTrack.Speed) or 1
-        local sourceLength = sourceTrack.Length
-        local targetLength = targetTrack.Length
-        if sourceLength > 0 and targetLength > 0 then
-            speed *= targetLength / sourceLength
-        end
         local record = {
             targetTrack = targetTrack,
             animation = animation,
@@ -958,7 +953,7 @@ local function applyCopiedSkinAnimations(character, enabled)
         visualModelState.localCurrentTrack = targetTrack
         visualModelState.localAnimationPlaying = true
 
-        local playOk = pcall(function() targetTrack:Play(0.1, weight, speed) end)
+        local playOk = pcall(function() targetTrack:Play(0.18, weight, speed) end)
         if not playOk then
             visualModelState.localAnimationTracks[sourceTrack] = nil
             pcall(function() targetTrack:Destroy() end)
@@ -969,7 +964,7 @@ local function applyCopiedSkinAnimations(character, enabled)
         end
 
         record.stoppedConnection = sourceTrack.Stopped:Connect(function()
-            stopMirroredTrack(sourceTrack, record, 0.1)
+            stopMirroredTrack(sourceTrack, record, 0.18)
         end)
         return true
     end
@@ -987,21 +982,18 @@ local function applyCopiedSkinAnimations(character, enabled)
         end
         for sourceTrack, record in pairs(visualModelState.localAnimationTracks) do
             if not sourceTrack.IsPlaying then
-                stopMirroredTrack(sourceTrack, record, 0.1)
+                stopMirroredTrack(sourceTrack, record, 0.18)
             elseif record.targetTrack and record.targetTrack.IsPlaying then
                 local speed = tonumber(sourceTrack.Speed) or 1
-                local sourceLength = sourceTrack.Length
-                local targetLength = record.targetTrack.Length
-                if sourceLength > 0 and targetLength > 0 then
-                    speed *= targetLength / sourceLength
-                end
                 if math.abs(speed - record.lastSpeed) > 0.01 then
                     record.targetTrack:AdjustSpeed(speed)
                     record.lastSpeed = speed
                 end
-                local weight = tonumber(sourceTrack.WeightTarget) or record.lastWeight
-                if math.abs(weight - record.lastWeight) > 0.02 then
-                    record.targetTrack:AdjustWeight(math.max(0, weight), 0.1)
+                local weight = tonumber(sourceTrack.WeightCurrent)
+                    or tonumber(sourceTrack.WeightTarget)
+                    or record.lastWeight
+                if math.abs(weight - record.lastWeight) > 0.01 then
+                    record.targetTrack:AdjustWeight(math.max(0, weight), 0.12)
                     record.lastWeight = weight
                 end
                 if record.targetTrack.Priority ~= sourceTrack.Priority then
@@ -1448,26 +1440,13 @@ local function createNativeCameraTransparencyUpdater(character, visualModel)
             if localPlayer.CameraMode == Enum.CameraMode.LockFirstPerson then
                 targetTransparency = 1
             else
-                local reference = visualModel:FindFirstChild("Head")
-                    or character:FindFirstChild("Head")
-                    or visualModel:FindFirstChild("HumanoidRootPart")
-                if reference and reference:IsA("BasePart") then
-                    local cameraPosition = camera.CFrame.Position
-                    local localCameraPosition = reference.CFrame:PointToObjectSpace(cameraPosition)
-                    local halfSize = reference.Size * 0.5 + Vector3.new(0.65, 0.75, 0.85)
-                    local cameraInsideReference =
-                        math.abs(localCameraPosition.X) <= halfSize.X
-                        and math.abs(localCameraPosition.Y) <= halfSize.Y
-                        and math.abs(localCameraPosition.Z) <= halfSize.Z
-                    local distance = (cameraPosition - reference.Position).Magnitude
-
-                    if cameraInsideReference or distance <= 1.25 then
-                        targetTransparency = 1
-                    elseif distance < 2.75 then
-                        targetTransparency = 1 - (distance - 1.25) / 1.5
-                    end
+                local distance = (camera.Focus.Position - camera.CFrame.Position).Magnitude
+                targetTransparency = distance < 2
+                    and (1.0 - (distance - 0.5) / 1.5)
+                    or 0
+                if targetTransparency < 0.5 then
+                    targetTransparency = 0
                 end
-                if targetTransparency < 0.5 then targetTransparency = 0 end
             end
         end
         targetTransparency = math.clamp(targetTransparency, 0, 1)
