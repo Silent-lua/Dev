@@ -3923,21 +3923,22 @@ end)
 
 local statsC = ContainerManager.new("Frame", "GUI")
 statsC.Name = "StatsPanel"
-local statsCardWidth = 136
-local statsCardHeight = 52
+local statsCardWidth = 100
+local statsCardHeight = 38
 local statsCardGap = 5
-statsC.Size = UDim2.fromOffset(statsCardWidth * 2 + statsCardGap, 54)
-statsC.AnchorPoint = Vector2.new(0.5, 0)
+statsC.Size = UDim2.fromOffset(statsCardWidth * 2 + statsCardGap, statsCardHeight)
+statsC.AnchorPoint = Vector2.new(1, 0)
 do
     local ok, inset = pcall(function() return GuiService:GetGuiInset() end)
     local topInset = (ok and inset and inset.Y or 0)
-    statsC.Position = UDim2.new(0.5, 0, 0, math.max(82, topInset + 48))
+    statsC.Position = UDim2.new(1, -12, 0, math.max(72, topInset + 42))
 end
 statsC.BackgroundTransparency = 1
 statsC.BorderSizePixel = 0
 statsC.Visible = false
 statsC.Active = false
 statsC.Selectable = false
+pcall(function() statsC.InputSink = Enum.InputSink.None end)
 statsC.ZIndex = 100
 statsC.Parent = screenGui
 
@@ -3947,12 +3948,16 @@ local function createStatsMetricCard(name, value, xOffset)
     card.Position = UDim2.fromOffset(xOffset, 0)
     card.Size = UDim2.fromOffset(statsCardWidth, statsCardHeight)
     card.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    card.BackgroundTransparency = 0.42
+    card.BackgroundTransparency = 0.25
     card.BorderSizePixel = 0
     card.Active = false
     card.Selectable = false
+    pcall(function() card.InputSink = Enum.InputSink.None end)
     card.ZIndex = 100
     card.Parent = statsC
+    local cardCorner = Instance.new("UICorner")
+    cardCorner.CornerRadius = UDim.new(0, 6)
+    cardCorner.Parent = card
 
     local stroke = Instance.new("UIStroke")
     stroke.Color = Color3.fromRGB(150, 150, 150)
@@ -3962,45 +3967,48 @@ local function createStatsMetricCard(name, value, xOffset)
 
     local title = Instance.new("TextLabel")
     title.Name = "Title"
-    title.Position = UDim2.fromOffset(8, 10)
-    title.Size = UDim2.new(1, -16, 0, 12)
+    title.Position = UDim2.fromOffset(7, 4)
+    title.Size = UDim2.new(1, -14, 0, 11)
     title.BackgroundTransparency = 1
     title.Text = name
     title.TextColor3 = Color3.fromRGB(245, 247, 249)
     title.TextTransparency = 0.04
     title.Font = Enum.Font.GothamSemibold
-    title.TextSize = 9
+    title.TextSize = 8
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.ZIndex = 101
     title.Active = false
     title.Selectable = false
+    pcall(function() title.InputSink = Enum.InputSink.None end)
     title.Parent = card
 
     local valueLabel = Instance.new("TextLabel")
     valueLabel.Name = "Value"
-    valueLabel.Position = UDim2.fromOffset(8, 25)
-    valueLabel.Size = UDim2.new(1, -16, 0, 14)
+    valueLabel.Position = UDim2.fromOffset(7, 15)
+    valueLabel.Size = UDim2.new(1, -14, 0, 13)
     valueLabel.BackgroundTransparency = 1
     valueLabel.Text = value
     valueLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     valueLabel.Font = Enum.Font.GothamMedium
-    valueLabel.TextSize = 11
+    valueLabel.TextSize = 10
     valueLabel.TextXAlignment = Enum.TextXAlignment.Left
     valueLabel.ZIndex = 101
     valueLabel.Active = false
     valueLabel.Selectable = false
+    pcall(function() valueLabel.InputSink = Enum.InputSink.None end)
     valueLabel.Parent = card
 
     local lineTrack = Instance.new("Frame")
     lineTrack.Name = "LineTrack"
-    lineTrack.Position = UDim2.fromOffset(8, 42)
-    lineTrack.Size = UDim2.new(1, -16, 0, 3)
-    lineTrack.BackgroundColor3 = Color3.fromRGB(23, 27, 31)
-    lineTrack.BackgroundTransparency = 0.2
+    lineTrack.Position = UDim2.fromOffset(7, 31)
+    lineTrack.Size = UDim2.new(1, -14, 0, 3)
+    lineTrack.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+    lineTrack.BackgroundTransparency = 0.05
     lineTrack.BorderSizePixel = 0
     lineTrack.ZIndex = 101
     lineTrack.Active = false
     lineTrack.Selectable = false
+    pcall(function() lineTrack.InputSink = Enum.InputSink.None end)
     lineTrack.Parent = card
 
     local lineFill = Instance.new("Frame")
@@ -4011,6 +4019,7 @@ local function createStatsMetricCard(name, value, xOffset)
     lineFill.ZIndex = 102
     lineFill.Active = false
     lineFill.Selectable = false
+    pcall(function() lineFill.InputSink = Enum.InputSink.None end)
     lineFill.Parent = lineTrack
 
     return { Value = valueLabel, Line = lineFill }
