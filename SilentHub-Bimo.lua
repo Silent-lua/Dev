@@ -5047,7 +5047,12 @@ local function setOpenButtonVisualHidden(hidden)
     end
 
     local connected, connection = pcall(function()
-        return openButton.DescendantAdded:Connect(captureAndHideOpenButtonVisual)
+        return openButton.DescendantAdded:Connect(function(descendant)
+            captureAndHideOpenButtonVisual(descendant)
+            for _, nested in ipairs(descendant:GetDescendants()) do
+                captureAndHideOpenButtonVisual(nested)
+            end
+        end)
     end)
     if not connected then
         restoreOpenButtonVisuals()
