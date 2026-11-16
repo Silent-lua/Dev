@@ -3345,9 +3345,7 @@ skinFunctions.applySkinVisualModel = function(character, userId, requestedRig, r
     end
     copiedSkinAnimationData = animationData
     if rig == "R15" and skinState.animationsEnabled then
-        if applyCopiedSkinAnimationsToAnimate(character, true) then
-            notifySkinAnimationWarning()
-        else
+        if not applyCopiedSkinAnimationsToAnimate(character, true) then
             skinState.animationsEnabled = false
             applyCopiedSkinAnimationsToAnimate(character, false)
         end
@@ -3972,9 +3970,6 @@ local skinApi = {
         local requested = enabled == true
         local applied = applyCopiedSkinAnimationsToAnimate(character, requested)
         if requested and not applied then return false end
-        if requested then
-            notifySkinAnimationWarning()
-        end
         skinState.animationsEnabled = requested
         saveConfiguration()
         updateSkinControls()
