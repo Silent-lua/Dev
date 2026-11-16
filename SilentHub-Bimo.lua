@@ -6063,15 +6063,23 @@ SourceZones.UI.Builders.BuildCombatUI = function()
     zones.Sliders.Combat_EnemyDetectionLevel = function()
         local detectionSlider
 
-        local detectionConfigVersion = tonumber(configValues["Silent_EnemyDetectionProfileVersion"]) or 1
+        local configPersistence = SourceZones.Configuration.Persistence
+        local detectionConfigVersion = tonumber(configPersistence.getPersistedValue({
+            flag = "Silent_EnemyDetectionProfileVersion",
+        }, 1)) or 1
+
         if detectionConfigVersion < 2 then
-            local savedLevel = tonumber(configValues["Silent_EnemyDetectionLevel"])
+            local savedLevel = tonumber(configPersistence.getPersistedValue({
+                flag = "Silent_EnemyDetectionLevel",
+            }, nil))
+
             if savedLevel then
                 savedLevel = math.clamp(math.floor(savedLevel + 0.5), 1, 5)
                 local migratedLevel = savedLevel <= 3 and 1 or savedLevel == 4 and 2 or 3
-                setPersistedValue("Silent_EnemyDetectionLevel", migratedLevel)
+                configPersistence.setPersistedValue("Silent_EnemyDetectionLevel", migratedLevel)
             end
-            setPersistedValue("Silent_EnemyDetectionProfileVersion", 2)
+
+            configPersistence.setPersistedValue("Silent_EnemyDetectionProfileVersion", 2)
         end
 
         local detectionProfiles = {
