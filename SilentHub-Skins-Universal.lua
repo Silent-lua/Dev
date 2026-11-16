@@ -96,7 +96,9 @@ local api
 local function cleanupApi(moduleApi)
     if type(moduleApi) ~= "table" then return true end
     local cleanup = moduleApi.destroy
-    if type(cleanup) ~= "function" then return true end
+    if type(cleanup) ~= "function" then
+        return false, "destroy no disponible"
+    end
 
     local ok, cleanupResult = pcall(cleanup)
     if not ok or cleanupResult == false then
