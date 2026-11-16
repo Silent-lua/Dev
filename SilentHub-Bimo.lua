@@ -5001,135 +5001,100 @@ AvatarIntegration.Bridge.notify = function(config)
     return Window:Toast(config)
 end
 
-local openButtonVisualHidden = false
-local floatingButtonSnapshot = {}
-local floatingButtonCaptured = setmetatable({}, { __mode = "k" })
-local floatingButtonDescendantConnection
+local FloatingButtonController = {
+    FloatingButtonVisualSnapshot = nil,
+    FloatingButtonHidden = false,
+}
 
-local function captureFloatingButtonProperty(instance, propertyName, hiddenValue)
-    if typeof(instance) ~= "Instance" then return end
-
-    local properties = floatingButtonCaptured[instance]
-    if not properties then
-        properties = {}
-        floatingButtonCaptured[instance] = properties
-    end
-
-    if not properties[propertyName] then
-        local readOk, originalValue = pcall(function()
-            return instance[propertyName]
-        end)
-        if not readOk then return end
-
-        properties[propertyName] = true
-        floatingButtonSnapshot[#floatingButtonSnapshot + 1] = {
-            Instance = instance,
-            Property = propertyName,
-            Value = originalValue,
-        }
-    end
-
-    pcall(function()
-        instance[propertyName] = hiddenValue
-    end)
-end
-
-local function hideFloatingButtonVisuals(instance)
-    if typeof(instance) ~= "Instance" then return end
-
-    if instance:IsA("GuiObject") then
-        captureFloatingButtonProperty(instance, "BackgroundTransparency", 1)
-    end
-
-    if instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox") then
-        captureFloatingButtonProperty(instance, "TextTransparency", 1)
-        captureFloatingButtonProperty(instance, "TextStrokeTransparency", 1)
-    elseif instance:IsA("ImageLabel") or instance:IsA("ImageButton") then
-        captureFloatingButtonProperty(instance, "ImageTransparency", 1)
-    elseif instance:IsA("UIStroke") then
-        captureFloatingButtonProperty(instance, "Transparency", 1)
-    elseif instance:IsA("UIGradient") then
-        captureFloatingButtonProperty(instance, "Transparency", NumberSequence.new(1))
-    elseif instance:IsA("CanvasGroup") then
-        captureFloatingButtonProperty(instance, "GroupTransparency", 1)
-    end
-end
-
-local function restoreFloatingButtonVisuals()
-    if floatingButtonDescendantConnection then
-        pcall(function()
-            floatingButtonDescendantConnection:Disconnect()
-        end)
-        floatingButtonDescendantConnection = nil
-    end
-
-    for index = #floatingButtonSnapshot, 1, -1 do
-        local entry = floatingButtonSnapshot[index]
-        if entry.Instance and entry.Instance.Parent then
-            pcall(function()
-                entry.Instance[entry.Property] = entry.Value
-            end)
-        end
-    end
-
-    table.clear(floatingButtonSnapshot)
-    floatingButtonCaptured = setmetatable({}, { __mode = "k" })
-    openButtonVisualHidden = false
-end
-
-local function setOpenButtonVisualHidden(hidden)
+function FloatingButtonController:SetFloatingButtonHidden(hidden)
     hidden = hidden == true
-
     local native = Window and Window._native
-    local openButtonMain = native and native.OpenButtonMain
-    local button = openButtonMain and openButtonMain.Button
+    local openButton = native and native.OpenButtonMain
+    local button = openButton and openButton.Button
     if not button or not button.Parent then
-        if not hidden then
-            restoreFloatingButtonVisuals()
-            return true
-        end
-        return false
+        return false, "No se encontró el botón flotante nativo de WindUI."
     end
 
     if hidden then
-        if openButtonVisualHidden then return true end
+        if not self.FloatingButtonVisualSnapshot then
+            local snapshot = {}
+            local function setVisual(instance, property, value)
+                local ok, oldValue = pcall(function()
+                    return instance[property]
+                end)
+                if not ok then return end
+                snapshot[#snapshot + 1] = {
+                    Instance = instance,
+                    Property = property,
+                    Value = oldValue,
+                }
+                pcall(function()
+                    instance[property] = value
+                end)
+            end
 
-        hideFloatingButtonVisuals(button)
-        for _, object in ipairs(button:GetDescendants()) do
-            hideFloatingButtonVisuals(object)
+            setVisual(button, "BackgroundTransparency", 1)
+            setVisual(button, "Visible", true)
+
+            for _, object in ipairs(button:GetDescendants()) do
+                if object:IsA("GuiObject") then
+                    setVisual(object, "BackgroundTransparency", 1)
+                end
+                if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
+                    setVisual(object, "TextTransparency", 1)
+                    setVisual(object, "TextStrokeTransparency", 1)
+                elseif object:IsA("ImageLabel") or object:IsA("ImageButton") then
+                    setVisual(object, "ImageTransparency", 1)
+                elseif object:IsA("UIStroke") then
+                    setVisual(object, "Transparency", 1)
+                end
+            end
+
+            self.FloatingButtonVisualSnapshot = snapshot
         end
 
-        -- Keep the original button container and its hit target alive.
-        captureFloatingButtonProperty(button.Parent, "Visible", true)
-        captureFloatingButtonProperty(button, "Visible", true)
+        pcall(function()
+            button.Parent.Visible = true
+        end)
+        pcall(function()
+            button.Visible = true
+        end)
 
         local textButton = button:FindFirstChildOfClass("TextButton")
         if textButton then
-            captureFloatingButtonProperty(textButton, "Visible", true)
-            captureFloatingButtonProperty(textButton, "Active", true)
-            captureFloatingButtonProperty(textButton, "Selectable", true)
-            captureFloatingButtonProperty(textButton, "AutoButtonColor", false)
-        end
-
-        local connected, connection = pcall(function()
-            return button.DescendantAdded:Connect(function(descendant)
-                hideFloatingButtonVisuals(descendant)
-                for _, nested in ipairs(descendant:GetDescendants()) do
-                    hideFloatingButtonVisuals(nested)
-                end
+            pcall(function()
+                textButton.Visible = true
+                textButton.Active = true
+                textButton.Selectable = true
+                textButton.AutoButtonColor = false
             end)
-        end)
-        if not connected then
-            restoreFloatingButtonVisuals()
-            return false
         end
 
-        floatingButtonDescendantConnection = connection
-        openButtonVisualHidden = true
+        self.FloatingButtonHidden = true
         return true
     end
 
-    restoreFloatingButtonVisuals()
+    local snapshot = self.FloatingButtonVisualSnapshot
+    if snapshot then
+        for index = #snapshot, 1, -1 do
+            local entry = snapshot[index]
+            if entry.Instance and entry.Instance.Parent then
+                pcall(function()
+                    entry.Instance[entry.Property] = entry.Value
+                end)
+            end
+        end
+        self.FloatingButtonVisualSnapshot = nil
+    end
+
+    pcall(function()
+        button.Parent.Visible = true
+    end)
+    pcall(function()
+        button.Visible = true
+    end)
+
+    self.FloatingButtonHidden = false
     return true
 end
 
@@ -5139,7 +5104,7 @@ function Window:Unload()
     if configSaveQueued then
         pcall(flushConfigSave)
     end
-    pcall(setOpenButtonVisualHidden, false)
+    pcall(function() FloatingButtonController:SetFloatingButtonHidden(false) end)
     pcall(AvatarIntegration.Cleanup)
     if self._native and type(self._native.Destroy) == "function" then
         local destroyOk, destroyError = pcall(function()
@@ -6010,11 +5975,11 @@ SourceZones.UI.Builders.BuildConfigurationUI = function()
             flag = "Silent_HideInterface",
             value = false,
             callback = function(v)
-                local applied = setOpenButtonVisualHidden(v == true)
+                local applied, hideError = FloatingButtonController:SetFloatingButtonHidden(v == true)
                 if not applied then
                     Window:Toast({
                         title = "Interface",
-                        subtitle = "No se pudo acceder al botón flotante de WindUI.",
+                        subtitle = tostring(hideError or "No se pudo acceder al botón flotante de WindUI."),
                         duration = 4,
                     })
                 end
