@@ -159,8 +159,12 @@ end)
 bridge.loading[MODULE_NAME] = nil
 if not runOk then
     if api then
-        cleanupApi(api)
-        bridge.modules[MODULE_NAME] = nil
+        local cleanupOk = cleanupApi(api)
+        if cleanupOk then
+            bridge.modules[MODULE_NAME] = nil
+        else
+            bridge.modules[MODULE_NAME] = api
+        end
     end
     error("[SilentHub] " .. tostring(runResult), 0)
 end
