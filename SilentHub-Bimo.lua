@@ -5140,7 +5140,7 @@ local tV = Window:CreateTab({name="Visuals"})
 local tG = Window:CreateTab({name="Extras"})
 local tC = Window:CreateTab({name="Configuration"})
 
-local AVATAR_MODULE_BASE_URL = "https://raw.githubusercontent.com/Silent-lua/Dev/b1543b93a41beae164ceaf03fbe266b8d670b632/"
+local AVATAR_MODULE_BASE_URL = "https://raw.githubusercontent.com/Silent-lua/Dev/7cee1520c816e4d424dbbb5b220cdd93f28a9857/"
 
 local function resolveAvatarCompiler()
     local compiler
