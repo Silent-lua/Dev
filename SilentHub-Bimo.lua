@@ -464,13 +464,16 @@ Silent.Resources:TrackConn(RunService.RenderStepped:Connect(function()
     if not getgenv().SilentHubRunning then return end
     fpsFrames = fpsFrames + 1 
     local now = os.clock()
-    if now - lastStats >= 1 then
-        local fps = fpsFrames 
-        fpsFrames = 0 
+    local elapsed = now - lastStats
+    if elapsed >= 1 then
+        local fps = math.floor((fpsFrames / math.max(elapsed, 0.001)) + 0.5)
+        fpsFrames = 0
         lastStats = now
         if Silent.State.UI.ShowStats then
-            local ping = 0 
-            pcall(function() ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()) end)
+            local ping = 0
+            pcall(function()
+                ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue() + 0.5)
+            end)
             Silent.Events:Emit("UpdateStatsUI", fps, ping)
         end
     end
@@ -3920,31 +3923,117 @@ end)
 
 local statsC = ContainerManager.new("Frame", "GUI")
 statsC.Name = "StatsPanel"
-statsC.Size = UDim2.new(0, 120, 0, 38)
-
-statsC.AnchorPoint = Vector2.new(0, 0)
+statsC.Size = UDim2.fromOffset(278, 54)
+statsC.AnchorPoint = Vector2.new(0.5, 0)
 do
     local ok, inset = pcall(function() return GuiService:GetGuiInset() end)
     local topInset = (ok and inset and inset.Y or 0)
-    statsC.Position = UDim2.new(0, 10, 0, math.max(42, topInset + 6))
+    statsC.Position = UDim2.new(0.5, 0, 0, math.max(82, topInset + 48))
 end
-statsC.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-statsC.BackgroundTransparency = 0.5
+statsC.BackgroundTransparency = 1
+statsC.BorderSizePixel = 0
 statsC.Visible = false
+statsC.Active = false
+statsC.Selectable = false
 statsC.ZIndex = 100
 statsC.Parent = screenGui
-Instance.new("UICorner", statsC).CornerRadius = UDim.new(0, 8)
 
-local statsText = Instance.new("TextLabel", statsC)
-statsText.Size = UDim2.new(1, 0, 1, 0)
-statsText.BackgroundTransparency = 1
-statsText.TextColor3 = Color3.fromRGB(0, 255, 0)
-statsText.Font = Enum.Font.Code
-statsText.TextSize = 12
-statsText.Text = "FPS: 0 | Ping: 0"
+local function createStatsMetricCard(name, value, xOffset)
+    local card = Instance.new("Frame")
+    card.Name = name .. "Metric"
+    card.Position = UDim2.fromOffset(xOffset, 0)
+    card.Size = UDim2.fromOffset(136, 52)
+    card.BackgroundColor3 = Color3.fromRGB(48, 53, 59)
+    card.BackgroundTransparency = 0.22
+    card.BorderSizePixel = 0
+    card.Active = false
+    card.Selectable = false
+    card.ZIndex = 100
+    card.Parent = statsC
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(128, 134, 141)
+    stroke.Transparency = 0.72
+    stroke.Thickness = 1
+    stroke.Parent = card
+
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.Position = UDim2.fromOffset(8, 4)
+    title.Size = UDim2.new(1, -16, 0, 15)
+    title.BackgroundTransparency = 1
+    title.Text = name
+    title.TextColor3 = Color3.fromRGB(245, 247, 249)
+    title.TextTransparency = 0.04
+    title.Font = Enum.Font.GothamSemibold
+    title.TextSize = 10
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.ZIndex = 101
+    title.Active = false
+    title.Selectable = false
+    title.Parent = card
+
+    local valueLabel = Instance.new("TextLabel")
+    valueLabel.Name = "Value"
+    valueLabel.Position = UDim2.fromOffset(8, 19)
+    valueLabel.Size = UDim2.new(1, -16, 0, 16)
+    valueLabel.BackgroundTransparency = 1
+    valueLabel.Text = value
+    valueLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    valueLabel.Font = Enum.Font.GothamMedium
+    valueLabel.TextSize = 12
+    valueLabel.TextXAlignment = Enum.TextXAlignment.Left
+    valueLabel.ZIndex = 101
+    valueLabel.Active = false
+    valueLabel.Selectable = false
+    valueLabel.Parent = card
+
+    local lineTrack = Instance.new("Frame")
+    lineTrack.Name = "LineTrack"
+    lineTrack.Position = UDim2.fromOffset(8, 42)
+    lineTrack.Size = UDim2.new(1, -16, 0, 3)
+    lineTrack.BackgroundColor3 = Color3.fromRGB(23, 27, 31)
+    lineTrack.BackgroundTransparency = 0.2
+    lineTrack.BorderSizePixel = 0
+    lineTrack.ZIndex = 101
+    lineTrack.Active = false
+    lineTrack.Selectable = false
+    lineTrack.Parent = card
+
+    local lineFill = Instance.new("Frame")
+    lineFill.Name = "Line"
+    lineFill.Size = UDim2.fromScale(1, 1)
+    lineFill.BackgroundColor3 = Color3.fromRGB(111, 202, 108)
+    lineFill.BorderSizePixel = 0
+    lineFill.ZIndex = 102
+    lineFill.Active = false
+    lineFill.Selectable = false
+    lineFill.Parent = lineTrack
+
+    return { Value = valueLabel, Line = lineFill }
+end
+
+local pingStats = createStatsMetricCard("Ping", "-- ms", 0)
+local fpsStats = createStatsMetricCard("Fps", "--", 142)
 
 Silent.Events:Sub("UpdateStatsUI", "UI", function(fps, ping)
-    statsText.Text = "FPS: " .. tostring(fps) .. " | Ping: " .. tostring(ping)
+    fps = math.max(0, math.floor(tonumber(fps) or 0))
+    ping = math.max(0, math.floor(tonumber(ping) or 0))
+
+    pingStats.Value.Text = tostring(ping) .. " ms"
+    fpsStats.Value.Text = tostring(fps)
+
+    local pingRatio = math.clamp(1 - (ping / 300), 0.08, 1)
+    local fpsRatio = math.clamp(fps / 120, 0.08, 1)
+    pingStats.Line.Size = UDim2.fromScale(pingRatio, 1)
+    fpsStats.Line.Size = UDim2.fromScale(fpsRatio, 1)
+
+    pingStats.Line.BackgroundColor3 = ping >= 150
+        and Color3.fromRGB(230, 125, 70)
+        or (ping >= 90 and Color3.fromRGB(220, 190, 80) or Color3.fromRGB(111, 202, 108))
+    fpsStats.Line.BackgroundColor3 = fps < 30
+        and Color3.fromRGB(230, 125, 70)
+        or (fps < 50 and Color3.fromRGB(220, 190, 80) or Color3.fromRGB(111, 202, 108))
 end)
 
 
@@ -4721,6 +4810,11 @@ function Window:Toast(config)
         Duration = math.clamp(duration, 1, 15),
         Icon = iconName,
     })
+end
+
+AvatarIntegration.Bridge.notify = function(config)
+    if not Window or Window._unloaded then return false end
+    return Window:Toast(config)
 end
 
 function Window:Unload()
@@ -5552,7 +5646,17 @@ SourceZones.UI.Builders.BuildConfigurationUI = function()
 
     local zones = SilentHubUIZones
     zones.Layout.Configuration_Settings = function() tC:CreateSection({name="Configuración"}) end
-    zones.Toggles.Configuration_ShowStats = function() tC:CreateToggle({name="Mostrar Fps/Ping", flag="Silent_ShowStats", value=false, callback=function(v) Silent.State.UI.ShowStats=v statsC.Visible=v statsC.BackgroundTransparency=v and 0.5 or 1 end}) end
+    zones.Toggles.Configuration_ShowStats = function()
+        tC:CreateToggle({
+            name = "Mostrar Fps/Ping",
+            flag = "Silent_ShowStats",
+            value = false,
+            callback = function(v)
+                Silent.State.UI.ShowStats = v == true
+                statsC.Visible = Silent.State.UI.ShowStats
+            end,
+        })
+    end
     zones.Layout.Configuration_ClientServer = function() tC:CreateSection({name="Client Server"}) end
     zones.Buttons.Configuration_ChangeServer = function() tC:CreateButton({name="Cambiar de Servidor", callback=function() Silent.Events:Emit("Toast", "Buscando servidor...") local a="https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100" task.spawn(function() local s,e=pcall(function() local r=request or http_request or (syn and syn.request) if r then local res=r({Url=a, Method="GET"}) if res.StatusCode==200 then local d=HttpService:JSONDecode(res.Body) local sv={} if d and d.data then for _,v in pairs(d.data) do if v.playing<v.maxPlayers and v.id~=game.JobId then table.insert(sv,v.id) end end end if #sv>0 then local rs=sv[math.random(1,#sv)] Silent.Events:Emit("Toast", "¡Servidor encontrado!") TPS:TeleportToPlaceInstance(game.PlaceId,rs,player) else Silent.Events:Emit("Toast", "No hay servidores disponibles.") end end end end) end) end}) end
     zones.Buttons.Configuration_Rejoin = function() tC:CreateButton({name="Volver a unirse", callback=function() Silent.Events:Emit("Toast", "Reconectando al servidor...") task.wait(0.5) if #Players:GetPlayers()<=1 then TPS:Teleport(game.PlaceId,player) else TPS:TeleportToPlaceInstance(game.PlaceId,game.JobId,player) end end}) end
